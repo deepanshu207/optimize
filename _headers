@@ -1,15 +1,18 @@
 /index.html
   Cache-Control: no-cache
 
-/own-api.js
-  Cache-Control: no-cache
+/assets/index-BcgV3y7C.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/index-DZe6jyga.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
 
 /vendor/jsquash/codec/enc/mozjpeg_enc.wasm
   Content-Type: application/wasm
   Cache-Control: public, max-age=31536000, immutable
 
 /vendor/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/assets/*
   Cache-Control: public, max-age=31536000, immutable
