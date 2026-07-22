@@ -10,7 +10,10 @@ concurrency:
 
 jobs:
   preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only run if Cloudflare secrets are configured (skip for forks)
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,7 +64,7 @@ jobs:
               '- Hard refresh with `?v=1` after deploy finishes',
               '- Tall mode: **Tall** (primary row) · kaftan / dress ~₹50',
               '',
-              '_Updated on each push to this branch. Production `main` deploys separately._',
+              '_Updated on each push to this branch. Production deploys via Cloudflare native integration._',
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({

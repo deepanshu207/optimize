@@ -1,36 +1,38 @@
 # Swag Stree — Meesho Image Optimizer
 
-Browser-based Meesho product photo optimizer — Auto, Framed, Collage, Flat-Lay, Lingerie, SupplierDen, and more. Powered by [mozjpeg](https://github.com/mozilla/mozjpeg) entirely in the browser.
+Browser-based Meesho product photo optimizer — Auto, Framed, Collage, Flat-Lay, Lingerie, SupplierDen, and more. Powered by [mozjpeg](https://github.com/mozilla/mozjpeg) entirely in the browser — no server upload required.
 
-## Live URLs
+## Live URL
 
-| Host | Status | URL |
-| ---- | ------ | --- |
-| **Cloudflare Workers** | Active (production) | Set in repo variable `CLOUDFLARE_DEPLOY_URL` or see deploy output |
-| **Netlify** | Active | Connect repo on [netlify.com](https://netlify.com) — `netlify.toml` is configured |
+Deployed via **Cloudflare Workers** (native GitHub integration — auto-deploys on every push to `main`).
 
-Production worker name: `optimize` → typically `https://optimize.<your-subdomain>.workers.dev`
+Your live URL: `https://optimize.<your-subdomain>.workers.dev`
+→ Find it in your [Cloudflare dashboard → Workers → optimize → Deployments](https://dash.cloudflare.com/16fbb7aa94db364df99f9d70d4a85915/workers/services/view/optimize/production)
 
-## Deploy to Cloudflare Workers (auto on push to main)
+## How deploys work
 
-Add these secrets in GitHub **Settings → Secrets and variables → Actions**:
+| Trigger | What happens |
+| ------- | ------------ |
+| Push to `main` | Cloudflare GitHub App auto-deploys to production |
+| Open a PR | Cloudflare GitHub App deploys a preview (if configured) |
+
+No GitHub Actions secrets needed — Cloudflare's native integration handles it automatically.
+
+## Optional: PR Previews via GitHub Actions
+
+If you want GitHub Actions to also post preview links on PRs, add these in GitHub **Settings → Secrets → Actions**, then set repo variable `CLOUDFLARE_DEPLOY_ENABLED = true`:
 
 | Secret | Value |
 | ------ | ----- |
-| `CLOUDFLARE_API_TOKEN` | Workers Edit permission token from [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens) |
+| `CLOUDFLARE_API_TOKEN` | Workers Edit token from [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens) |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare Account ID |
 
-Optional repo **variable** (not secret):
-- `CLOUDFLARE_DEPLOY_URL` = your production workers.dev URL (for post-deploy verify on `main`)
-
-After secrets are set, every push to `main` auto-deploys. Every PR gets a **preview link** posted as a comment.
-
-## Deploy to Netlify
+## Netlify (optional alternative)
 
 1. Go to [app.netlify.com](https://app.netlify.com) → **Add new site → Import an existing project**
 2. Connect this GitHub repo (`deepanshu207/optimize`)
-3. Build settings are auto-detected from `netlify.toml` (publish dir: `.`, functions: `netlify/functions`)
-4. Deploy — Netlify will publish and give you a `*.netlify.app` URL
+3. `netlify.toml` pre-configures build settings — just deploy
+4. Get a `*.netlify.app` URL
 
 ## Local Development
 
@@ -41,18 +43,10 @@ python3 server.py       # http://127.0.0.1:8000
 npx wrangler dev        # http://127.0.0.1:8787
 ```
 
-## Manual Deploy
-
-```bash
-npx wrangler login
-npm run deploy
-node scripts/verify-deploy.mjs https://optimize.<subdomain>.workers.dev
-```
-
-## Supplier Modes
+## Optimizer Modes
 
 - **Auto Lowest Shipping** — All products, studio first then framed
-- **Tall ₹50** — Full-length kaftan/dress, exact 703×1024 purple frame
+- **Tall ₹50** — Full-length kaftan/dress, exact 703×1024 purple frame (SupplierDen match)
 - **Collage** — Front+back collage, lingerie multi-scenario
 - **Flat-Lay** — Tops/tees on white background
-- And more (Framed, Studio, Full-Length, Gown…)
+- **Framed Compress, Studio Compress, Studio Ultra, Full-Length, Gown…**
