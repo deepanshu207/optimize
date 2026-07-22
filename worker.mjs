@@ -1,43 +1,20 @@
 /**
- * Cloudflare Worker — serves the Supplier's Den SPA (Meesho Image Generator).
- * All routes fall back to index.html for SPA routing.
- * Set PROCESSOR_URL (e.g. https://your-railway-app.up.railway.app) for server-side image processing.
+ * Cloudflare Worker — serves the Supplier's Den SPA.
+ * Assets directory: ./app.suppliersden.com
+ * SPA fallback: all unmatched routes return index.html so React Router handles them.
  */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const processor = env.PROCESSOR_URL || "";
 
-    // Health check / API proxy
-    if (url.pathname === "/api/health" && !processor) {
-      return new Response(
-        JSON.stringify({ ok: true, service: "cloudflare-worker", spa: "suppliersden" }),
-        { headers: { "Content-Type": "application/json; charset=utf-8" } }
-      );
+    // Try the static asset first
+    const assetRes = await env.ASSETS.fetch(request).catch(() => null);
+    if (assetRes && assetRes.status !== 404) {
+      return assetRes;
     }
 
-    if (processor && (url.pathname.startsWith("/api/meesho/") || url.pathname === "/api/health")) {
-      const target = new URL(url.pathname + url.search, processor.replace(/\/$/, ""));
-      const headers = new Headers(request.headers);
-      headers.delete("host");
-      return fetch(
-        new Request(target.toString(), {
-          method: request.method,
-          headers,
-          body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-          redirect: "follow",
-        })
-      );
-    }
-
-    // Try serving the static asset
-    const assetResponse = await env.ASSETS.fetch(request).catch(() => null);
-    if (assetResponse && assetResponse.status !== 404) {
-      return assetResponse;
-    }
-
-    // SPA fallback — serve index.html for all unmatched routes (handles /meesho-image-generator/, etc.)
-    const indexRequest = new Request(new URL("/index.html", request.url).toString(), request);
-    return env.ASSETS.fetch(indexRequest);
+    // SPA fallback — serve index.html for client-side routes
+    // (/meesho-image-generator/, /shipping-label-export/, etc.)
+    return env.ASSETS.fetch(new Request(new URL("/index.html", url).toString(), request));
   },
 };
