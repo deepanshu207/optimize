@@ -19,8 +19,3 @@ README.md
 hts-log.txt
 .gitignore
 .assetsignore
-own-api.js
-sw.js
-optimizer-shell.html
-logo.svg
-logo-mark.svg

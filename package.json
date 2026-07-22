@@ -4,7 +4,9 @@
   "type": "module",
   "engines": { "node": ">=22.0.0" },
   "scripts": {
-    "deploy": "wrangler deploy"
+    "dev": "python3 server.py",
+    "deploy": "wrangler deploy",
+    "verify:deploy": "node scripts/verify-deploy.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.14.0"
