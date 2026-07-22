@@ -19,3 +19,7 @@ README.md
 hts-log.txt
 .gitignore
 .assetsignore
+own-api.js
+optimizer-shell.html
+sw.js
+data/product-types.json
