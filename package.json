@@ -2,6 +2,9 @@
   "name": "swagstree-optimizer",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "python3 server.py",
     "dev:sharp": "MEESHO_USE_SHARP=1 python3 server.py",
