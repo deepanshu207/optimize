@@ -1156,7 +1156,7 @@ Please share payment details and license key.`;
       detection.meeshoCategory
         ? `<br><span style="font-size:10px;color:#666;">Meesho: ${detection.meeshoCategory}${
             detection.meeshoParent ? ` (${detection.meeshoParent})` : ""
-          }</span>`
+          }${detection.meeshoId ? ` · #${detection.meeshoId}` : ""}</span>`
         : "";
     const warn =
       !manual && conf === "low"
@@ -1209,17 +1209,23 @@ Please share payment details and license key.`;
       try {
         detection = await window.TestLabOptimizer.previewCategoryDetectionWithFile(
           file,
-          { categoryName: ctx.name, parentName: ctx.parent }
+          {
+            sscatId: ctx.sscatId,
+            categoryName: ctx.name,
+            parentName: ctx.parent,
+          }
         );
       } catch (e) {
         console.warn("Category preview:", e);
         detection = window.TestLabOptimizer.previewCategoryDetection({
+          sscatId: ctx.sscatId,
           categoryName: ctx.name,
           parentName: ctx.parent,
         });
       }
     } else {
       detection = window.TestLabOptimizer.previewCategoryDetection({
+        sscatId: ctx.sscatId,
         categoryName: ctx.name,
         parentName: ctx.parent,
       });
@@ -1270,7 +1276,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=25");
+          await import("/js/testLabBridge.mjs?v=28");
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {

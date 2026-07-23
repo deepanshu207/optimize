@@ -52,38 +52,82 @@ const CATEGORY_DETECT_RULES = [
   },
 ];
 
-/**
- * Detect strategy category group from Meesho category + optional image hints.
- */
-export function detectCategoryGroup({
+function resolveMeeshoCategoryNames({
+  sscatId = null,
   categoryName = "",
   parentName = "",
-  imageAnalysis = null,
+  categories = null,
 } = {}) {
-  const combined = `${categoryName} ${parentName}`.trim();
-  let matchedId = null;
+  let name = String(categoryName || "").trim();
+  let parent = String(parentName || "").trim();
+  const id = sscatId != null ? parseInt(sscatId, 10) : null;
+  let fromJson = false;
 
-  if (combined) {
-    for (const rule of CATEGORY_DETECT_RULES) {
-      if (rule.re.test(combined)) {
-        matchedId = rule.id;
-        break;
-      }
+  const list =
+    categories ||
+    (typeof window !== "undefined" && window.MeeshoCategories?.getList?.()) ||
+    [];
+
+  if (id && Number.isFinite(id) && list.length) {
+    const row = list.find((c) => c.id === id);
+    if (row) {
+      name = row.name;
+      parent = row.parentName || parent;
+      fromJson = true;
     }
   }
 
+  return {
+    name,
+    parent,
+    sscatId: id && Number.isFinite(id) ? id : null,
+    fromJson,
+  };
+}
+
+function matchCategoryGroup(combined) {
+  if (!combined) return null;
+  for (const rule of CATEGORY_DETECT_RULES) {
+    if (rule.re.test(combined)) return rule.id;
+  }
+  return null;
+}
+
+/**
+ * Detect strategy category group from Meesho category + optional image hints.
+ * When sscatId is set, resolves exact name/parent from embedded category JSON first.
+ */
+export function detectCategoryGroup({
+  sscatId = null,
+  categoryName = "",
+  parentName = "",
+  imageAnalysis = null,
+  categories = null,
+} = {}) {
+  const resolved = resolveMeeshoCategoryNames({
+    sscatId,
+    categoryName,
+    parentName,
+    categories,
+  });
+  const combined = `${resolved.name} ${resolved.parent}`.trim();
+  const matchedId = matchCategoryGroup(combined);
+
   if (matchedId) {
-    const label = categoryName
-      ? `“${categoryName}”${parentName ? ` (${parentName})` : ""}`
-      : parentName;
+    const label = resolved.name
+      ? `“${resolved.name}”${resolved.parent ? ` (${resolved.parent})` : ""}`
+      : resolved.parent;
     return {
       groupId: matchedId,
       groupName: CATEGORY_GROUP_LABELS[matchedId],
       confidence: "high",
-      source: "meesho_category",
-      meeshoCategory: categoryName || null,
-      meeshoParent: parentName || null,
-      reason: `Matched Meesho category ${label}`,
+      source: resolved.fromJson ? "meesho_json" : "meesho_category",
+      meeshoId: resolved.sscatId,
+      meeshoCategory: resolved.name || null,
+      meeshoParent: resolved.parent || null,
+      reason: resolved.fromJson
+        ? `Exact Meesho category from catalog: ${label}`
+        : `Matched Meesho category ${label}`,
     };
   }
 
@@ -93,10 +137,11 @@ export function detectCategoryGroup({
       groupName: CATEGORY_GROUP_LABELS.lingerie,
       confidence: "medium",
       source: "image_wide",
-      meeshoCategory: categoryName || null,
-      meeshoParent: parentName || null,
-      reason: categoryName
-        ? `Wide image — guessed Lingerie (Meesho “${categoryName}” not mapped)`
+      meeshoId: resolved.sscatId,
+      meeshoCategory: resolved.name || null,
+      meeshoParent: resolved.parent || null,
+      reason: resolved.name
+        ? `Wide image — guessed Lingerie (Meesho “${resolved.name}” not mapped)`
         : "Wide image — guessed Lingerie / Bra",
     };
   }
@@ -107,10 +152,11 @@ export function detectCategoryGroup({
       groupName: CATEGORY_GROUP_LABELS.apparel,
       confidence: "medium",
       source: "image_tall",
-      meeshoCategory: categoryName || null,
-      meeshoParent: parentName || null,
-      reason: categoryName
-        ? `Tall portrait — guessed Apparel (Meesho “${categoryName}” not mapped)`
+      meeshoId: resolved.sscatId,
+      meeshoCategory: resolved.name || null,
+      meeshoParent: resolved.parent || null,
+      reason: resolved.name
+        ? `Tall portrait — guessed Apparel (Meesho “${resolved.name}” not mapped)`
         : "Tall portrait — guessed Apparel / Kurti",
     };
   }
@@ -120,10 +166,11 @@ export function detectCategoryGroup({
     groupName: CATEGORY_GROUP_LABELS.general,
     confidence: combined ? "low" : "low",
     source: "default",
-    meeshoCategory: categoryName || null,
-    meeshoParent: parentName || null,
-    reason: categoryName
-      ? `Could not map Meesho “${categoryName}” — pick category group below if wrong`
+    meeshoId: resolved.sscatId,
+    meeshoCategory: resolved.name || null,
+    meeshoParent: resolved.parent || null,
+    reason: resolved.name
+      ? `Could not map Meesho “${resolved.name}” — pick category group below if wrong`
       : "No Meesho category selected — pick category group below",
   };
 }

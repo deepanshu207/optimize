@@ -87,7 +87,7 @@ const WebSession = {
     return this.save({
       supplierId: val("session-supplier-id"),
       browserId: val("session-browser-id"),
-      identifier: val("session-identifier"),
+      identifier: val("session-identifier") || "ytnlz",
       price: parseInt(val("session-price"), 10) || 100,
       cookie: this.normalizeCookie(val("session-cookie")),
     });

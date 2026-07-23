@@ -3,21 +3,28 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=25";
-import { loadImage } from "./lib/canvas-utils.js?v=25";
-import { blobToDataUrl } from "./lib/encoder.js?v=25";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=28";
+import { loadImage } from "./lib/canvas-utils.js?v=28";
+import { blobToDataUrl } from "./lib/encoder.js?v=28";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=25";
-import { getSessionGuidance, detectCategoryGroup, categoryGroupLabel } from "./lib/smart-plan.js?v=25";
+} from "./lib/shipping.js?v=28";
+import { getSessionGuidance, detectCategoryGroup, categoryGroupLabel } from "./lib/smart-plan.js?v=28";
 
 const PHASE2_PROFILE_LIMIT = 16;
 const LIVE_VERIFY_DELAY_MS = 150;
 const DEFAULT_MAX_VERIFY = 16;
+
+function embeddedCategories() {
+  if (typeof window !== "undefined" && window.MeeshoCategories?.getList) {
+    return window.MeeshoCategories.getList();
+  }
+  return null;
+}
 
 /** @deprecated Use detectCategoryGroup — kept for callers that only need the id */
 export function categoryGroupFromSelection(
@@ -27,15 +34,20 @@ export function categoryGroupFromSelection(
   imageAnalysis = null
 ) {
   return detectCategoryGroup({
+    sscatId,
     categoryName,
     parentName,
     imageAnalysis,
+    categories: embeddedCategories(),
   }).groupId;
 }
 
 /** Preview category detection (sync; pass imageAnalysis when image is loaded). */
 export function previewCategoryDetection(options = {}) {
-  return detectCategoryGroup(options);
+  return detectCategoryGroup({
+    ...options,
+    categories: options.categories || embeddedCategories(),
+  });
 }
 
 /** Load image file and run detection with image shape hints. */
@@ -45,6 +57,7 @@ export async function previewCategoryDetectionWithFile(file, options = {}) {
   return detectCategoryGroup({
     ...options,
     imageAnalysis: analysis,
+    categories: options.categories || embeddedCategories(),
   });
 }
 
@@ -167,9 +180,11 @@ export async function runTestLab(file, options = {}) {
         reason: "You selected this category group",
       }
     : detectCategoryGroup({
+        sscatId,
         categoryName,
         parentName: options.parentName || "",
         imageAnalysis: analysis,
+        categories: embeddedCategories(),
       });
 
   const resolvedCategory = detection.groupId;

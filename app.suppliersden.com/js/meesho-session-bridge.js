@@ -85,7 +85,7 @@
 
     openMeeshoLogin() {
       const s = typeof WebSession !== "undefined" ? WebSession.get() : {};
-      const tag = s.identifier || "catalog";
+      const tag = s.identifier || "ytnlz";
       const url = tag && tag !== "catalog"
         ? `https://supplier.meesho.com/panel/v3/new/cataloging/${encodeURIComponent(tag)}/catalogs/single/add`
         : "https://supplier.meesho.com/panel/v3/new/cataloging/catalogs/single/add";

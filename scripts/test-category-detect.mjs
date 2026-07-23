@@ -1,10 +1,21 @@
 import { detectCategoryGroup, categoryGroupLabel } from "../app.suppliersden.com/js/lib/smart-plan.js";
 
+const EMBEDDED = [
+  { id: 10004, name: "Kurtis", parentName: "Kurtis, Sets & Fabrics" },
+  { id: 10021, name: "Bellies", parentName: "Bellies & Juttis" },
+];
+
 const cases = [
   {
     name: "Kurtis from parent",
     in: { categoryName: "Kurtis", parentName: "Kurtis, Sets & Fabrics" },
     want: "apparel",
+  },
+  {
+    name: "Kurtis by sscat id from JSON",
+    in: { sscatId: 10004, categories: EMBEDDED },
+    want: "apparel",
+    wantSource: "meesho_json",
   },
   {
     name: "Sarees",
@@ -46,11 +57,11 @@ const cases = [
 let failed = 0;
 for (const c of cases) {
   const out = detectCategoryGroup(c.in);
-  const ok = out.groupId === c.want;
+  const ok = out.groupId === c.want && (!c.wantSource || out.source === c.wantSource);
   console.log(`${ok ? "PASS" : "FAIL"}: ${c.name} → ${out.groupName} (${out.confidence})`);
   if (!ok) {
     failed++;
-    console.log(`  expected ${c.want}, got ${out.groupId}`);
+    console.log(`  expected ${c.want}${c.wantSource ? ` source=${c.wantSource}` : ""}, got ${out.groupId} source=${out.source}`);
   }
 }
 
