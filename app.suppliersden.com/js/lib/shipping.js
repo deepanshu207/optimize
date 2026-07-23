@@ -122,18 +122,19 @@ export const CATEGORIES = [
   { id: "footwear", name: "Footwear", icon: "👟" },
   { id: "home", name: "Home & Kitchen", icon: "🏠" },
   { id: "electronics", name: "Electronics", icon: "📱" },
+  { id: "jewellery", name: "Jewellery", icon: "💍" },
   { id: "general", name: "General", icon: "📦" },
 ];
 
 export const MODES = [
-  { id: "smart", name: "Smart Auto", desc: "Tries all strategies, picks lowest ₹", featured: true },
-  { id: "studio", name: "Studio White", desc: "White background · ₹20–40 band", featured: true },
-  { id: "tall", name: "Tall ₹50", desc: "703×1024 purple frame · dresses", featured: true },
-  { id: "flatlay", name: "Flat-Lay", desc: "1024×1024 white · tops & tees", featured: true },
+  { id: "smart", name: "Smart Auto", desc: "Meesho-aligned: compact studio + live verify", featured: true },
+  { id: "studio", name: "Studio White", desc: "1200² white · ~68% product coverage", featured: true },
+  { id: "tall", name: "Tall ₹50", desc: "703×1024 frame · long kurtis/dresses", featured: true },
+  { id: "flatlay", name: "Flat-Lay", desc: "1024² compact · tops/footwear only", featured: true },
   { id: "framed", name: "Framed", desc: "Orange promo frame · ₹93 band" },
   { id: "framed_low", name: "Framed Low", desc: "Compact frame · ₹64–71 band" },
-  { id: "collage", name: "Collage Split", desc: "Front+back split · lingerie" },
-  { id: "studio_ultra", name: "Studio Ultra", desc: "Smallest file · aggressive compress" },
+  { id: "collage", name: "Collage Split", desc: "Wide image → smaller panels" },
+  { id: "studio_ultra", name: "Studio Ultra", desc: "Tightest crop + smallest KB" },
 ];
 
 export const TARGET_SHIPPING = [30, 40, 50, 70, 93];

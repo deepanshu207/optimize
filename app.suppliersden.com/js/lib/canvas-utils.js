@@ -143,7 +143,12 @@ export function imageToWhiteCanvas(img, maxSide = 2000) {
   return c;
 }
 
-export function fitSquare(img, side = 1024, coverage = 0.82) {
+/** Meesho listing: product should occupy ~65–70% of square frame (smaller bounding box → lower slab). */
+export const MEESHO_COMPACT_COVERAGE = 0.68;
+/** Meesho recommends ≥1200×1200 px square primary images. */
+export const MEESHO_SQUARE_SIDE = 1200;
+
+export function fitSquare(img, side = 1024, coverage = MEESHO_COMPACT_COVERAGE) {
   const c = document.createElement("canvas");
   c.width = side;
   c.height = side;
