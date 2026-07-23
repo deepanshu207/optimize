@@ -756,6 +756,11 @@ Please share payment details and license key.`;
     // Web-only: Live vs Test Lab tabs (Test Lab must not alter Live handlers)
     if (window.WEB_OPTIMIZER_MODE) {
       this.setupOptimizerTabs();
+      const phase2Cb = document.getElementById("test-lab-live-verify");
+      if (phase2Cb && !phase2Cb.__wired) {
+        phase2Cb.__wired = true;
+        phase2Cb.addEventListener("change", () => this.refreshTestLabSessionHint());
+      }
     }
 
     const categorySelect = document.getElementById("category-select");
@@ -1066,6 +1071,7 @@ Please share payment details and license key.`;
 
       if (isTest) {
         this.preloadTestLabModule();
+        this.refreshTestLabSessionHint();
       }
 
       const resultsArea = document.getElementById("results-area");
@@ -1096,10 +1102,36 @@ Please share payment details and license key.`;
     switchTab(this.activeOptimizerTab || "live");
   }
 
+  refreshTestLabSessionHint() {
+    const el = document.getElementById("test-lab-session-hint");
+    if (!el) return;
+    const phase2On = !!document.getElementById("test-lab-live-verify")?.checked;
+    const sessionReady =
+      typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
+    let msg = "";
+    if (window.TestLabOptimizer?.getSessionGuidance) {
+      msg = window.TestLabOptimizer.getSessionGuidance(sessionReady, phase2On);
+    } else if (phase2On && !sessionReady) {
+      msg =
+        "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt.";
+    } else if (sessionReady && phase2On) {
+      msg = "Session ready — Phase 2 will live-check Meesho prices.";
+    }
+    if (msg) {
+      el.textContent = msg;
+      el.style.display = "block";
+      el.className = sessionReady
+        ? "session-hint session-status ok"
+        : "session-hint session-status warn";
+    } else {
+      el.style.display = "none";
+    }
+  }
+
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=21");
+      await import("/js/testLabBridge.mjs?v=22");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1429,13 +1461,22 @@ Please share payment details and license key.`;
       const analysisEl = document.getElementById("test-lab-analysis");
       if (analysisEl && this.testLabAnalysis) {
         const a = this.testLabAnalysis;
+        const tips = (a.smartPlan?.tips || a.smartTips || []).slice(0, 2);
         analysisEl.style.display = "block";
-        analysisEl.innerHTML = `Detected: ${a.width}×${a.height}px · aspect ${a.aspect} · ${
+        analysisEl.innerHTML = `
+          <strong>Smart Auto plan:</strong> ${a.smartPlan?.summary || a.suggested || "studio compress"}<br>
+          <span style="font-size:10px;color:#666;">${a.width}×${a.height}px · ${
           a.studioBg ? "studio bg" : "busy bg"
-        } · ${a.tall ? "tall" : "not tall"} · group: <strong>${
+        } · ${a.tall ? "tall" : "standard"} · <strong>${
           a.resolvedCategory || a.category
-        }</strong> · suggest: ${a.suggested}`;
+        }</strong></span>
+          ${
+            tips.length
+              ? `<br><span style="font-size:10px;color:#047857;">${tips.join(" ")}</span>`
+              : ""
+          }`;
       }
+      this.refreshTestLabSessionHint();
 
       if (this.testLabResults.length) {
         const liveCount = this.testLabResults.filter(

@@ -3,7 +3,7 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage } from "./lib/strategies.js";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js";
 import { loadImage } from "./lib/canvas-utils.js";
 import { blobToDataUrl } from "./lib/encoder.js";
 import {
@@ -13,6 +13,7 @@ import {
   formatInr,
   estimateImageShipping,
 } from "./lib/shipping.js";
+import { getSessionGuidance } from "./lib/smart-plan.js";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -159,6 +160,11 @@ export async function runTestLab(file, options = {}) {
   }
 
   onProgress("Phase 1: analyzing image…");
+  const smartPlan = mode === "smart" ? getSmartPlan(img, resolvedCategory) : null;
+  if (smartPlan?.summary) {
+    onProgress(`Smart Auto: ${smartPlan.summary}`);
+  }
+
   const ranked = await optimizeImage(img, {
     mode,
     category: resolvedCategory,
@@ -182,6 +188,7 @@ export async function runTestLab(file, options = {}) {
       ...analysis,
       resolvedCategory,
       category,
+      smartPlan,
     },
     localOnly: true,
     testLab: true,
@@ -292,12 +299,20 @@ export async function verifyTestLabLive(
         blob,
         `testlab-p2-${Date.now()}-${i}.jpg`
       );
-      if (!imageUrl) {
+      let uploaded = imageUrl;
+      if (!uploaded) {
+        await new Promise((r) => setTimeout(r, 300));
+        uploaded = await MeeshoAPI.uploadImage(
+          blob,
+          `testlab-retry-${Date.now()}-${i}.jpg`
+        );
+      }
+      if (!uploaded) {
         errors.push(`${label}: upload failed`);
         continue;
       }
 
-      const priceData = await MeeshoAPI.getShippingCharges(imageUrl);
+      const priceData = await MeeshoAPI.getShippingCharges(uploaded);
       if (!priceData || priceData.shippingCharges == null) {
         errors.push(`${label}: price API failed`);
         continue;
@@ -306,7 +321,7 @@ export async function verifyTestLabLive(
       row.shippingCost = priceData.shippingCharges || 0;
       row.duplicatePid = priceData.duplicatePid;
       row.isVerified = !!priceData.duplicatePid;
-      row.uploadedUrl = imageUrl;
+      row.uploadedUrl = uploaded;
       row.liveChecked = true;
       if (!row.dataUrl && row.pricingImageUrl) row.dataUrl = row.pricingImageUrl;
       verified.push(row);
@@ -401,7 +416,9 @@ if (typeof window !== "undefined") {
     generatePhase2Framed,
     verifyTestLabLive,
     pickLiveVerifyCandidates,
-    analyzeImage,
+    getSessionGuidance,
+  getSmartPlan,
+  analyzeImage,
     categoryGroupFromSelection,
     CATEGORIES,
     MODES,
