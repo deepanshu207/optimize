@@ -585,7 +585,7 @@ const OptimizerUI = {
             : ""
         }
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
     `;
 
     results.forEach((r, i) => {

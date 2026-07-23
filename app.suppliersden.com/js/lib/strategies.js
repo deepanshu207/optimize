@@ -3,7 +3,7 @@
  * Runs in browser; ranks variants by estimated shipping ₹.
  */
 
-import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=27";
+import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=24";
 import {
   imageToWhiteCanvas,
   trimMargins,
@@ -18,9 +18,9 @@ import {
   measureWhiteRatio,
   MEESHO_COMPACT_COVERAGE,
   MEESHO_SQUARE_SIDE,
-} from "./canvas-utils.js?v=27";
-import { estimateImageShipping } from "./shipping.js?v=27";
-import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=27";
+} from "./canvas-utils.js?v=24";
+import { estimateImageShipping } from "./shipping.js?v=24";
+import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=24";
 
 const STUDIO_ULTRA = [14, 16, 18, 20, 22];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];
@@ -235,7 +235,6 @@ export async function optimizeImage(img, options = {}) {
     category = "general",
     borderColor = "#ff7900",
     targetInr = null,
-    applyTargetFilter = true,
     onProgress = () => {},
   } = options;
 
@@ -280,10 +279,9 @@ export async function optimizeImage(img, options = {}) {
     }
   }
 
-  const cap = mode === "smart" ? 40 : 30;
+  const cap = mode === "smart" ? 30 : 24;
   let ranked = dedupeAndRank(all, cap);
-  // Only filter when user explicitly sets a target AND not running Phase 2 live hunt
-  if (targetInr && options.applyTargetFilter !== false) {
+  if (targetInr) {
     const filtered = ranked.filter((v) => v.estInr <= targetInr);
     if (filtered.length) ranked = filtered;
   }

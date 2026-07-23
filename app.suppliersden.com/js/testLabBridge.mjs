@@ -3,49 +3,45 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=27";
-import { loadImage } from "./lib/canvas-utils.js?v=27";
-import { blobToDataUrl } from "./lib/encoder.js?v=27";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=24";
+import { loadImage } from "./lib/canvas-utils.js?v=24";
+import { blobToDataUrl } from "./lib/encoder.js?v=24";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=27";
-import { getSessionGuidance, detectCategoryGroup, categoryGroupLabel } from "./lib/smart-plan.js?v=27";
+} from "./lib/shipping.js?v=24";
+import { getSessionGuidance } from "./lib/smart-plan.js?v=24";
+
+const APPAREL_RE =
+  /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
+const TOPS_RE = /tshirt|shirt|jean|jegging|top wear/i;
+const JEWELLERY_RE =
+  /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket/i;
+const FOOTWEAR_RE =
+  /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti/i;
+const HOME_RE = /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container/i;
+const LINGERIE_RE = /babydoll|nightdress|nightsuit|bra|lingerie/i;
+const ELECTRONICS_RE =
+  /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter|bluetooth|speaker|watch|trimmer/i;
 
 const PHASE2_PROFILE_LIMIT = 16;
 const LIVE_VERIFY_DELAY_MS = 150;
 const DEFAULT_MAX_VERIFY = 16;
 
-/** @deprecated Use detectCategoryGroup — kept for callers that only need the id */
-export function categoryGroupFromSelection(
-  sscatId,
-  categoryName,
-  parentName = "",
-  imageAnalysis = null
-) {
-  return detectCategoryGroup({
-    categoryName,
-    parentName,
-    imageAnalysis,
-  }).groupId;
-}
-
-/** Preview category detection (sync; pass imageAnalysis when image is loaded). */
-export function previewCategoryDetection(options = {}) {
-  return detectCategoryGroup(options);
-}
-
-/** Load image file and run detection with image shape hints. */
-export async function previewCategoryDetectionWithFile(file, options = {}) {
-  const img = await loadImage(file);
-  const analysis = analyzeImage(img);
-  return detectCategoryGroup({
-    ...options,
-    imageAnalysis: analysis,
-  });
+/** Map Meesho sscat id/name → strategy category id used by strategies.js */
+export function categoryGroupFromSelection(sscatId, categoryName) {
+  const name = String(categoryName || "");
+  if (JEWELLERY_RE.test(name)) return "jewellery";
+  if (FOOTWEAR_RE.test(name)) return "footwear";
+  if (ELECTRONICS_RE.test(name)) return "electronics";
+  if (HOME_RE.test(name)) return "home";
+  if (LINGERIE_RE.test(name)) return "lingerie";
+  if (APPAREL_RE.test(name)) return "apparel";
+  if (TOPS_RE.test(name)) return "apparel";
+  return "general";
 }
 
 function variantToResult(v, index) {
@@ -148,7 +144,6 @@ export async function runTestLab(file, options = {}) {
     categoryName = "",
     sscatId = null,
     targetInr = null,
-    applyTargetFilter = true,
     borderColor = "#ff7900",
     onProgress = () => {},
   } = options;
@@ -156,24 +151,16 @@ export async function runTestLab(file, options = {}) {
   const img = await loadImage(file);
   const analysis = analyzeImage(img);
 
-  const manualCategory = category !== "auto" ? category : null;
-  const detection = manualCategory
-    ? {
-        groupId: manualCategory,
-        groupName: categoryGroupLabel(manualCategory),
-        confidence: "manual",
-        source: "manual",
-        meeshoCategory: categoryName || null,
-        meeshoParent: options.parentName || null,
-        reason: "You selected this category group",
-      }
-    : detectCategoryGroup({
-        categoryName,
-        parentName: options.parentName || "",
-        imageAnalysis: analysis,
-      });
-
-  const resolvedCategory = detection.groupId;
+  let resolvedCategory = category;
+  if (category === "auto") {
+    resolvedCategory = categoryGroupFromSelection(sscatId, categoryName);
+    if (resolvedCategory === "general" && analysis.tall) {
+      resolvedCategory = "apparel";
+    }
+    if (resolvedCategory === "general" && analysis.collage) {
+      resolvedCategory = "lingerie";
+    }
+  }
 
   onProgress("Phase 1: analyzing image…");
   const smartPlan = mode === "smart" ? getSmartPlan(img, resolvedCategory) : null;
@@ -186,7 +173,6 @@ export async function runTestLab(file, options = {}) {
     category: resolvedCategory,
     borderColor,
     targetInr: targetInr ? Number(targetInr) : null,
-    applyTargetFilter: options.applyTargetFilter,
     onProgress,
   });
 
@@ -205,7 +191,6 @@ export async function runTestLab(file, options = {}) {
       ...analysis,
       resolvedCategory,
       category,
-      categoryDetection: detection,
       smartPlan,
     },
     localOnly: true,
@@ -437,11 +422,7 @@ if (typeof window !== "undefined") {
     getSessionGuidance,
     getSmartPlan,
     analyzeImage,
-    detectCategoryGroup,
-    previewCategoryDetection,
-    previewCategoryDetectionWithFile,
     categoryGroupFromSelection,
-    categoryGroupLabel,
     CATEGORIES,
     MODES,
     TARGET_SHIPPING,

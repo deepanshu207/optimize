@@ -1160,15 +1160,7 @@ const MeeshoAPI = {
 
   isReady: function () {
     this.detectAllValues();
-    if (!this.cache.supplierId) return false;
-    if (window.WEB_OPTIMIZER_MODE) {
-      let s = {};
-      try {
-        s = window.WebSession ? WebSession.get() : JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}");
-      } catch (e) {}
-      return !!(s.browserId && s.cookie);
-    }
-    return true;
+    return this.cache.supplierId !== null;
   },
 
   // Web fallback: generate variants locally (no live API) using same canvas logic

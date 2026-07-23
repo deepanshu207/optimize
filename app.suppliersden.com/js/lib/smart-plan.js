@@ -14,62 +14,15 @@
 export const TALL_ASPECT = 1.2;
 export const WIDE_COLLAGE_ASPECT = 1.35;
 
-export const CATEGORY_GROUP_LABELS = {
-  apparel: "Apparel / Kurti",
-  lingerie: "Lingerie / Bra",
-  footwear: "Footwear",
-  home: "Home & Kitchen",
-  electronics: "Electronics",
-  jewellery: "Jewellery",
-  general: "General",
-};
-
-const CATEGORY_DETECT_RULES = [
-  { id: "jewellery", re: /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket|earring/i },
-  { id: "footwear", re: /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti|footwear|sneaker/i },
-  { id: "electronics", re: /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter/i },
-  { id: "home", re: /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container|curtain|pillow/i },
-  { id: "lingerie", re: /babydoll|nightdress|nightsuit|bra|lingerie|panty|brief|innerwear|nighty/i },
-  { id: "apparel", re: /kurti|kurta|saree|sari|dress|suit|gown|lehenga|jumpsuit|tshirt|shirt|jean|jegging|blouse|fabric/i },
-];
-
-export function detectCategoryGroup({ categoryName = "", parentName = "", imageAnalysis = null } = {}) {
-  const combined = `${categoryName} ${parentName}`.trim();
-  for (const rule of CATEGORY_DETECT_RULES) {
-    if (combined && rule.re.test(combined)) {
-      return {
-        groupId: rule.id,
-        groupName: CATEGORY_GROUP_LABELS[rule.id],
-        confidence: "high",
-        source: "meesho_category",
-        meeshoCategory: categoryName || null,
-        meeshoParent: parentName || null,
-        reason: `Matched Meesho category “${categoryName}”`,
-      };
-    }
-  }
-  if (imageAnalysis?.collage) {
-    return { groupId: "lingerie", groupName: CATEGORY_GROUP_LABELS.lingerie, confidence: "medium", source: "image_wide", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Wide image — guessed Lingerie" };
-  }
-  if (imageAnalysis?.tall) {
-    return { groupId: "apparel", groupName: CATEGORY_GROUP_LABELS.apparel, confidence: "medium", source: "image_tall", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Tall portrait — guessed Apparel" };
-  }
-  return { groupId: "general", groupName: CATEGORY_GROUP_LABELS.general, confidence: "low", source: "default", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Pick category group below if wrong" };
-}
-
-export function categoryGroupLabel(groupId) {
-  return CATEGORY_GROUP_LABELS[groupId] || CATEGORY_GROUP_LABELS.general;
-}
-
 /** Category → preferred strategy keys (order = priority). */
 const CATEGORY_STRATEGIES = {
-  jewellery: ["studio_ultra", "flatlay", "studio"],
+  jewellery: ["studio_ultra", "studio", "flatlay"],
   footwear: ["studio_ultra", "flatlay", "studio"],
-  lingerie: ["collage", "flatlay", "tall", "studio_ultra"],
-  apparel: ["studio_ultra", "tall", "flatlay", "studio"],
-  home: ["studio_ultra", "studio", "flatlay"],
+  lingerie: ["collage", "studio_ultra", "flatlay", "tall"],
+  apparel: ["studio_ultra", "tall", "studio"],
+  home: ["studio_ultra", "studio"],
   electronics: ["studio_ultra", "studio"],
-  general: ["studio_ultra", "studio", "flatlay", "tall"],
+  general: ["studio_ultra", "studio", "flatlay"],
 };
 
 /** Lower = better when est ₹ is tied. */
@@ -112,15 +65,15 @@ export function buildSmartPlan(category, analysis) {
   const base = [...(CATEGORY_STRATEGIES[cat] || CATEGORY_STRATEGIES.general)];
   for (const s of base) strategies.push(s);
 
-  if (tall && !strategies.includes("tall")) {
+  if (tall && cat !== "home" && cat !== "electronics" && !strategies.includes("tall")) {
     strategies.push("tall");
     tips.push("Tall portrait → 703×1024 frame often lands ~₹50 on Meesho.");
   }
-  if (collage && cat !== "lingerie" && !strategies.includes("collage")) {
+  if (collage && cat !== "lingerie" && cat !== "home" && cat !== "electronics" && !strategies.includes("collage")) {
     strategies.push("collage");
     tips.push("Wide image → collage split shrinks each panel's bounding box.");
   }
-  if (!studioBg) {
+  if (!studioBg && cat !== "home" && cat !== "electronics") {
     if (!strategies.includes("framed_low")) strategies.push("framed_low");
     tips.push("Busy background → white studio + Phase 2 ₹49 frame live-check.");
   } else if (cat !== "home" && cat !== "electronics") {

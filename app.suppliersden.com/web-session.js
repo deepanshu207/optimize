@@ -134,7 +134,7 @@ const WebSession = {
     const ok = s.supplierId && s.browserId;
     const cookieLen = s.cookie ? s.cookie.length : 0;
     if (ok && cookieLen > 0) {
-      el.textContent = `✅ Live session ready — Supplier ${s.supplierId} (cookie ${cookieLen} chars)`;
+      el.textContent = `✅ Session saved — cookie ${cookieLen} chars (Supplier ${s.supplierId})`;
       el.className = "session-status ok";
       return;
     }
@@ -191,11 +191,6 @@ const WebSession = {
       });
     }
     this.applyToForm();
-  },
-
-  hasLiveCredentials() {
-    const s = this.get();
-    return !!(s.supplierId && s.browserId && s.cookie);
   },
 };
 
