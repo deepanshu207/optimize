@@ -198,6 +198,14 @@ const MeeshoAPI = {
   fetchCategories: async function (forceLive) {
     if (this.cache.categories && !forceLive) return this.cache.categories;
     this._lastCategoryFetchWasFallback = false;
+
+    const imported = this.getImportedCategories();
+    if (imported?.length && !forceLive) {
+      this.cache.categories = imported;
+      this._lastCategoryFetchWasFallback = false;
+      return imported;
+    }
+
     try {
       const resp = await fetch(
         this.apiUrl(
@@ -249,6 +257,50 @@ const MeeshoAPI = {
 
   getCategories: function () {
     return this.cache.categories || [];
+  },
+
+  getImportedCategories: function () {
+    if (!window.WEB_OPTIMIZER_MODE) return null;
+    try {
+      const raw = localStorage.getItem("meesho_imported_categories_v1");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) && parsed.length ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  importCategoryTreeJson: function (raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      const text = raw.trim();
+      if (!text) throw new Error("Paste Meesho category JSON first");
+      data = JSON.parse(text);
+    }
+
+    const items = data?.items || data?.data?.items || [];
+    const subCat = Array.isArray(items)
+      ? items.find((i) => i.type === "sub-sub-category")
+      : null;
+    const rows = subCat?.data || data?.data || [];
+    if (!Array.isArray(rows) || !rows.length) {
+      throw new Error("Could not find sub-sub-category list in JSON");
+    }
+
+    const categories = rows.map((c) => ({
+      id: parseInt(c.id, 10),
+      name: c.name,
+      parentName: c.parent_name || c.parentName || "",
+    }));
+
+    localStorage.setItem(
+      "meesho_imported_categories_v1",
+      JSON.stringify(categories),
+    );
+    this.cache.categories = categories;
+    this._lastCategoryFetchWasFallback = false;
+    return categories;
   },
 
   uploadImage: async function (blob, filename) {

@@ -218,11 +218,28 @@
               <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
             </div>
             <input type="hidden" id="category-select" value="">
+            <details style="margin-top:10px;">
+              <summary style="font-size:12px;font-weight:600;color:#047857;cursor:pointer;">Import category JSON from Meesho</summary>
+              <textarea id="category-json-import" class="opt-input" rows="3" placeholder='Paste fetchCategoryTreeOld JSON from supplier.meesho.com Network tab' style="margin-top:8px;font-size:11px;resize:vertical;"></textarea>
+              <button type="button" id="import-categories" class="session-toggle" style="margin-top:8px;">Import categories</button>
+            </details>
           </div>
 
           <div class="opt-section">
             <div class="opt-section-title">🎯 Smart Mode</div>
             <div class="opt-row">
+              <div>
+                <label class="opt-label" for="current-shipping-baseline">Your current shipping (₹)</label>
+                <input type="number" id="current-shipping-baseline" class="opt-input" min="0" max="999" placeholder="e.g. 120">
+              </div>
+              <div style="display:flex;align-items:flex-end;padding-bottom:4px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="manual-shipping-mode" checked style="width:18px;height:18px;">
+                  Manual prices (recommended)
+                </label>
+              </div>
+            </div>
+            <div class="opt-row" style="margin-top:10px;">
               <div>
                 <label class="opt-label" for="target-shipping">Target Shipping</label>
                 <select id="target-shipping" class="opt-select">
@@ -247,7 +264,7 @@
                 </select>
               </div>
             </div>
-            <p class="smart-mode-note">Live API tries first when session is saved; local variants fill the rest.</p>
+            <p class="smart-mode-note">Manual mode: generate variants → download → test on Meesho → enter ₹ on each card. Best price sorts to top.</p>
           </div>
 
           <div class="opt-section">
@@ -277,7 +294,7 @@
       </div>
     </div>
 
-    <p class="api-note">Save a Meesho session for live shipping prices. Without a session, variants generate locally in your browser.</p>
+    <p class="api-note">Generate variants here, upload each on Meesho, then type the shipping ₹ on each result. No cookie needed in manual mode.</p>
   </main>
 
   <script src="/web-shim.js"></script>

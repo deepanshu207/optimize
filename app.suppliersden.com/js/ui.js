@@ -311,7 +311,9 @@ const OptimizerUI = {
   },
 
   // Results HTML - Only accurate results
-  getResultsHTML: function (results) {
+  getResultsHTML: function (results, options) {
+    options = options || {};
+    const baseline = options.baselineShipping || 0;
     if (results.length === 0) {
       return `
                 <div style="text-align:center;padding:30px;">
@@ -327,31 +329,52 @@ const OptimizerUI = {
     const best = results[0];
     const totalResults = results.length;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
-    const isLocal = !best.shippingCost || best.shippingCost <= 0;
+    const manualMode = !!options.manualMode;
+    const testedCount = results.filter((r) => r.shippingCost > 0).length;
     const applyLabel = isWeb ? "Save" : "Apply";
+    const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
 
     let html = `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
                 <div style="font-size:11px;color:#9ca3af;">${
-                  isLocal
+                  manualMode && !bestPrice
+                    ? "📝 Enter prices from Meesho"
+                    : !bestPrice
                     ? "✨ Variants Generated"
-                    : "🏆 Best Shipping Rate Found"
+                    : "🏆 Best Shipping Rate"
                 }</div>
                 <div style="font-size:28px;font-weight:700;color:#10b981;">${
-                  isLocal ? totalResults + " ready" : "₹" + best.shippingCost
+                  bestPrice
+                    ? "₹" + bestPrice
+                    : manualMode
+                    ? testedCount + " / " + totalResults + " priced"
+                    : totalResults + " ready"
                 }</div>
                 <div style="font-size:10px;color:#10b981;margin-top:2px;">${
-                  isLocal ? "Tap Save to download" : "✅ Accurate Price"
+                  manualMode
+                    ? "Download → upload on Meesho → type ₹ below"
+                    : bestPrice
+                    ? "✅ Accurate Price"
+                    : "Tap Save to download"
                 }</div>
-                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} results found</div>
+                ${
+                  baseline > 0
+                    ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
+                    : ""
+                }
+                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants</div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:280px;overflow-y:auto;">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:320px;overflow-y:auto;">
         `;
 
     results.slice(0, 20).forEach((r, i) => {
-      const isBest = i === 0;
+      const isBest = i === 0 && r.shippingCost > 0;
+      const priceLabel =
+        r.shippingCost > 0 ? "₹" + r.shippingCost : manualMode ? "—" : "Ready";
+      const savings =
+        baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
       html += `
-                <div style="background:${
+                <div class="result-card" data-i="${i}" style="background:${
                   isBest ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)"
                 };border:1px solid ${
         isBest ? "#10b981" : "rgba(255,255,255,0.1)"
@@ -366,9 +389,21 @@ const OptimizerUI = {
                     }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
         isBest ? "4px" : "0"
       };" loading="lazy">
-                    <div style="font-size:14px;font-weight:700;color:${
+                    <div class="result-price-label" style="font-size:14px;font-weight:700;color:${
                       isBest ? "#10b981" : "black"
-                    };">${r.shippingCost > 0 ? "₹" + r.shippingCost : "Ready"}</div>
+                    };">${priceLabel}</div>
+                    ${
+                      savings > 0
+                        ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
+                        : ""
+                    }
+                    ${
+                      manualMode
+                        ? `<input type="number" class="manual-price-input opt-input" data-i="${i}" value="${
+                            r.shippingCost > 0 ? r.shippingCost : ""
+                          }" min="0" max="999" placeholder="₹" style="width:100%;margin-top:4px;padding:4px;font-size:12px;text-align:center;">`
+                        : ""
+                    }
                     <div style="display:flex;gap:4px;margin-top:4px;">
                         <button class="dl-btn" data-i="${i}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
                         <button class="apply-btn" data-i="${i}" style="flex:1;background:${
@@ -382,9 +417,9 @@ const OptimizerUI = {
     html += `</div>
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  isLocal
-                    ? "Download Best Variant"
-                    : "Download Best ₹" + best.shippingCost
+                  bestPrice
+                    ? "Download Best ₹" + bestPrice
+                    : "Download Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
             </div>

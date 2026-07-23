@@ -722,6 +722,12 @@ Please share payment details and license key.`;
       };
     }
 
+    const importBtn = document.getElementById("import-categories");
+    if (importBtn && !importBtn.__wired) {
+      importBtn.__wired = true;
+      importBtn.onclick = () => this.importCategoriesFromJson();
+    }
+
     categorySearch.placeholder = "Loading categories...";
 
     try {
@@ -980,8 +986,13 @@ Please share payment details and license key.`;
       this.gatherSettings();
 
       let result = { success: false, results: [] };
+      const manualMode = this.isManualShippingMode();
 
-      if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI.isReady === "function") {
+      if (
+        !manualMode &&
+        window.WEB_OPTIMIZER_MODE &&
+        typeof MeeshoAPI.isReady === "function"
+      ) {
         OptimizerUtils.showNotification(
           MeeshoAPI.isReady()
             ? "Checking live Meesho shipping…"
@@ -990,7 +1001,7 @@ Please share payment details and license key.`;
         );
       }
 
-      if (typeof MeeshoAPI.smartSearch === "function") {
+      if (!manualMode && typeof MeeshoAPI.smartSearch === "function") {
         result = await MeeshoAPI.smartSearch(
           blob,
           targetShipping,
@@ -1026,12 +1037,19 @@ Please share payment details and license key.`;
 
       if (
         window.WEB_OPTIMIZER_MODE &&
-        (!result.success || !result.results.length)
+        (manualMode || !result.success || !result.results.length)
       ) {
-        OptimizerUtils.showNotification(
-          "Generating image variants locally…",
-          "info"
-        );
+        if (manualMode) {
+          OptimizerUtils.showNotification(
+            "Generating variants — enter Meesho prices manually after upload",
+            "info"
+          );
+        } else {
+          OptimizerUtils.showNotification(
+            "Generating image variants locally…",
+            "info"
+          );
+        }
         result = await MeeshoAPI.generateLocalVariations(
           blob,
           maxAttempts,
@@ -1068,7 +1086,9 @@ Please share payment details and license key.`;
 
         if (result.localOnly) {
           OptimizerUtils.showNotification(
-            `✅ ${result.results.length} variants ready — download & test on Meesho`,
+            manualMode
+              ? `✅ ${result.results.length} variants — download, test on Meesho, type ₹ below`
+              : `✅ ${result.results.length} variants ready — download & test on Meesho`,
             "success"
           );
         } else if (result.targetReached) {
@@ -1105,7 +1125,10 @@ Please share payment details and license key.`;
     if (this.currentResults.length > 0) {
       if (resultsArea) {
         resultsArea.style.display = "block";
-        resultsArea.innerHTML = OptimizerUI.getResultsHTML(this.currentResults);
+        resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+          this.currentResults,
+          this.getResultsViewOptions()
+        );
         this.setupResultsEvents();
       }
     } else {
@@ -1277,7 +1300,10 @@ Please share payment details and license key.`;
     if (processingArea) processingArea.style.display = "none";
     if (resultsArea && this.currentResults.length > 0) {
       resultsArea.style.display = "block";
-      resultsArea.innerHTML = OptimizerUI.getResultsHTML(this.currentResults);
+      resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+        this.currentResults,
+        this.getResultsViewOptions()
+      );
       this.setupResultsEvents();
 
       const best = this.currentResults[0];
@@ -1456,7 +1482,95 @@ Please share payment details and license key.`;
     }
   }
 
+  isManualShippingMode() {
+    if (!window.WEB_OPTIMIZER_MODE) return false;
+    const el = document.getElementById("manual-shipping-mode");
+    return el ? el.checked : true;
+  }
+
+  getBaselineShipping() {
+    const el = document.getElementById("current-shipping-baseline");
+    return parseInt(el?.value, 10) || 0;
+  }
+
+  getResultsViewOptions() {
+    return {
+      manualMode: this.isManualShippingMode(),
+      baselineShipping: this.getBaselineShipping(),
+    };
+  }
+
+  refreshResultsView() {
+    const resultsArea = document.getElementById("results-area");
+    if (!resultsArea || !this.currentResults.length) return;
+    resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+      this.currentResults,
+      this.getResultsViewOptions()
+    );
+    this.setupResultsEvents();
+  }
+
+  setManualShipping(index, price) {
+    const row = this.currentResults[index];
+    if (!row) return;
+    const value = parseInt(price, 10);
+    if (!value || value <= 0) {
+      row.shippingCost = 0;
+      row.manualPrice = false;
+      row.isVerified = false;
+    } else {
+      row.shippingCost = value;
+      row.manualPrice = true;
+      row.isVerified = true;
+    }
+    this.resortResultsByManualPrice();
+  }
+
+  resortResultsByManualPrice() {
+    this.currentResults.sort((a, b) => {
+      const aPriced = a.shippingCost > 0 ? 0 : 1;
+      const bPriced = b.shippingCost > 0 ? 0 : 1;
+      if (aPriced !== bPriced) return aPriced - bPriced;
+      if (a.shippingCost > 0 && b.shippingCost > 0) {
+        return a.shippingCost - b.shippingCost;
+      }
+      return 0;
+    });
+    this.refreshResultsView();
+  }
+
+  async importCategoriesFromJson() {
+    const textarea = document.getElementById("category-json-import");
+    if (!textarea || typeof MeeshoAPI === "undefined") return;
+    try {
+      const categories = MeeshoAPI.importCategoryTreeJson(textarea.value);
+      OptimizerUtils.showNotification(
+        `Imported ${categories.length} categories`,
+        "success"
+      );
+      MeeshoAPI.cache.categories = categories;
+      await this.loadCategoryDropdown();
+    } catch (err) {
+      OptimizerUtils.showNotification(err.message || "Invalid category JSON", "error");
+    }
+  }
+
   setupResultsEvents() {
+    document.querySelectorAll(".manual-price-input").forEach((input) => {
+      const apply = () => {
+        const i = parseInt(input.dataset.i, 10);
+        this.setManualShipping(i, input.value);
+      };
+      input.onchange = apply;
+      input.onblur = apply;
+      input.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          apply();
+        }
+      };
+    });
+
     document.querySelectorAll(".dl-btn").forEach((btn) => {
       btn.onclick = () => {
         const i = parseInt(btn.dataset.i);
@@ -1643,7 +1757,10 @@ Please share payment details and license key.`;
       if (processingArea) processingArea.style.display = "none";
       if (resultsArea) {
         resultsArea.style.display = "block";
-        resultsArea.innerHTML = OptimizerUI.getResultsHTML(this.currentResults);
+        resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+          this.currentResults,
+          this.getResultsViewOptions()
+        );
         this.setupResultsEvents();
       }
     } else {
