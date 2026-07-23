@@ -40,6 +40,7 @@ function variantToResult(v, index) {
   return {
     variantId: `test-${v.path}-${kb}-${index}`,
     name: v.label || v.mode || `Test-${index + 1}`,
+    blob: v.blob || null,
     dataUrl: v.dataUrl,
     pricingImageUrl: v.dataUrl,
     imageUrl: v.dataUrl,
@@ -140,6 +141,7 @@ export async function verifyTestLabLive(results, maxCount = 5, onProgress = () =
       row.duplicatePid = priceData.duplicatePid;
       row.isVerified = !!priceData.duplicatePid;
       row.uploadedUrl = imageUrl;
+      if (!row.dataUrl && row.pricingImageUrl) row.dataUrl = row.pricingImageUrl;
       verified.push(row);
     } catch (e) {
       console.warn("Test lab live verify failed:", e);

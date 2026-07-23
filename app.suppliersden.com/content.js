@@ -1105,7 +1105,7 @@ Please share payment details and license key.`;
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=17");
+      await import("/js/testLabBridge.mjs?v=18");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1165,6 +1165,8 @@ Please share payment details and license key.`;
       testResultsArea.style.display = "none";
       testResultsArea.innerHTML = "";
     }
+    const previewBox = document.getElementById("preview-box");
+    const previewImg = document.getElementById("preview-img");
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
@@ -1175,6 +1177,10 @@ Please share payment details and license key.`;
 
     if (uploadArea) {
       uploadArea.style.display = hasFile ? "none" : "block";
+    }
+    if (previewBox && previewImg && this.originalImageUrl) {
+      previewImg.src = this.originalImageUrl;
+      previewBox.style.display = "block";
     }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
@@ -1233,6 +1239,12 @@ Please share payment details and license key.`;
     this.shouldStop = false;
     this.testLabResults = [];
     this.testLabAnalysis = null;
+
+    try {
+      await this.ensureOriginalImageUrl(file);
+    } catch (e) {
+      console.warn("Test Lab preview:", e);
+    }
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -1360,6 +1372,7 @@ Please share payment details and license key.`;
         }
       );
       this.setupResultsEvents();
+      this.wireTestLabImageFallbacks();
     } else {
       this.restoreTestLabFormUi();
     }
@@ -2026,6 +2039,8 @@ Please share payment details and license key.`;
       variantId,
       name: r.name || `Var-${index + 1}`,
       pricingImageUrl,
+      dataUrl: layers?.length ? "" : r.dataUrl || r.imageUrl || pricingImageUrl || "",
+      blob: r.blob || null,
       layers,
       editFlags,
       variantStyle: r.variantStyle || "standard",
@@ -2038,12 +2053,115 @@ Please share payment details and license key.`;
       uploadedUrl: r.uploadedUrl,
       savings: r.savings,
       isRealPrice: r.isRealPrice,
+      testLab: !!r.testLab,
     };
     row.imageUrl =
       typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl
-        ? MeeshoAPI.resolveDisplayUrl(row)
+        ? MeeshoAPI.resolveDisplayUrl(row) || pricingImageUrl
         : pricingImageUrl;
     return row;
+  }
+
+  isTestLabResultsActive() {
+    const testArea = document.getElementById("test-results-area");
+    return !!(
+      testArea &&
+      testArea.style.display === "block" &&
+      this.testLabResults.length
+    );
+  }
+
+  getActiveResultList() {
+    if (this.isTestLabResultsActive()) return this.testLabResults;
+    return this.currentResults;
+  }
+
+  getBestActiveResult() {
+    const list = this.getActiveResultList();
+    return list[0] || null;
+  }
+
+  resolveDownloadUrl(result) {
+    if (!result) return "";
+    return (
+      result.pricingImageUrl ||
+      result.dataUrl ||
+      result.imageUrl ||
+      result.uploadedUrl ||
+      ""
+    );
+  }
+
+  resolveResultImageSrc(result) {
+    return this.resolveDownloadUrl(result);
+  }
+
+  async ensureOriginalImageUrl(file) {
+    if (this.originalImageUrl) return this.originalImageUrl;
+
+    const previewImg = document.getElementById("preview-img");
+    if (previewImg?.src?.startsWith("data:")) {
+      this.originalImageUrl = previewImg.src;
+      return this.originalImageUrl;
+    }
+
+    if (!file) return null;
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        this.originalImageUrl = ev.target.result;
+        resolve(this.originalImageUrl);
+      };
+      reader.onerror = () => reject(new Error("Could not read image preview"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  openTestLabImagePreview(row) {
+    if (!row) return;
+    const src = this.resolveResultImageSrc(row);
+    if (!src) {
+      OptimizerUtils.showNotification("No preview for this variant", "error");
+      return;
+    }
+
+    let overlay = document.getElementById("test-lab-preview-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "test-lab-preview-overlay";
+      overlay.style.cssText =
+        "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;";
+      overlay.innerHTML = `
+        <button type="button" id="test-lab-preview-close" style="position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">Close</button>
+        <img id="test-lab-preview-img" alt="Preview" style="max-width:100%;max-height:70vh;object-fit:contain;border-radius:8px;background:#fff;">
+        <div id="test-lab-preview-title" style="color:#fff;font-size:13px;margin-top:10px;text-align:center;"></div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#test-lab-preview-close").onclick = () => {
+        overlay.style.display = "none";
+      };
+      overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.style.display = "none";
+      };
+    }
+
+    const img = overlay.querySelector("#test-lab-preview-img");
+    const title = overlay.querySelector("#test-lab-preview-title");
+    if (img) img.src = src;
+    if (title) title.textContent = row.name || "Test Lab variant";
+    overlay.style.display = "flex";
+  }
+
+  wireTestLabImageFallbacks() {
+    document.querySelectorAll(".test-lab-img[data-variant-id]").forEach((img) => {
+      const variantId = img.dataset.variantId;
+      if (!variantId) return;
+      img.onerror = () => {
+        const row = this.findResultRow(variantId);
+        const alt = this.resolveResultImageSrc(row);
+        if (alt && img.src !== alt) img.src = alt;
+      };
+    });
   }
 
   findResultRow(variantId) {
@@ -2316,7 +2434,13 @@ Please share payment details and license key.`;
     document.querySelectorAll(".result-img").forEach((img) => {
       img.onclick = () => {
         const variantId = img.dataset.variantId;
-        if (variantId) this.openVariantEditor(variantId);
+        if (!variantId) return;
+        if (this.isTestLabResultsActive()) {
+          const row = this.findResultRow(variantId);
+          if (row) this.openTestLabImagePreview(row);
+          return;
+        }
+        this.openVariantEditor(variantId);
       };
     });
 
@@ -2351,7 +2475,8 @@ Please share payment details and license key.`;
     const dlAllBtn = document.getElementById("dl-all-btn");
     if (dlAllBtn) {
       dlAllBtn.onclick = () => {
-        this.currentResults.forEach((r, i) => {
+        const list = this.getActiveResultList();
+        list.forEach((r, i) => {
           setTimeout(() => this.downloadImage(r), i * 400);
         });
       };
@@ -2359,17 +2484,24 @@ Please share payment details and license key.`;
 
     const applyBestBtn = document.getElementById("apply-best-btn");
     if (applyBestBtn) {
+      const best = this.getBestActiveResult();
       if (window.WEB_OPTIMIZER_MODE) {
-        applyBestBtn.textContent = `Download Best ₹${this.currentResults[0]?.shippingCost || ""}`;
-        applyBestBtn.onclick = () => this.downloadImage(this.currentResults[0]);
+        const price = best?.shippingCost || best?.estShipping || "";
+        applyBestBtn.textContent = price ? `Download Best ₹${price}` : "Download Best";
+        applyBestBtn.onclick = () => this.downloadImage(best);
       } else {
-        applyBestBtn.onclick = () => this.applyImage(this.currentResults[0]);
+        applyBestBtn.onclick = () => this.applyImage(best);
       }
     }
 
     const restartBtn = document.getElementById("restart-btn");
     if (restartBtn) {
       restartBtn.onclick = () => {
+        if (this.isTestLabResultsActive()) {
+          this.testLabResults = [];
+          this.restoreTestLabFormUi();
+          return;
+        }
         if (window.WEB_OPTIMIZER_MODE && this.embeddedRoot) {
           this.mountEmbedded(this.embeddedRoot);
         } else {
@@ -2380,15 +2512,56 @@ Please share payment details and license key.`;
     }
   }
 
-  downloadImage(result) {
-    const link = document.createElement("a");
-    link.download =
-      "meesho-" + result.name.replace(/\s+/g, "-") + "-" + Date.now() + ".jpg";
-    link.href = result.imageUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    OptimizerUtils.showNotification("Downloaded: " + result.name, "success");
+  async downloadImage(result) {
+    if (!result) {
+      OptimizerUtils.showNotification("Could not find image to download", "error");
+      return;
+    }
+
+    const name = (result.name || "variant").replace(/\s+/g, "-");
+    const filename = "meesho-" + name + "-" + Date.now() + ".jpg";
+    const url = this.resolveDownloadUrl(result);
+
+    if (!url) {
+      OptimizerUtils.showNotification(
+        "No image data for " + (result.name || "variant"),
+        "error"
+      );
+      return;
+    }
+
+    try {
+      let blob = result.blob instanceof Blob ? result.blob : null;
+      if (!blob) {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("Fetch failed");
+        blob = await resp.blob();
+      }
+
+      const objUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objUrl;
+      link.download = filename;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objUrl);
+      }, 250);
+      OptimizerUtils.showNotification("Downloaded: " + (result.name || "image"), "success");
+    } catch (e) {
+      console.error("Download failed:", e);
+      try {
+        window.open(url, "_blank", "noopener");
+        OptimizerUtils.showNotification(
+          "Tap and hold the image to save (mobile)",
+          "info"
+        );
+      } catch (e2) {
+        OptimizerUtils.showNotification("Download failed — try Save on the card", "error");
+      }
+    }
   }
 
   async applyImage(result) {

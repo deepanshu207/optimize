@@ -504,6 +504,11 @@ const OptimizerUI = {
   },
 
   /** TEST LAB ONLY — separate from getResultsHTML (Live mode). */
+  pickResultImageSrc: function (r) {
+    if (!r) return "";
+    return r.dataUrl || r.pricingImageUrl || r.imageUrl || r.uploadedUrl || "";
+  },
+
   getTestLabResultsHTML: function (results, options) {
     options = options || {};
     const originalUrl = options.originalUrl || "";
@@ -521,6 +526,7 @@ const OptimizerUI = {
     const best = results[0];
     const bestEst = best.meta?.estInr || best.estShipping || 0;
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
+    const bestSrc = this.pickResultImageSrc(best);
 
     let html = `
       <div class="test-lab-summary">
@@ -550,7 +556,7 @@ const OptimizerUI = {
         <div class="test-original-pane">
           <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Best candidate</div>
           <div class="test-lab-img-frame">
-            <img class="test-lab-img" src="${best.imageUrl}" alt="Best test variant">
+            <img class="test-lab-img" src="${bestSrc}" alt="Best test variant">
           </div>
           <div style="font-size:10px;color:#666;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${best.name}</div>
           <div style="font-size:11px;color:#047857;font-weight:600;margin-top:4px;">est ₹${bestEst}${
@@ -565,11 +571,12 @@ const OptimizerUI = {
       const est = r.meta?.estInr || r.estShipping || 0;
       const live = r.shippingCost > 0 ? r.shippingCost : null;
       const vid = r.variantId || "test-" + i;
+      const src = this.pickResultImageSrc(r);
       html += `
         <div class="test-lab-card" data-variant-id="${vid}">
           <div class="test-lab-card-meta">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>
           <div class="test-lab-img-frame">
-            <img class="test-lab-img result-img" data-variant-id="${vid}" src="${r.imageUrl}" alt="${r.name}">
+            <img class="test-lab-img result-img" data-variant-id="${vid}" src="${src}" alt="${r.name}">
           </div>
           <div class="test-lab-card-price">${
             live ? "₹" + live : "est ₹" + est
