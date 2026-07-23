@@ -181,13 +181,13 @@ export function categoryGroupLabel(groupId) {
 
 /** Category → preferred strategy keys (order = priority). */
 const CATEGORY_STRATEGIES = {
-  jewellery: ["studio_ultra", "flatlay", "studio"],
+  jewellery: ["studio_ultra", "studio", "flatlay"],
   footwear: ["studio_ultra", "flatlay", "studio"],
-  lingerie: ["collage", "flatlay", "tall", "studio_ultra"],
-  apparel: ["studio_ultra", "tall", "flatlay", "studio"],
-  home: ["studio_ultra", "studio", "flatlay"],
+  lingerie: ["collage", "studio_ultra", "flatlay", "tall"],
+  apparel: ["studio_ultra", "tall", "studio"],
+  home: ["studio_ultra", "studio"],
   electronics: ["studio_ultra", "studio"],
-  general: ["studio_ultra", "studio", "flatlay", "tall"],
+  general: ["studio_ultra", "studio", "flatlay"],
 };
 
 /** Lower = better when est ₹ is tied. */
@@ -230,15 +230,15 @@ export function buildSmartPlan(category, analysis) {
   const base = [...(CATEGORY_STRATEGIES[cat] || CATEGORY_STRATEGIES.general)];
   for (const s of base) strategies.push(s);
 
-  if (tall && !strategies.includes("tall")) {
+  if (tall && cat !== "home" && cat !== "electronics" && !strategies.includes("tall")) {
     strategies.push("tall");
     tips.push("Tall portrait → 703×1024 frame often lands ~₹50 on Meesho.");
   }
-  if (collage && cat !== "lingerie" && !strategies.includes("collage")) {
+  if (collage && cat !== "lingerie" && cat !== "home" && cat !== "electronics" && !strategies.includes("collage")) {
     strategies.push("collage");
     tips.push("Wide image → collage split shrinks each panel's bounding box.");
   }
-  if (!studioBg) {
+  if (!studioBg && cat !== "home" && cat !== "electronics") {
     if (!strategies.includes("framed_low")) strategies.push("framed_low");
     tips.push("Busy background → white studio + Phase 2 ₹49 frame live-check.");
   } else if (cat !== "home" && cat !== "electronics") {
