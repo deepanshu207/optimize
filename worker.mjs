@@ -84,6 +84,15 @@ export default {
       });
     }
 
+    // Legacy HTTrack mirror paths → site root
+    if (
+      url.pathname === "/app.suppliersden.com" ||
+      url.pathname === "/app.suppliersden.com/" ||
+      url.pathname === "/app.suppliersden.com/index.html"
+    ) {
+      return Response.redirect(new URL("/", url.origin), 301);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
