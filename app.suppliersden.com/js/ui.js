@@ -378,6 +378,13 @@ const OptimizerUI = {
                       isBest ? "#10b981" : "black"
                     };">${priceLabel}</div>
                     ${
+                      testLabMode && r.shippingCost > 0
+                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">✓ live Meesho</div>'
+                        : testLabMode && r.liveChecked
+                        ? '<div style="font-size:8px;color:#b45309;">checked</div>'
+                        : ""
+                    }
+                    ${
                       savings > 0
                         ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
                         : ""

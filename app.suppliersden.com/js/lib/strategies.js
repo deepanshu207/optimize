@@ -18,6 +18,7 @@ import {
   measureWhiteRatio,
 } from "./canvas-utils.js";
 import { estimateImageShipping } from "./shipping.js";
+import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js";
 
 const STUDIO_ULTRA = [14, 16, 18, 20, 22];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];
@@ -171,7 +172,7 @@ async function collageVariants(img, onProgress) {
   return out;
 }
 
-function dedupeAndRank(variants, max = 24) {
+function dedupeAndRank(variants, max = 30) {
   const seen = new Set();
   const unique = [];
   for (const v of variants) {
@@ -180,24 +181,19 @@ function dedupeAndRank(variants, max = 24) {
     seen.add(key);
     unique.push(v);
   }
-  unique.sort((a, b) => a.estInr - b.estInr || a.kb - b.kb);
+  unique.sort(compareVariants);
   if (unique.length) unique[0].best = true;
   return unique.slice(0, max);
 }
 
-function strategiesForImage(img, mode, category) {
-  const list = [];
-  const studio = isStudioBackground(img);
-  const tall = isTallPortrait(img);
-  const collage = isWideCollage(img);
-
+function strategiesForImage(img, mode, category, analysis) {
   if (mode === "smart") {
-    list.push("studio_ultra", "studio");
-    if (tall || category === "apparel") list.push("tall");
-    if (!studio) list.push("framed_low", "framed");
-    list.push("flatlay");
-    if (collage || category === "lingerie") list.push("collage");
-    return [...new Set(list)];
+    const plan = buildSmartPlan(category, analysis || {
+      studioBg: isStudioBackground(img),
+      tall: isTallPortrait(img),
+      collage: isWideCollage(img),
+    });
+    return plan.strategies;
   }
 
   const map = {
@@ -212,21 +208,39 @@ function strategiesForImage(img, mode, category) {
   return map[mode] || ["studio"];
 }
 
+export function getSmartPlan(img, category) {
+  const analysis = {
+    studioBg: isStudioBackground(img),
+    tall: isTallPortrait(img),
+    collage: isWideCollage(img),
+  };
+  return {
+    ...analysis,
+    ...buildSmartPlan(category, analysis),
+  };
+}
+
 export async function optimizeImage(img, options = {}) {
   const {
     mode = "smart",
-    category = "auto",
+    category = "general",
     borderColor = "#ff7900",
     targetInr = null,
     onProgress = () => {},
   } = options;
 
-  const strategies = strategiesForImage(img, mode, category);
+  const analysis = {
+    studioBg: isStudioBackground(img),
+    tall: isTallPortrait(img),
+    collage: isWideCollage(img),
+  };
+
+  const strategies = strategiesForImage(img, mode, category, analysis);
   const all = [];
   const frameOpts = { borderColor, stickers: true };
 
   for (const s of strategies) {
-    onProgress(`Running ${s}…`);
+    onProgress(`Running ${strategyLabel(s)}…`);
     if (s === "studio_ultra") {
       all.push(...(await studioVariants(img, STUDIO_ULTRA, "studio_ultra", "Studio Ultra", onProgress)));
     } else if (s === "studio") {
@@ -246,7 +260,8 @@ export async function optimizeImage(img, options = {}) {
     }
   }
 
-  let ranked = dedupeAndRank(all);
+  const cap = mode === "smart" ? 30 : 24;
+  let ranked = dedupeAndRank(all, cap);
   if (targetInr) {
     const filtered = ranked.filter((v) => v.estInr <= targetInr);
     if (filtered.length) ranked = filtered;
@@ -255,19 +270,19 @@ export async function optimizeImage(img, options = {}) {
 }
 
 export function analyzeImage(img) {
+  const studioBg = isStudioBackground(img);
+  const tall = isTallPortrait(img);
+  const collage = isWideCollage(img);
+  const plan = buildSmartPlan("general", { studioBg, tall, collage });
+
   return {
     width: img.width,
     height: img.height,
     aspect: (img.width / img.height).toFixed(2),
-    studioBg: isStudioBackground(img),
-    tall: isTallPortrait(img),
-    collage: isWideCollage(img),
-    suggested: isWideCollage(img)
-      ? "Collage split + Flat-Lay"
-      : isTallPortrait(img)
-        ? "Tall ₹50 frame"
-        : isStudioBackground(img)
-          ? "Studio White compress"
-          : "Smart Auto (studio + framed)",
+    studioBg,
+    tall,
+    collage,
+    suggested: plan.summary,
+    smartTips: plan.tips,
   };
 }

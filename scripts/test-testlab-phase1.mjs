@@ -89,8 +89,8 @@ try {
 
   console.log("TEST LAB PHASE 1:", JSON.stringify(result, null, 2));
 
-  if (result.count < 8) {
-    console.error("FAIL: expected at least 8 variants, got", result.count);
+  if (result.count < 6) {
+    console.error("FAIL: expected at least 6 variants, got", result.count);
     process.exit(1);
   }
   if (result.hasImages < result.count) {

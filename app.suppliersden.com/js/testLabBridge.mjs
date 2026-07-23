@@ -3,7 +3,7 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage } from "./lib/strategies.js";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js";
 import { loadImage } from "./lib/canvas-utils.js";
 import { blobToDataUrl } from "./lib/encoder.js";
 import {
@@ -13,6 +13,7 @@ import {
   formatInr,
   estimateImageShipping,
 } from "./lib/shipping.js";
+import { getSessionGuidance } from "./lib/smart-plan.js";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -24,8 +25,9 @@ const FOOTWEAR_RE =
 const HOME_RE = /bed|bath|towel|rug|bean bag|bedding/i;
 const LINGERIE_RE = /babydoll|nightdress|nightsuit|bra|lingerie/i;
 
-const PHASE2_PROFILE_LIMIT = 12;
-const LIVE_VERIFY_DELAY_MS = 180;
+const PHASE2_PROFILE_LIMIT = 16;
+const LIVE_VERIFY_DELAY_MS = 150;
+const DEFAULT_MAX_VERIFY = 16;
 
 /** Map Meesho sscat id/name → strategy category id used by strategies.js */
 export function categoryGroupFromSelection(sscatId, categoryName) {
@@ -92,6 +94,31 @@ function syncMeeshoSession(sscatId) {
   return !!MeeshoAPI.isReady?.();
 }
 
+export function pickLiveVerifyCandidates(results, maxCount = DEFAULT_MAX_VERIFY) {
+  const phase2 = results.filter((r) => r.phase2 || r.meta?.path === "framed_live");
+  const phase1 = results.filter((r) => !r.phase2 && r.meta?.path !== "framed_live");
+
+  const picked = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row || seen.has(row.variantId)) return;
+    seen.add(row.variantId);
+    picked.push(row);
+  };
+
+  // ₹49 framed profiles are highest priority for live check
+  for (const row of phase2) add(row);
+  // Then best estimated from Phase 1
+  for (const row of phase1.slice(0, 8)) add(row);
+  // Fill remaining slots with next-best estimates
+  for (const row of phase1.slice(8)) {
+    if (picked.length >= maxCount) break;
+    add(row);
+  }
+
+  return picked.slice(0, maxCount);
+}
+
 function phase2Profiles() {
   if (typeof MeeshoAPI === "undefined" || !MeeshoAPI.LOW_SHIPPING_FRAMED_PROFILES) {
     return [];
@@ -133,6 +160,11 @@ export async function runTestLab(file, options = {}) {
   }
 
   onProgress("Phase 1: analyzing image…");
+  const smartPlan = mode === "smart" ? getSmartPlan(img, resolvedCategory) : null;
+  if (smartPlan?.summary) {
+    onProgress(`Smart Auto: ${smartPlan.summary}`);
+  }
+
   const ranked = await optimizeImage(img, {
     mode,
     category: resolvedCategory,
@@ -156,6 +188,7 @@ export async function runTestLab(file, options = {}) {
       ...analysis,
       resolvedCategory,
       category,
+      smartPlan,
     },
     localOnly: true,
     testLab: true,
@@ -236,9 +269,13 @@ export async function verifyTestLabLive(
     return { verified: [], errors: ["Meesho session not ready"] };
   }
 
-  const slice = results.slice(0, maxCount);
+  const targetInr = options.targetInr ? Number(options.targetInr) : null;
+  const slice = options.pickDiverse
+    ? pickLiveVerifyCandidates(results, maxCount)
+    : results.slice(0, maxCount);
   const verified = [];
   const errors = [];
+  let bestLive = Infinity;
 
   for (let i = 0; i < slice.length; i++) {
     const row = slice[i];
@@ -262,12 +299,20 @@ export async function verifyTestLabLive(
         blob,
         `testlab-p2-${Date.now()}-${i}.jpg`
       );
-      if (!imageUrl) {
+      let uploaded = imageUrl;
+      if (!uploaded) {
+        await new Promise((r) => setTimeout(r, 300));
+        uploaded = await MeeshoAPI.uploadImage(
+          blob,
+          `testlab-retry-${Date.now()}-${i}.jpg`
+        );
+      }
+      if (!uploaded) {
         errors.push(`${label}: upload failed`);
         continue;
       }
 
-      const priceData = await MeeshoAPI.getShippingCharges(imageUrl);
+      const priceData = await MeeshoAPI.getShippingCharges(uploaded);
       if (!priceData || priceData.shippingCharges == null) {
         errors.push(`${label}: price API failed`);
         continue;
@@ -276,10 +321,20 @@ export async function verifyTestLabLive(
       row.shippingCost = priceData.shippingCharges || 0;
       row.duplicatePid = priceData.duplicatePid;
       row.isVerified = !!priceData.duplicatePid;
-      row.uploadedUrl = imageUrl;
+      row.uploadedUrl = uploaded;
       row.liveChecked = true;
       if (!row.dataUrl && row.pricingImageUrl) row.dataUrl = row.pricingImageUrl;
       verified.push(row);
+
+      if (row.shippingCost > 0 && row.shippingCost < bestLive) {
+        bestLive = row.shippingCost;
+      }
+
+      // Stop early when we hit target band (saves API calls)
+      if (targetInr && row.shippingCost > 0 && row.shippingCost <= targetInr) {
+        onProgress(`Target ≤₹${targetInr} found (₹${row.shippingCost}) — stopping hunt`);
+        break;
+      }
     } catch (e) {
       console.warn("Test lab live verify failed:", e);
       errors.push(`${label}: ${e.message || "error"}`);
@@ -291,7 +346,7 @@ export async function verifyTestLabLive(
   }
 
   verified.sort((a, b) => (a.shippingCost || 999) - (b.shippingCost || 999));
-  return { verified, errors };
+  return { verified, errors, bestLive: bestLive < Infinity ? bestLive : null };
 }
 
 /**
@@ -302,7 +357,8 @@ export async function runPhase2LiveHunt(file, phase1Results, options = {}) {
   const {
     sscatId = null,
     onProgress = () => {},
-    maxVerify = 12,
+    maxVerify = DEFAULT_MAX_VERIFY,
+    targetInr = null,
   } = options;
 
   if (!syncMeeshoSession(sscatId)) {
@@ -325,15 +381,14 @@ export async function runPhase2LiveHunt(file, phase1Results, options = {}) {
     }
   }
 
-  merged.sort(
-    (a, b) =>
-      (a.estShipping ?? a.meta?.estInr ?? 999) -
-      (b.estShipping ?? b.meta?.estInr ?? 999)
+  const candidates = pickLiveVerifyCandidates(merged, maxVerify);
+  onProgress(
+    `Phase 2: live Meesho hunt (${candidates.length} candidates, ₹49 frames first)…`
   );
-
-  onProgress(`Phase 2: live Meesho hunt (top ${maxVerify})…`);
   const verify = await verifyTestLabLive(merged, maxVerify, onProgress, {
     sscatId,
+    targetInr,
+    pickDiverse: true,
   });
 
   const sorted = sortByBestPrice(merged);
@@ -348,22 +403,29 @@ export async function runPhase2LiveHunt(file, phase1Results, options = {}) {
     bestLive: bestLive
       ? { name: bestLive.name, shippingCost: bestLive.shippingCost }
       : null,
+    targetReached:
+      targetInr && verify.bestLive != null && verify.bestLive <= targetInr,
   };
 }
 
-window.TestLabOptimizer = {
-  ready: true,
-  runTestLab,
-  runPhase2LiveHunt,
-  generatePhase2Framed,
-  verifyTestLabLive,
+if (typeof window !== "undefined") {
+  window.TestLabOptimizer = {
+    ready: true,
+    runTestLab,
+    runPhase2LiveHunt,
+    generatePhase2Framed,
+    verifyTestLabLive,
+    pickLiveVerifyCandidates,
+    getSessionGuidance,
+  getSmartPlan,
   analyzeImage,
-  categoryGroupFromSelection,
-  CATEGORIES,
-  MODES,
-  TARGET_SHIPPING,
-  formatInr,
-  estimateImageShipping,
-};
+    categoryGroupFromSelection,
+    CATEGORIES,
+    MODES,
+    TARGET_SHIPPING,
+    formatInr,
+    estimateImageShipping,
+  };
 
-window.dispatchEvent(new Event("testlab-ready"));
+  window.dispatchEvent(new Event("testlab-ready"));
+}

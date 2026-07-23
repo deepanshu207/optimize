@@ -99,7 +99,7 @@ export function estimateImageShipping(variant) {
   }
   if (path === "collage_back") {
     if (kb >= 54 && kb <= 58) return 41;
-    if (kb === 52) return 146;
+    if (kb >= 48 && kb <= 52) return 71;
     return Math.min(kb, 93);
   }
   if (path === "collage_front") {

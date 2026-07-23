@@ -286,6 +286,5 @@ export function isStudioBackground(img) {
 }
 
 export function isTallPortrait(img) {
-  const ar = img.height / img.width;
-  return ar >= 1.25;
+  return img.height / img.width >= 1.2;
 }
