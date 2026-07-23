@@ -402,6 +402,7 @@ const MeeshoAPI = {
         },
         body: formData,
         credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
+        signal: AbortSignal.timeout(20000),
       });
       if (!resp.ok) return null;
       const result = await resp.json();
@@ -590,7 +591,10 @@ const MeeshoAPI = {
   generateVariationFull: async function (originalBlob, seed) {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(originalBlob);
       img.onload = async () => {
+        URL.revokeObjectURL(objectUrl);
+        try {
         const w = img.width;
         const h = img.height;
 
@@ -667,9 +671,15 @@ const MeeshoAPI = {
           "image/jpeg",
           quality,
         );
+        } catch (e) {
+          reject(e);
+        }
       };
-      img.onerror = () => reject(new Error("Load failed"));
-      img.src = URL.createObjectURL(originalBlob);
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Load failed"));
+      };
+      img.src = objectUrl;
     });
   },
 
@@ -754,14 +764,45 @@ const MeeshoAPI = {
       if (shouldStopFn && shouldStopFn()) break;
       if (onProgress) onProgress(i, count, null, 0);
 
-      const variation = await this.generateVariation(originalBlob, i);
-      results.push({
-        name: "Var-" + i,
-        dataUrl: variation.dataUrl,
-        shippingCost: 0,
-        isVerified: false,
-        localOnly: true,
-      });
+      try {
+        const variation = await this.generateVariation(originalBlob, i);
+        if (!variation?.dataUrl) continue;
+        results.push({
+          name: "Var-" + i,
+          dataUrl: variation.dataUrl,
+          shippingCost: 0,
+          isVerified: false,
+          localOnly: true,
+        });
+      } catch (e) {
+        console.error("Variation", i, "failed:", e);
+      }
+    }
+
+    if (
+      !results.length &&
+      typeof ImageGenerator !== "undefined" &&
+      ImageGenerator.generateVariations
+    ) {
+      try {
+        const file = new File([originalBlob], "upload.jpg", {
+          type: originalBlob.type || "image/jpeg",
+        });
+        const vars = await ImageGenerator.generateVariations(file, count);
+        vars.forEach((v, idx) => {
+          if (v?.dataUrl) {
+            results.push({
+              name: v.name || "Var-" + (idx + 1),
+              dataUrl: v.dataUrl,
+              shippingCost: 0,
+              isVerified: false,
+              localOnly: true,
+            });
+          }
+        });
+      } catch (e) {
+        console.error("ImageGenerator fallback failed:", e);
+      }
     }
 
     return {

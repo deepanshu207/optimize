@@ -313,6 +313,7 @@
           box.style.display = "block";
           var label = box.querySelector(".preview-label");
           if (label) label.textContent = file.name;
+          if (window.meeshoOptimizer) window.meeshoOptimizer._pendingFile = file;
           var btn = document.getElementById("generate-btn");
           if (btn) btn.disabled = false;
           var boot = document.getElementById("boot-msg");
