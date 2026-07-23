@@ -331,7 +331,7 @@ const OptimizerUI = {
     const vid = r.variantId || "var-" + i;
     const styleTag =
       r.variantStyle === "framed"
-        ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.targetKb || "?"}KB</div>`
+        ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.actualKb || r.meta?.targetKb || "?"}KB</div>`
         : "";
 
     return `
