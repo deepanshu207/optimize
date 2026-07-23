@@ -32,6 +32,7 @@
         "config.js",
         "js/utils.js",
         "js/license.js",
+        "js/meeshoCategories.js",
         "js/meeshoApi.js",
         "js/imageGenerator.js",
         "js/ui.js",

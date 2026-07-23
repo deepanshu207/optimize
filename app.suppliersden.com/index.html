@@ -218,11 +218,7 @@
               <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
             </div>
             <input type="hidden" id="category-select" value="">
-            <details style="margin-top:10px;">
-              <summary style="font-size:12px;font-weight:600;color:#047857;cursor:pointer;">Import category JSON from Meesho</summary>
-              <textarea id="category-json-import" class="opt-input" rows="3" placeholder='Paste fetchCategoryTreeOld JSON from supplier.meesho.com Network tab' style="margin-top:8px;font-size:11px;resize:vertical;"></textarea>
-              <button type="button" id="import-categories" class="session-toggle" style="margin-top:8px;">Import categories</button>
-            </details>
+            <p class="session-hint" style="margin-top:8px;">Categories are pre-loaded from Meesho — search and pick yours (e.g. Kurtis, Sarees, Tshirts).</p>
           </div>
 
           <div class="opt-section">
@@ -345,6 +341,7 @@
       }
     })();
   </script>
+  <script src="/js/meeshoCategories.js"></script>
   <script src="/web-session.js"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>

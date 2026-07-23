@@ -196,8 +196,8 @@ const WebSession = {
 
 window.WebSession = WebSession;
 
-// Common Meesho categories when live API is unavailable
-window.FALLBACK_CATEGORIES = [
+// Legacy alias — embedded list loads from js/meeshoCategories.js
+window.FALLBACK_CATEGORIES = window.MEESHO_EMBEDDED_CATEGORIES || [
   { id: 18044, name: "Women Kurtis", parentName: "Women Ethnic Wear" },
   { id: 18045, name: "Women Sarees", parentName: "Women Ethnic Wear" },
   { id: 10001, name: "Men T-Shirts", parentName: "Men Topwear" },

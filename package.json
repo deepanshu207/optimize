@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "python3 server.py",
     "deploy": "wrangler deploy",
-    "verify:deploy": "node scripts/verify-deploy.mjs"
+    "verify:deploy": "node scripts/verify-deploy.mjs",
+    "build:categories": "node scripts/build-meesho-categories.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.14.0"
