@@ -24,37 +24,108 @@ export const CATEGORY_GROUP_LABELS = {
   general: "General",
 };
 
+/** Meesho sscat name/parent → strategy group (order matters — first match wins). */
 const CATEGORY_DETECT_RULES = [
-  { id: "jewellery", re: /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket|earring/i },
-  { id: "footwear", re: /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti|footwear|sneaker/i },
-  { id: "electronics", re: /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter/i },
-  { id: "home", re: /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container|curtain|pillow/i },
-  { id: "lingerie", re: /babydoll|nightdress|nightsuit|bra|lingerie|panty|brief|innerwear|nighty/i },
-  { id: "apparel", re: /kurti|kurta|saree|sari|dress|suit|gown|lehenga|jumpsuit|tshirt|shirt|jean|jegging|blouse|fabric/i },
+  {
+    id: "jewellery",
+    re: /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket|earring|mangalsutra|nose pin|toe ring|brooch/i,
+  },
+  {
+    id: "footwear",
+    re: /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti|footwear|sneaker|floaters|loafer|heel|jutti/i,
+  },
+  {
+    id: "electronics",
+    re: /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter|bluetooth|speaker|trimmer|headphone|data cable|smartwatch|watch strap/i,
+  },
+  {
+    id: "home",
+    re: /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container|curtain|pillow|cushion|mattress|bedsheet|home decor|storage|dinnerware|utensil/i,
+  },
+  {
+    id: "lingerie",
+    re: /babydoll|nightdress|nightsuit|night.?suit|bra|lingerie|panty|brief|innerwear|camisole|nighty|shapewear|maternity/i,
+  },
+  {
+    id: "apparel",
+    re: /kurti|kurta|saree|sari|dress|suit|gown|lehenga|dupatta|sharara|palazzo|ethnic|jumpsuit|top wear|bottomwear|tshirt|t.?shirt|shirt|jean|jegging|blouse|petticoat|fabric|sherwani|dhoti|salwar|churidar|legging|skirt|shorts|jacket|hoodie|sweater|cardigan|kurta set|co.?ord|western gown/i,
+  },
 ];
 
-export function detectCategoryGroup({ categoryName = "", parentName = "", imageAnalysis = null } = {}) {
+/**
+ * Detect strategy category group from Meesho category + optional image hints.
+ */
+export function detectCategoryGroup({
+  categoryName = "",
+  parentName = "",
+  imageAnalysis = null,
+} = {}) {
   const combined = `${categoryName} ${parentName}`.trim();
-  for (const rule of CATEGORY_DETECT_RULES) {
-    if (combined && rule.re.test(combined)) {
-      return {
-        groupId: rule.id,
-        groupName: CATEGORY_GROUP_LABELS[rule.id],
-        confidence: "high",
-        source: "meesho_category",
-        meeshoCategory: categoryName || null,
-        meeshoParent: parentName || null,
-        reason: `Matched Meesho category “${categoryName}”`,
-      };
+  let matchedId = null;
+
+  if (combined) {
+    for (const rule of CATEGORY_DETECT_RULES) {
+      if (rule.re.test(combined)) {
+        matchedId = rule.id;
+        break;
+      }
     }
   }
+
+  if (matchedId) {
+    const label = categoryName
+      ? `“${categoryName}”${parentName ? ` (${parentName})` : ""}`
+      : parentName;
+    return {
+      groupId: matchedId,
+      groupName: CATEGORY_GROUP_LABELS[matchedId],
+      confidence: "high",
+      source: "meesho_category",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: `Matched Meesho category ${label}`,
+    };
+  }
+
   if (imageAnalysis?.collage) {
-    return { groupId: "lingerie", groupName: CATEGORY_GROUP_LABELS.lingerie, confidence: "medium", source: "image_wide", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Wide image — guessed Lingerie" };
+    return {
+      groupId: "lingerie",
+      groupName: CATEGORY_GROUP_LABELS.lingerie,
+      confidence: "medium",
+      source: "image_wide",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: categoryName
+        ? `Wide image — guessed Lingerie (Meesho “${categoryName}” not mapped)`
+        : "Wide image — guessed Lingerie / Bra",
+    };
   }
+
   if (imageAnalysis?.tall) {
-    return { groupId: "apparel", groupName: CATEGORY_GROUP_LABELS.apparel, confidence: "medium", source: "image_tall", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Tall portrait — guessed Apparel" };
+    return {
+      groupId: "apparel",
+      groupName: CATEGORY_GROUP_LABELS.apparel,
+      confidence: "medium",
+      source: "image_tall",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: categoryName
+        ? `Tall portrait — guessed Apparel (Meesho “${categoryName}” not mapped)`
+        : "Tall portrait — guessed Apparel / Kurti",
+    };
   }
-  return { groupId: "general", groupName: CATEGORY_GROUP_LABELS.general, confidence: "low", source: "default", meeshoCategory: categoryName || null, meeshoParent: parentName || null, reason: "Pick category group below if wrong" };
+
+  return {
+    groupId: "general",
+    groupName: CATEGORY_GROUP_LABELS.general,
+    confidence: combined ? "low" : "low",
+    source: "default",
+    meeshoCategory: categoryName || null,
+    meeshoParent: parentName || null,
+    reason: categoryName
+      ? `Could not map Meesho “${categoryName}” — pick category group below if wrong`
+      : "No Meesho category selected — pick category group below",
+  };
 }
 
 export function categoryGroupLabel(groupId) {
@@ -63,13 +134,13 @@ export function categoryGroupLabel(groupId) {
 
 /** Category → preferred strategy keys (order = priority). */
 const CATEGORY_STRATEGIES = {
-  jewellery: ["studio_ultra", "flatlay", "studio"],
+  jewellery: ["studio_ultra", "studio", "flatlay"],
   footwear: ["studio_ultra", "flatlay", "studio"],
-  lingerie: ["collage", "flatlay", "tall", "studio_ultra"],
-  apparel: ["studio_ultra", "tall", "flatlay", "studio"],
-  home: ["studio_ultra", "studio", "flatlay"],
+  lingerie: ["collage", "studio_ultra", "flatlay", "tall"],
+  apparel: ["studio_ultra", "tall", "studio"],
+  home: ["studio_ultra", "studio"],
   electronics: ["studio_ultra", "studio"],
-  general: ["studio_ultra", "studio", "flatlay", "tall"],
+  general: ["studio_ultra", "studio", "flatlay"],
 };
 
 /** Lower = better when est ₹ is tied. */
@@ -112,15 +183,15 @@ export function buildSmartPlan(category, analysis) {
   const base = [...(CATEGORY_STRATEGIES[cat] || CATEGORY_STRATEGIES.general)];
   for (const s of base) strategies.push(s);
 
-  if (tall && !strategies.includes("tall")) {
+  if (tall && cat !== "home" && cat !== "electronics" && !strategies.includes("tall")) {
     strategies.push("tall");
     tips.push("Tall portrait → 703×1024 frame often lands ~₹50 on Meesho.");
   }
-  if (collage && cat !== "lingerie" && !strategies.includes("collage")) {
+  if (collage && cat !== "lingerie" && cat !== "home" && cat !== "electronics" && !strategies.includes("collage")) {
     strategies.push("collage");
     tips.push("Wide image → collage split shrinks each panel's bounding box.");
   }
-  if (!studioBg) {
+  if (!studioBg && cat !== "home" && cat !== "electronics") {
     if (!strategies.includes("framed_low")) strategies.push("framed_low");
     tips.push("Busy background → white studio + Phase 2 ₹49 frame live-check.");
   } else if (cat !== "home" && cat !== "electronics") {
@@ -167,10 +238,10 @@ export function compareVariants(a, b) {
 
 export function getSessionGuidance(sessionReady, phase2Enabled) {
   if (sessionReady && phase2Enabled) {
-    return "Session ready — Phase 2 live-checks Meesho ₹ on top candidates (recommended).";
+    return "Session ready — Phase 2 will live-check real Meesho ₹ on your variants.";
   }
   if (phase2Enabled) {
-    return "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt.";
+    return "Live tab → Open Meesho login → Capture session → Test live connection.";
   }
-  return "Enable Phase 2 to verify live Meesho shipping — estimates alone are not enough.";
+  return "Enable Phase 2 + connect Meesho session for actual shipping ₹.";
 }

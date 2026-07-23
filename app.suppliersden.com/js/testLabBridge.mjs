@@ -3,17 +3,17 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=27";
-import { loadImage } from "./lib/canvas-utils.js?v=27";
-import { blobToDataUrl } from "./lib/encoder.js?v=27";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=25";
+import { loadImage } from "./lib/canvas-utils.js?v=25";
+import { blobToDataUrl } from "./lib/encoder.js?v=25";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=27";
-import { getSessionGuidance, detectCategoryGroup, categoryGroupLabel } from "./lib/smart-plan.js?v=27";
+} from "./lib/shipping.js?v=25";
+import { getSessionGuidance, detectCategoryGroup, categoryGroupLabel } from "./lib/smart-plan.js?v=25";
 
 const PHASE2_PROFILE_LIMIT = 16;
 const LIVE_VERIFY_DELAY_MS = 150;
@@ -148,7 +148,6 @@ export async function runTestLab(file, options = {}) {
     categoryName = "",
     sscatId = null,
     targetInr = null,
-    applyTargetFilter = true,
     borderColor = "#ff7900",
     onProgress = () => {},
   } = options;
@@ -186,7 +185,6 @@ export async function runTestLab(file, options = {}) {
     category: resolvedCategory,
     borderColor,
     targetInr: targetInr ? Number(targetInr) : null,
-    applyTargetFilter: options.applyTargetFilter,
     onProgress,
   });
 

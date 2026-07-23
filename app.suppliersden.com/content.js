@@ -1270,7 +1270,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=27");
+          await import("/js/testLabBridge.mjs?v=25");
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {
@@ -1533,9 +1533,8 @@ Please share payment details and license key.`;
 
       const result = await window.TestLabOptimizer.runTestLab(file, {
         ...opts,
-        // Phase 2 needs full pool; Phase 1 shows all variants unless user set est. filter
+        // Keep full candidate pool when Phase 2 will live-verify (est filter can hide winners)
         targetInr: opts.phase2Live ? null : opts.targetInr,
-        applyTargetFilter: !opts.phase2Live && !!opts.targetInr,
         onProgress: (msg) => {
           if (!this.shouldStop) setProgress(msg);
         },
