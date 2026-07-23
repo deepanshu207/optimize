@@ -825,3 +825,17 @@ const MeeshoAPI = {
 };
 
 window.MeeshoAPI = MeeshoAPI;
+
+if (typeof MeeshoAPI.ensureEmbeddedCategories !== "function") {
+  MeeshoAPI.ensureEmbeddedCategories = function () {
+    const embedded = this.getEmbeddedCategories
+      ? this.getEmbeddedCategories()
+      : null;
+    if (embedded?.length) {
+      this.cache.categories = embedded;
+      this._lastCategoryFetchWasEmbedded = true;
+      return embedded;
+    }
+    return null;
+  };
+}

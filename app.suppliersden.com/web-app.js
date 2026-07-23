@@ -24,6 +24,13 @@
       const optimizer = new MeeshoShippingOptimizer();
       window.meeshoOptimizer = optimizer;
       optimizer.mountEmbedded(root);
+
+      const btn = document.getElementById("generate-btn");
+      const hasFile =
+        window.__webPendingFile ||
+        optimizer._pendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      if (btn && hasFile) btn.disabled = false;
     } catch (err) {
       console.error(err);
       setBootMsg("Error: " + err.message);
