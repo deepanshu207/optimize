@@ -347,6 +347,10 @@ class MeeshoShippingOptimizer {
       MeeshoAPI.init();
     }
 
+    if (typeof WebSession !== "undefined") {
+      WebSession.updateStatus();
+    }
+
     const bootMsg = document.getElementById("boot-msg");
     if (bootMsg) {
       bootMsg.textContent = this._pendingFile || document.getElementById("image-input")?.files?.[0]
@@ -547,15 +551,13 @@ Please share payment details and license key.`;
       };
     }
 
-    // Load categories dropdown (extension / Meesho page only)
-    if (!window.WEB_OPTIMIZER_MODE) {
-      if (typeof MeeshoAPI !== "undefined") {
-        MeeshoAPI.syncFromSession();
-      }
-      this.loadCategoryDropdown();
-    } else if (typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(18044);
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.syncFromSession();
     }
+    if (window.WEB_OPTIMIZER_MODE && typeof WebSession !== "undefined") {
+      WebSession.wireForm();
+    }
+    this.loadCategoryDropdown();
 
     // Category selection
     const categorySelect = document.getElementById("category-select");
@@ -779,6 +781,7 @@ Please share payment details and license key.`;
         });
 
         console.log("✅ Loaded", categories.length, "categories");
+        this.applyDefaultCategoryIfNeeded();
       } else {
         categorySearch.placeholder = "Not loaded (login/session) - Click Refresh";
         if (refreshBtn) refreshBtn.style.display = "block";
@@ -841,6 +844,30 @@ Please share payment details and license key.`;
     });
   }
 
+  applyDefaultCategoryIfNeeded() {
+    const categorySelect = document.getElementById("category-select");
+    if (!categorySelect || categorySelect.value || !this.allCategories?.length) return;
+
+    const def =
+      this.allCategories.find((c) => c.id === 18044) || this.allCategories[0];
+    if (!def) return;
+
+    categorySelect.value = String(def.id);
+    const categorySearch = document.getElementById("category-search");
+    const selectedCategory = document.getElementById("selected-category");
+    const selectedCategoryName = document.getElementById(
+      "selected-category-name"
+    );
+    if (categorySearch) categorySearch.value = def.name;
+    if (selectedCategory) selectedCategory.style.display = "block";
+    if (selectedCategoryName) {
+      selectedCategoryName.textContent = `${def.name} (${def.parentName})`;
+    }
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(def.id);
+    }
+  }
+
   gatherSettings() {
     const customText = document.getElementById("custom-text");
     const textBgColor = document.getElementById("text-bg-color");
@@ -872,16 +899,13 @@ Please share payment details and license key.`;
       return;
     }
 
-    // Web: default category, no manual session required
+    // Sync session + category before generation
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.syncFromSession?.();
-      MeeshoAPI.setCategory(18044);
-      const categorySelect = document.getElementById("category-select");
-      if (categorySelect) categorySelect.value = "18044";
     }
 
     const categorySelect = document.getElementById("category-select");
-    if (!window.WEB_OPTIMIZER_MODE && (!categorySelect || !categorySelect.value)) {
+    if (!categorySelect || !categorySelect.value) {
       OptimizerUtils.showNotification("Select category first!", "error");
       return;
     }
@@ -951,12 +975,18 @@ Please share payment details and license key.`;
 
       this.gatherSettings();
 
-      const useLiveApi =
-        typeof MeeshoAPI.isReady === "function" && MeeshoAPI.isReady();
-
       let result = { success: false, results: [] };
 
-      if (useLiveApi || !window.WEB_OPTIMIZER_MODE) {
+      if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI.isReady === "function") {
+        OptimizerUtils.showNotification(
+          MeeshoAPI.isReady()
+            ? "Checking live Meesho shipping…"
+            : "Trying live API… save a Meesho session for real prices",
+          "info"
+        );
+      }
+
+      if (typeof MeeshoAPI.smartSearch === "function") {
         result = await MeeshoAPI.smartSearch(
           blob,
           targetShipping,

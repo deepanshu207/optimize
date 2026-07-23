@@ -345,6 +345,9 @@ const MeeshoAPI = {
     let bestResult = null;
     let attempt = 0;
     let noPidCount = 0;
+    let uploadFailures = 0;
+    const liveReady = this.isReady();
+    const noSessionFailLimit = 5;
 
     while (attempt < maxAttempts) {
       if (shouldStopFn && shouldStopFn()) {
@@ -361,7 +364,17 @@ const MeeshoAPI = {
           variation.blob,
           `v${attempt}.jpg`,
         );
-        if (!imageUrl) continue;
+        if (!imageUrl) {
+          uploadFailures++;
+          if (!liveReady && uploadFailures >= noSessionFailLimit) {
+            console.log(
+              `⚠️ No Meesho session — stopping live API after ${noSessionFailLimit} failed uploads`,
+            );
+            break;
+          }
+          continue;
+        }
+        uploadFailures = 0;
 
         const priceData = await this.getShippingCharges(imageUrl);
         if (!priceData) continue;

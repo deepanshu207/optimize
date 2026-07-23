@@ -112,6 +112,42 @@
       white-space: nowrap;
       border: 0;
     }
+    .session-toggle {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      color: #047857;
+      cursor: pointer;
+      text-align: left;
+    }
+    #session-panel { margin-top: 10px; }
+    #session-panel.collapsed { display: none; }
+    .session-status { font-size: 12px; margin-top: 8px; padding: 8px; border-radius: 6px; }
+    .session-status.ok { background: #ecfdf5; color: #047857; }
+    .session-status.warn { background: #fffbeb; color: #b45309; }
+    .session-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.4; }
+    .category-dropdown {
+      display: none;
+      max-height: 160px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 0 0 8px 8px;
+      margin-top: -1px;
+    }
+    .smart-mode-note {
+      font-size: 11px;
+      color: #666;
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0fdf4;
+      border-radius: 6px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +163,62 @@
           <h2>🚀 Upload &amp; Optimize</h2>
         </div>
         <div class="opt-body">
+          <div class="opt-section">
+            <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>🔐 Meesho Session (for live shipping)</span>
+            </div>
+            <button type="button" id="toggle-session" class="session-toggle">Show Meesho session</button>
+            <div id="session-panel" class="collapsed">
+              <div class="opt-row" style="margin-top:10px;">
+                <div>
+                  <label class="opt-label" for="session-supplier-id">Supplier ID</label>
+                  <input type="text" id="session-supplier-id" class="opt-input" placeholder="e.g. 123456" autocomplete="off">
+                </div>
+                <div>
+                  <label class="opt-label" for="session-browser-id">Browser ID</label>
+                  <input type="text" id="session-browser-id" class="opt-input" placeholder="from supplier.meesho.com" autocomplete="off">
+                </div>
+              </div>
+              <div class="opt-row" style="margin-top:8px;">
+                <div>
+                  <label class="opt-label" for="session-identifier">Identifier</label>
+                  <input type="text" id="session-identifier" class="opt-input" placeholder="catalog tag (optional)" autocomplete="off">
+                </div>
+                <div>
+                  <label class="opt-label" for="session-price">Price (₹)</label>
+                  <input type="number" id="session-price" class="opt-input" value="100" min="1">
+                </div>
+              </div>
+              <div style="margin-top:8px;">
+                <label class="opt-label" for="session-cookie">Cookie (optional)</label>
+                <textarea id="session-cookie" class="opt-input" rows="2" placeholder="Paste cookie string from supplier.meesho.com DevTools" style="resize:vertical;font-size:12px;"></textarea>
+              </div>
+              <button type="button" id="save-session" class="generate-btn" style="margin-top:10px;padding:12px;font-size:14px;">Save Session</button>
+              <div id="session-status" class="session-status warn">⚠️ Add Supplier ID + Browser ID (login to supplier.meesho.com first)</div>
+              <p class="session-hint">Open supplier.meesho.com → DevTools → Application → Cookies. Copy <strong>browser_id</strong> and your supplier ID from the mixpanel cookie.</p>
+            </div>
+          </div>
+
+          <div class="opt-section">
+            <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>📁 Category</span>
+              <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
+            </div>
+            <div style="position:relative;">
+              <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search category..." autocomplete="off">
+              <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888;display:none;">✕</span>
+            </div>
+            <div id="category-dropdown" class="category-dropdown"></div>
+            <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
+              <span style="font-size:11px;color:#dc2626;">⚠️ Categories not loaded. Click Refresh or save a Meesho session.</span>
+            </div>
+            <div id="selected-category" style="margin-top:8px;padding:8px;background:#ecfdf5;border-radius:6px;display:none;">
+              <span style="font-size:11px;color:#047857;">✓ </span>
+              <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
+            </div>
+            <input type="hidden" id="category-select" value="">
+          </div>
+
           <div class="opt-section">
             <div class="opt-section-title">🎯 Smart Mode</div>
             <div class="opt-row">
@@ -150,9 +242,11 @@
                   <option value="20" selected>20</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
+                  <option value="200">200</option>
                 </select>
               </div>
             </div>
+            <p class="smart-mode-note">Live API tries first when session is saved; local variants fill the rest.</p>
           </div>
 
           <div class="opt-section">
@@ -167,7 +261,6 @@
             <span class="opt-file-btn">Choose Image</span>
             <input type="file" id="image-input" class="file-input-offscreen" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif">
           </label>
-          <input type="hidden" id="category-select" value="18044">
           <div class="opt-preview" id="preview-box">
             <img id="preview-img" alt="Preview">
             <div class="preview-label"></div>
@@ -183,7 +276,7 @@
       </div>
     </div>
 
-    <p class="api-note">Variations generate in your browser. Live Meesho shipping prices are checked when API is reachable.</p>
+    <p class="api-note">Save a Meesho session for live shipping prices. Without a session, variants generate locally in your browser.</p>
   </main>
 
   <script src="/web-shim.js"></script>
@@ -234,6 +327,7 @@
       }
     })();
   </script>
+  <script src="/web-session.js"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
