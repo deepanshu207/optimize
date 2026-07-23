@@ -238,10 +238,10 @@ export function compareVariants(a, b) {
 
 export function getSessionGuidance(sessionReady, phase2Enabled) {
   if (sessionReady && phase2Enabled) {
-    return "Session ready — Phase 2 live-checks Meesho ₹ on top candidates (recommended).";
+    return "Session ready — Phase 2 will live-check real Meesho ₹ on your variants.";
   }
   if (phase2Enabled) {
-    return "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt.";
+    return "Live tab → Open Meesho login → Capture session → Test live connection.";
   }
-  return "Enable Phase 2 to verify live Meesho shipping — estimates alone are not enough.";
+  return "Enable Phase 2 + connect Meesho session for actual shipping ₹.";
 }
