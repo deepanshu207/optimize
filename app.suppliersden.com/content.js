@@ -1285,6 +1285,7 @@ Please share payment details and license key.`;
     this.shouldStop = false;
     this.testLabResults = [];
     this.testLabAnalysis = null;
+    this.testLabPhase2Meta = null;
 
     try {
       await this.ensureOriginalImageUrl(file);
