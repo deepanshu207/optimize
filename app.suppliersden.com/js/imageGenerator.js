@@ -134,7 +134,11 @@ const ImageGenerator = {
         // Draw background
         ctx.fillStyle = this.settings.textBgColor;
         ctx.beginPath();
-        ctx.roundRect(x, y, boxWidth, boxHeight, 8);
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(x, y, boxWidth, boxHeight, 8);
+        } else {
+          ctx.rect(x, y, boxWidth, boxHeight);
+        }
         ctx.fill();
 
         // Draw text

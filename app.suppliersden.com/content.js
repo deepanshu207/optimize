@@ -599,7 +599,12 @@ Please share payment details and license key.`;
 
     const getUploadFile = () => {
       if (fileInput?.files?.[0]) return fileInput.files[0];
-      return this._pendingFile || null;
+      if (this._pendingFile) return this._pendingFile;
+      if (window.__webPendingFile) {
+        this._pendingFile = window.__webPendingFile;
+        return window.__webPendingFile;
+      }
+      return null;
     };
 
     const isImageFile = (file) => {
@@ -646,31 +651,32 @@ Please share payment details and license key.`;
       this._pendingFile = pending;
     }
 
-    if (webGenerateMode) {
+    if (webGenerateMode && !generateBtn.__webGenerateBound) {
+      generateBtn.__webGenerateBound = true;
+      let lastGenerateAt = 0;
+
       const runGenerate = (e) => {
         if (e) {
           e.preventDefault();
           e.stopPropagation();
         }
+        const now = Date.now();
+        if (now - lastGenerateAt < 500) return;
+        lastGenerateAt = now;
+
         const file = getUploadFile();
         if (!file) {
           OptimizerUtils.showNotification("Choose an image first", "error");
           return;
         }
         if (this.isProcessing) return;
-        this.processImage(file);
+        void this.processImage(file);
       };
 
       generateBtn.disabled = !getUploadFile();
-      generateBtn.onclick = runGenerate;
-      generateBtn.addEventListener(
-        "touchend",
-        (e) => {
-          e.preventDefault();
-          runGenerate(e);
-        },
-        { passive: false }
-      );
+      generateBtn.addEventListener("click", runGenerate);
+    } else if (webGenerateMode) {
+      generateBtn.disabled = !getUploadFile();
     }
 
     if (uploadArea) {
@@ -947,10 +953,19 @@ Please share payment details and license key.`;
   }
 
   async processImage(file) {
-    if (!this.isLicensed) {
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+
+    if (window.WEB_OPTIMIZER_MODE) {
+      this.isLicensed = true;
+    } else if (!this.isLicensed) {
       OptimizerUtils.showNotification("License required", "error");
       return;
     }
+
+    if (this.isProcessing) return;
 
     // Sync session + category before generation
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
@@ -1055,7 +1070,11 @@ Please share payment details and license key.`;
         );
       }
 
-      if (!manualMode && typeof MeeshoAPI.smartSearch === "function") {
+      if (
+        !manualMode &&
+        typeof MeeshoAPI.smartSearch === "function" &&
+        (!window.WEB_OPTIMIZER_MODE || MeeshoAPI.isReady())
+      ) {
         result = await MeeshoAPI.smartSearch(
           blob,
           targetShipping,
@@ -1191,7 +1210,10 @@ Please share payment details and license key.`;
       sections.forEach((s) => (s.style.display = "block"));
       if (generateBtn) {
         generateBtn.style.display = "block";
-        generateBtn.disabled = !this._pendingFile && !document.getElementById("image-input")?.files?.[0];
+        generateBtn.disabled =
+          !this._pendingFile &&
+          !window.__webPendingFile &&
+          !document.getElementById("image-input")?.files?.[0];
       }
       if (window.WEB_OPTIMIZER_MODE) {
         OptimizerUtils.showNotification(
