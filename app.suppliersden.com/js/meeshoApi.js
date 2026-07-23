@@ -712,6 +712,132 @@ const MeeshoAPI = {
                 blob,
                 dataUrl: full,
                 pricingImageUrl: full,
+                variantStyle: "standard",
+                meta: { borderPx: border, badgeCount, style: "standard" },
+                layers: {
+                  full,
+                  noStickers,
+                  noBorder,
+                  productOnly,
+                },
+              }),
+            "image/jpeg",
+            quality,
+          );
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Load failed"));
+      };
+      img.src = objectUrl;
+    });
+  },
+
+  // White mat + light inner border + 3 stickers — often lowest shipping tier (e.g. ₹49)
+  generateFramedVariation: async function (originalBlob, seed) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(originalBlob);
+      img.onload = async () => {
+        URL.revokeObjectURL(objectUrl);
+        try {
+          const w = img.width;
+          const h = img.height;
+          const quality = 0.75 + Math.random() * 0.15;
+          const outerWhite = 35 + Math.floor(Math.random() * 20);
+          const innerBlue = 12 + Math.floor(Math.random() * 10);
+          const frame = outerWhite + innerBlue;
+          const finalW = w + frame * 2;
+          const finalH = h + frame * 2;
+          const blueColors = ["#b8d4e8", "#a8cce8", "#add8e6", "#9ec5e8"];
+          const innerColor =
+            blueColors[Math.floor(Math.random() * blueColors.length)];
+
+          const productCanvas = document.createElement("canvas");
+          productCanvas.width = w;
+          productCanvas.height = h;
+          const productCtx = productCanvas.getContext("2d");
+          productCtx.drawImage(img, 0, 0);
+          const productOnly = productCanvas.toDataURL("image/jpeg", quality);
+
+          const canvas = document.createElement("canvas");
+          canvas.width = finalW;
+          canvas.height = finalH;
+          const ctx = canvas.getContext("2d");
+
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, finalW, finalH);
+          ctx.fillStyle = innerColor;
+          ctx.fillRect(
+            outerWhite,
+            outerWhite,
+            finalW - outerWhite * 2,
+            finalH - outerWhite * 2,
+          );
+          ctx.drawImage(img, frame, frame, w, h);
+
+          const noStickersCanvas = document.createElement("canvas");
+          noStickersCanvas.width = finalW;
+          noStickersCanvas.height = finalH;
+          const noStickersCtx = noStickersCanvas.getContext("2d");
+          noStickersCtx.drawImage(canvas, 0, 0);
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(noStickersCtx, finalW, finalH, frame);
+          }
+          this.addNoise(noStickersCtx, finalW, finalH, seed);
+          const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
+
+          const badgeCount = 3;
+          const badgePlacements = await this.addBadges(
+            ctx,
+            finalW,
+            finalH,
+            frame,
+            badgeCount,
+          );
+
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(ctx, finalW, finalH, frame);
+          }
+          this.addNoise(ctx, finalW, finalH, seed);
+          const full = canvas.toDataURL("image/jpeg", quality);
+
+          const noBorderCanvas = document.createElement("canvas");
+          noBorderCanvas.width = w;
+          noBorderCanvas.height = h;
+          const noBorderCtx = noBorderCanvas.getContext("2d");
+          noBorderCtx.drawImage(img, 0, 0);
+          if (badgePlacements.length) {
+            const shiftedPlacements = badgePlacements.map((p) => ({
+              num: p.num,
+              size: p.size,
+              x: Math.max(0, p.x - frame),
+              y: Math.max(0, p.y - frame),
+            }));
+            await this.addBadges(noBorderCtx, w, h, 0, 0, shiftedPlacements);
+          }
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(noBorderCtx, w, h, 0);
+          }
+          this.addNoise(noBorderCtx, w, h, seed + 1);
+          const noBorder = noBorderCanvas.toDataURL("image/jpeg", quality);
+
+          canvas.toBlob(
+            (blob) =>
+              resolve({
+                blob,
+                dataUrl: full,
+                pricingImageUrl: full,
+                variantStyle: "framed",
+                meta: {
+                  outerWhite,
+                  innerBlue,
+                  badgeCount,
+                  style: "framed",
+                },
                 layers: {
                   full,
                   noStickers,
@@ -856,12 +982,42 @@ const MeeshoAPI = {
           dataUrl: variation.dataUrl,
           layers: variation.layers,
           pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
+          variantStyle: variation.variantStyle || "standard",
+          meta: variation.meta || null,
           shippingCost: 0,
           isVerified: false,
           localOnly: true,
         });
       } catch (e) {
         console.error("Variation", i, "failed:", e);
+      }
+    }
+
+    const framedExtras = [];
+    if (typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE) {
+      const framedCount = Math.min(count, 20);
+      for (let i = 1; i <= framedCount; i++) {
+        if (shouldStopFn && shouldStopFn()) break;
+        try {
+          const variation = await this.generateFramedVariation(
+            originalBlob,
+            20000 + i,
+          );
+          if (!variation?.dataUrl) continue;
+          framedExtras.push({
+            name: "Framed-" + i,
+            dataUrl: variation.dataUrl,
+            layers: variation.layers,
+            pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
+            variantStyle: "framed",
+            meta: variation.meta || null,
+            shippingCost: 0,
+            isVerified: false,
+            localOnly: true,
+          });
+        } catch (e) {
+          console.error("Framed variation", i, "failed:", e);
+        }
       }
     }
 
@@ -894,6 +1050,7 @@ const MeeshoAPI = {
     return {
       success: results.length > 0,
       results: results.slice(0, count),
+      framedExtras,
       bestResult: results[0] || null,
       targetReached: false,
       attempts: results.length,
