@@ -471,7 +471,7 @@ const OptimizerUI = {
                 <button type="button" id="toggle-framed-extras" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
                     ${showFramed ? "▼" : "▶"} See more low-shipping variants (${framedExtras.length})${framedHint}
                 </button>
-                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">Full-size product with blue outer frame + white mat added around it (not shrunk). Same layout as ₹49 screenshot — only JPEG is compressed for Meesho tier.</p>
+                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">16 variants: try <strong>low_38–48</strong> / <strong>low_*_tall</strong> first for ₹49. Full-size product + thick blue frame. Card shows actual file KB after compression.</p>
                 <div id="framed-extras-panel" style="display:${showFramed ? "block" : "none"};">
                     <div class="framed-extras-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:480px;overflow-y:auto;">
         `;

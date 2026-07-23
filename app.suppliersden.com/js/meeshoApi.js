@@ -2,14 +2,26 @@
 
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
-  // Borders added OUTWARD around full-size product (screenshot ₹49 style) — never shrink product into canvas
+  // Borders outward around full-size product — profiles tuned toward ₹49 (38–48KB slabs)
   LOW_SHIPPING_FRAMED_PROFILES: [
+    // Original set (often lands ₹63–65 — kept for comparison)
     { id: "framed_48a", bluePct: 0.12, whitePct: 0.04, targetKb: 48, maxSide: 1200 },
     { id: "framed_48b", bluePct: 0.14, whitePct: 0.05, targetKb: 48, maxSide: 1200 },
     { id: "framed_50a", bluePct: 0.11, whitePct: 0.035, targetKb: 50, maxSide: 1200 },
     { id: "framed_50b", bluePct: 0.13, whitePct: 0.045, targetKb: 50, maxSide: 1200 },
     { id: "framed_46a", bluePct: 0.15, whitePct: 0.05, targetKb: 46, maxSide: 1200 },
     { id: "framed_46b", bluePct: 0.1, whitePct: 0.03, targetKb: 46, maxSide: 1200 },
+    // ₹49-tier candidates: thick blue outer (screenshot), lower KB, maxSide 1024
+    { id: "low_44_thick", bluePct: 0.18, whitePct: 0.05, targetKb: 44, maxSide: 1024 },
+    { id: "low_42_thick", bluePct: 0.2, whitePct: 0.05, targetKb: 42, maxSide: 1024 },
+    { id: "low_40_thick", bluePct: 0.17, whitePct: 0.045, targetKb: 40, maxSide: 1024 },
+    { id: "low_38_thick", bluePct: 0.19, whitePct: 0.05, targetKb: 38, maxSide: 1024 },
+    { id: "low_46_med", bluePct: 0.15, whitePct: 0.04, targetKb: 46, maxSide: 1024 },
+    { id: "low_44_med", bluePct: 0.14, whitePct: 0.035, targetKb: 44, maxSide: 1024 },
+    { id: "low_48_tall", layout: "tall", bluePct: 0.16, whitePct: 0.05, targetKb: 48, maxSide: 1024 },
+    { id: "low_46_tall", layout: "tall", bluePct: 0.18, whitePct: 0.05, targetKb: 46, maxSide: 1024 },
+    { id: "low_44_tall", layout: "tall", bluePct: 0.2, whitePct: 0.045, targetKb: 44, maxSide: 1024 },
+    { id: "low_42_tall", layout: "tall", bluePct: 0.17, whitePct: 0.04, targetKb: 42, maxSide: 1024 },
   ],
   _initialized: false,
   endpoints: {
@@ -748,14 +760,18 @@ const MeeshoAPI = {
   // Low-shipping framed: thick blue outer + white mat + full-size product (screenshot style)
   compressCanvasToKb: async function (canvas, targetKb) {
     const targetBytes = targetKb * 1024;
-    let lo = 0.32;
-    let hi = 0.92;
-    let best = null;
-    for (let i = 0; i < 14; i++) {
-      const q = (lo + hi) / 2;
-      const blob = await new Promise((resolve) => {
+
+    const encodeAt = (q) =>
+      new Promise((resolve) => {
         canvas.toBlob((b) => resolve(b), "image/jpeg", q);
       });
+
+    let lo = 0.18;
+    let hi = 0.9;
+    let best = null;
+    for (let i = 0; i < 18; i++) {
+      const q = (lo + hi) / 2;
+      const blob = await encodeAt(q);
       if (!blob) break;
       if (blob.size <= targetBytes) {
         best = { blob, q };
@@ -764,12 +780,22 @@ const MeeshoAPI = {
         hi = q;
       }
     }
-    if (!best) {
-      const blob = await new Promise((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.45);
-      });
-      best = { blob, q: 0.45 };
+
+    if (!best || best.blob.size > targetBytes) {
+      let q = best ? best.q : 0.45;
+      for (; q >= 0.12; q -= 0.025) {
+        const blob = await encodeAt(q);
+        if (!blob) break;
+        if (!best || blob.size < best.blob.size) best = { blob, q };
+        if (blob.size <= targetBytes) break;
+      }
     }
+
+    if (!best) {
+      const blob = await encodeAt(0.35);
+      best = { blob, q: 0.35 };
+    }
+
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
@@ -837,11 +863,19 @@ const MeeshoAPI = {
   },
 
   // Screenshot layout: [thick blue outer] → [white mat] → [full-size product + stickers]
-  buildScreenshotFramedCanvas: function (img, profile) {
+  buildScreenshotFramedCanvas: function (img, profile, seed) {
+    const isTallProfile =
+      profile.layout === "tall" && this.isTallPortrait(img);
+    let bluePct = profile.bluePct || 0.12;
+    let whitePct = profile.whitePct || 0.04;
+    if (isTallProfile) {
+      bluePct = Math.min(0.22, bluePct * 1.06);
+    }
+
     const { w, h } = this.normalizeProductSize(img, profile.maxSide || 1200);
     const minDim = Math.min(w, h);
-    const blueOuter = Math.max(24, Math.round(minDim * (profile.bluePct || 0.12)));
-    const whitePad = Math.max(10, Math.round(minDim * (profile.whitePct || 0.04)));
+    const blueOuter = Math.max(24, Math.round(minDim * bluePct));
+    const whitePad = Math.max(10, Math.round(minDim * whitePct));
     const inset = blueOuter + whitePad;
 
     const finalW = w + inset * 2;
@@ -852,7 +886,7 @@ const MeeshoAPI = {
     const ctx = canvas.getContext("2d");
 
     const blues = ["#9ec5e8", "#add8e6", "#b8d4e8", "#a8cce8", "#7ec8e3"];
-    ctx.fillStyle = blues[Math.floor(Math.random() * blues.length)];
+    ctx.fillStyle = blues[Math.abs(seed || 0) % blues.length];
     ctx.fillRect(0, 0, finalW, finalH);
 
     ctx.fillStyle = "#ffffff";
@@ -871,14 +905,14 @@ const MeeshoAPI = {
       py,
       dw: w,
       dh: h,
-      layout: "screenshot",
+      layout: isTallProfile ? "tall" : "screenshot",
       blueOuter,
       whitePad,
     };
   },
 
   buildLowShippingFramedLayers: async function (img, profile, seed) {
-    const built = this.buildScreenshotFramedCanvas(img, profile);
+    const built = this.buildScreenshotFramedCanvas(img, profile, seed);
 
     const { canvas, px, py, dw, dh } = built;
     const noStickersCanvas = document.createElement("canvas");
@@ -930,6 +964,7 @@ const MeeshoAPI = {
         targetKb: profile.targetKb,
         bluePct: profile.bluePct,
         whitePct: profile.whitePct,
+        maxSide: profile.maxSide,
         canvasW: canvas.width,
         canvasH: canvas.height,
         productW: dw,
