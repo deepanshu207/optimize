@@ -9,7 +9,7 @@
   },
   "assets": {
     "directory": "./app.suppliersden.com",
-    "not_found_handling": "single-page-application",
+    "not_found_handling": "404-page",
     "binding": "ASSETS"
   },
   "compatibility_flags": ["nodejs_compat"]
