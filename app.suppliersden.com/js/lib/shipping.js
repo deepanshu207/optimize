@@ -74,6 +74,10 @@ export function estimateImageShipping(variant) {
     if (kb <= 26) return 24;
     return 28;
   }
+  if (path === "framed_live") {
+    if (kb >= 38 && kb <= 52) return Math.min(kb + 1, 50);
+    return Math.min(kb, 65);
+  }
   if (path === "studio") {
     if (kb <= 26) return kb;
     if (kb <= 40) return Math.min(kb, 36);

@@ -19,7 +19,7 @@ import {
 } from "./canvas-utils.js";
 import { estimateImageShipping } from "./shipping.js";
 
-const STUDIO_ULTRA = [16, 18, 20, 22];
+const STUDIO_ULTRA = [14, 16, 18, 20, 22];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];
 const FRAMED_SLABS = [91, 92, 93];
 const FRAMED_LOW = [64, 66, 68, 71];
@@ -171,7 +171,7 @@ async function collageVariants(img, onProgress) {
   return out;
 }
 
-function dedupeAndRank(variants, max = 16) {
+function dedupeAndRank(variants, max = 24) {
   const seen = new Set();
   const unique = [];
   for (const v of variants) {
