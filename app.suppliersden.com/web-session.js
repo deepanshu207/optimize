@@ -62,6 +62,12 @@ const WebSession = {
   },
 
   wireForm() {
+    if (this._wired) {
+      this.applyToForm();
+      return;
+    }
+    this._wired = true;
+
     const saveBtn = document.getElementById("save-session");
     if (saveBtn) {
       saveBtn.addEventListener("click", () => {

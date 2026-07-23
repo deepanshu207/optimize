@@ -52,7 +52,7 @@ window.WEB_OPTIMIZER_MODE = true;
     licenseKey: "WEB-FREE",
     licenseInfo: {
       key: "WEB-FREE",
-      planType: "web",
+      planType: "premium",
       activatedAt: new Date().toISOString(),
     },
     lastVerified: Date.now(),
