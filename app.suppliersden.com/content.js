@@ -1605,15 +1605,32 @@ Please share payment details and license key.`;
     };
   }
 
+  isVariantEdited(editFlags) {
+    if (!editFlags) return false;
+    return !!(
+      editFlags.stickersRemoved ||
+      editFlags.borderOnlyRemoved ||
+      editFlags.cleanProduct ||
+      editFlags.borderRemoved
+    );
+  },
+
+  normalizeEditFlags(editFlags) {
+    const flags = editFlags || {};
+    const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
+    return {
+      stickersRemoved: cleanProduct ? false : !!flags.stickersRemoved,
+      borderOnlyRemoved: cleanProduct ? false : !!flags.borderOnlyRemoved,
+      cleanProduct,
+    };
+  },
+
   mapResultFromApi(r, index) {
     const variantId =
       r.variantId || `var-${index + 1}-${Math.random().toString(36).slice(2, 7)}`;
     const layers = r.layers || null;
     const pricingImageUrl = r.pricingImageUrl || r.dataUrl || r.imageUrl || "";
-    const editFlags = r.editFlags || {
-      borderRemoved: false,
-      stickersRemoved: false,
-    };
+    const editFlags = this.normalizeEditFlags(r.editFlags);
     const row = {
       variantId,
       name: r.name || `Var-${index + 1}`,
@@ -1639,10 +1656,7 @@ Please share payment details and license key.`;
     const row = this.currentResults.find((r) => r.variantId === variantId);
     if (!row?.layers) return;
 
-    row.editFlags = {
-      borderRemoved: !!editFlags.borderRemoved,
-      stickersRemoved: !!editFlags.stickersRemoved,
-    };
+    row.editFlags = this.normalizeEditFlags(editFlags);
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
     }
@@ -1663,8 +1677,7 @@ Please share payment details and license key.`;
       `.result-edit-badge[data-variant-id="${row.variantId}"]`
     );
     if (badge) {
-      const edited =
-        row.editFlags?.borderRemoved || row.editFlags?.stickersRemoved;
+      const edited = this.isVariantEdited(row.editFlags);
       badge.style.display = edited ? "block" : "none";
     }
   }
@@ -1680,14 +1693,26 @@ Please share payment details and license key.`;
     if (!panel || !row) return;
 
     const preview = panel.querySelector("#variant-edit-preview");
-    const borderCb = panel.querySelector("#variant-edit-no-border");
     const stickerCb = panel.querySelector("#variant-edit-no-stickers");
+    const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
+    const cleanCb = panel.querySelector("#variant-edit-clean-product");
+    const borderOnlyNote = panel.querySelector("#variant-edit-border-only-note");
     const priceNote = panel.querySelector("#variant-edit-price-note");
     const title = panel.querySelector("#variant-edit-title");
 
+    const flags = this.normalizeEditFlags(row.editFlags);
+    const hasNoBorder = !!row.layers?.noBorder;
+
     if (preview) preview.src = row.imageUrl;
-    if (borderCb) borderCb.checked = !!row.editFlags?.borderRemoved;
-    if (stickerCb) stickerCb.checked = !!row.editFlags?.stickersRemoved;
+    if (stickerCb) stickerCb.checked = !!flags.stickersRemoved;
+    if (borderOnlyCb) {
+      borderOnlyCb.checked = !!flags.borderOnlyRemoved;
+      borderOnlyCb.disabled = !hasNoBorder;
+    }
+    if (cleanCb) cleanCb.checked = !!flags.cleanProduct;
+    if (borderOnlyNote) {
+      borderOnlyNote.style.display = hasNoBorder ? "none" : "block";
+    }
     if (title) title.textContent = row.name || "Variant";
     if (priceNote) {
       priceNote.textContent =
@@ -1715,13 +1740,18 @@ Please share payment details and license key.`;
         <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
           <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
-          Remove stickers / badges
+          Remove stickers / badges only
         </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+          <input type="checkbox" id="variant-edit-border-only" style="width:18px;height:18px;">
+          Remove border only (keep stickers)
+        </label>
+        <p id="variant-edit-border-only-note" style="display:none;font-size:10px;color:#b45309;background:#fffbeb;padding:6px 8px;border-radius:6px;margin-bottom:8px;">Regenerate variants to use border-only removal.</p>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;">
-          <input type="checkbox" id="variant-edit-no-border" style="width:18px;height:18px;">
-          Remove border (clean product image)
+          <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
+          Remove border and stickers (clean product)
         </label>
-        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. Use these options for a cleaner final upload.</p>
+        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. These options only change the image you download — your entered ₹ stays the same.</p>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -1735,16 +1765,42 @@ Please share payment details and license key.`;
       if (e.target === panel) this.closeVariantEditor();
     };
 
-    const onEditChange = () => {
+    const onEditChange = (ev) => {
       const id = this._editingVariantId;
       if (!id) return;
+
+      const stickerCb = panel.querySelector("#variant-edit-no-stickers");
+      const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
+      const cleanCb = panel.querySelector("#variant-edit-clean-product");
+      const target = ev?.target;
+
+      if (target === cleanCb && cleanCb.checked) {
+        stickerCb.checked = false;
+        borderOnlyCb.checked = false;
+      } else if (
+        (target === stickerCb || target === borderOnlyCb) &&
+        stickerCb.checked &&
+        borderOnlyCb.checked
+      ) {
+        cleanCb.checked = true;
+        stickerCb.checked = false;
+        borderOnlyCb.checked = false;
+      } else if (
+        cleanCb.checked &&
+        (target === stickerCb || target === borderOnlyCb)
+      ) {
+        cleanCb.checked = false;
+      }
+
       this.setVariantEdits(id, {
-        stickersRemoved: panel.querySelector("#variant-edit-no-stickers").checked,
-        borderRemoved: panel.querySelector("#variant-edit-no-border").checked,
+        stickersRemoved: stickerCb.checked,
+        borderOnlyRemoved: borderOnlyCb.checked,
+        cleanProduct: cleanCb.checked,
       });
     };
     panel.querySelector("#variant-edit-no-stickers").onchange = onEditChange;
-    panel.querySelector("#variant-edit-no-border").onchange = onEditChange;
+    panel.querySelector("#variant-edit-border-only").onchange = onEditChange;
+    panel.querySelector("#variant-edit-clean-product").onchange = onEditChange;
 
     return panel;
   }

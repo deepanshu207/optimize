@@ -672,13 +672,39 @@ const MeeshoAPI = {
           const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
           const badgeCount = 2 + Math.floor(Math.random() * 2);
-          await this.addBadges(ctx, finalW, finalH, border, badgeCount);
+          const badgePlacements = await this.addBadges(
+            ctx,
+            finalW,
+            finalH,
+            border,
+            badgeCount,
+          );
 
           if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
             ImageGenerator.drawText(ctx, finalW, finalH, border);
           }
           this.addNoise(ctx, finalW, finalH, seed);
           const full = canvas.toDataURL("image/jpeg", quality);
+
+          const noBorderCanvas = document.createElement("canvas");
+          noBorderCanvas.width = w;
+          noBorderCanvas.height = h;
+          const noBorderCtx = noBorderCanvas.getContext("2d");
+          noBorderCtx.drawImage(img, 0, 0);
+          if (badgePlacements.length) {
+            const shiftedPlacements = badgePlacements.map((p) => ({
+              num: p.num,
+              size: p.size,
+              x: Math.max(0, p.x - border),
+              y: Math.max(0, p.y - border),
+            }));
+            await this.addBadges(noBorderCtx, w, h, 0, 0, shiftedPlacements);
+          }
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(noBorderCtx, w, h, 0);
+          }
+          this.addNoise(noBorderCtx, w, h, seed + 1);
+          const noBorder = noBorderCanvas.toDataURL("image/jpeg", quality);
 
           canvas.toBlob(
             (blob) =>
@@ -689,6 +715,7 @@ const MeeshoAPI = {
                 layers: {
                   full,
                   noStickers,
+                  noBorder,
                   productOnly,
                 },
               }),
@@ -712,13 +739,31 @@ const MeeshoAPI = {
     const layers = result.layers;
     const flags = result.editFlags || {};
     if (!layers) return result.imageUrl || result.dataUrl || "";
-    if (flags.borderRemoved && layers.productOnly) return layers.productOnly;
-    if (flags.stickersRemoved && layers.noStickers) return layers.noStickers;
+
+    const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
+    const borderOnlyRemoved = !!flags.borderOnlyRemoved;
+    const stickersRemoved = !!flags.stickersRemoved;
+
+    if (cleanProduct || (borderOnlyRemoved && stickersRemoved)) {
+      return layers.productOnly || layers.full || result.pricingImageUrl || "";
+    }
+    if (borderOnlyRemoved && layers.noBorder) return layers.noBorder;
+    if (stickersRemoved && layers.noStickers) return layers.noStickers;
     return layers.full || result.pricingImageUrl || result.imageUrl || "";
   },
 
-  // Add badges 50-200px
-  addBadges: async function (ctx, w, h, border, count) {
+  // Add badges 50-200px; pass placements to replay the same badges on another canvas
+  addBadges: async function (ctx, w, h, border, count, placements) {
+    if (placements?.length) {
+      for (const p of placements) {
+        try {
+          const badge = await this.loadBadge(p.num);
+          if (badge) ctx.drawImage(badge, p.x, p.y, p.size, p.size);
+        } catch (e) {}
+      }
+      return placements;
+    }
+
     const positions = [
       { x: border + 5, y: border + 5 },
       { x: w - border - 150, y: border + 5 },
@@ -726,6 +771,7 @@ const MeeshoAPI = {
       { x: w - border - 150, y: h - border - 150 },
     ];
 
+    const drawn = [];
     const used = new Set();
     for (let i = 0; i < count && i < positions.length; i++) {
       let num;
@@ -734,14 +780,16 @@ const MeeshoAPI = {
       } while (used.has(num));
       used.add(num);
 
-      const size = 50 + Math.floor(Math.random() * 150); // 50-200px
+      const size = 50 + Math.floor(Math.random() * 150);
+      const x = positions[i].x;
+      const y = positions[i].y;
+      drawn.push({ num, size, x, y });
       try {
         const badge = await this.loadBadge(num);
-        if (badge) {
-          ctx.drawImage(badge, positions[i].x, positions[i].y, size, size);
-        }
+        if (badge) ctx.drawImage(badge, x, y, size, size);
       } catch (e) {}
     }
+    return drawn;
   },
 
   // Add noise

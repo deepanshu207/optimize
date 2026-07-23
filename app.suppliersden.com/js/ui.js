@@ -375,7 +375,10 @@ const OptimizerUI = {
         baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
       const canEdit = !!(r.layers && r.layers.full);
       const edited =
-        r.editFlags?.borderRemoved || r.editFlags?.stickersRemoved;
+        r.editFlags?.stickersRemoved ||
+        r.editFlags?.borderOnlyRemoved ||
+        r.editFlags?.cleanProduct ||
+        r.editFlags?.borderRemoved;
       const vid = r.variantId || "var-" + i;
       html += `
                 <div class="result-card" data-variant-id="${vid}" style="background:${
@@ -394,7 +397,7 @@ const OptimizerUI = {
                     <img src="${
                       r.imageUrl
                     }" class="result-img" data-variant-id="${vid}" title="${
-        canEdit ? "Tap to remove border / stickers" : ""
+        canEdit ? "Tap to edit border & stickers" : ""
       }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
         isBest ? "4px" : "0"
       };cursor:${canEdit ? "pointer" : "default"};" loading="lazy">
