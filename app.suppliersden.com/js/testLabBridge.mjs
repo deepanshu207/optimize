@@ -3,17 +3,17 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=24";
-import { loadImage } from "./lib/canvas-utils.js?v=24";
-import { blobToDataUrl } from "./lib/encoder.js?v=24";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=30";
+import { loadImage } from "./lib/canvas-utils.js?v=30";
+import { blobToDataUrl } from "./lib/encoder.js?v=30";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=24";
-import { getSessionGuidance } from "./lib/smart-plan.js?v=24";
+} from "./lib/shipping.js?v=30";
+import { getSessionGuidance } from "./lib/smart-plan.js?v=30";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -90,11 +90,23 @@ function sortByBestPrice(results) {
   });
 }
 
+function isTestLabLiveReady() {
+  if (typeof TestLabSession !== "undefined" && TestLabSession.isReady) {
+    return TestLabSession.isReady();
+  }
+  if (typeof WebSession !== "undefined") {
+    const s = WebSession.get();
+    return !!(s.supplierId && s.browserId && s.cookie);
+  }
+  return false;
+}
+
 function syncMeeshoSession(sscatId) {
   if (typeof MeeshoAPI === "undefined") return false;
+  if (!isTestLabLiveReady()) return false;
   MeeshoAPI.syncFromSession?.();
   if (sscatId) MeeshoAPI.setCategory(sscatId);
-  return !!MeeshoAPI.isReady?.();
+  return true;
 }
 
 export function pickLiveVerifyCandidates(results, maxCount = DEFAULT_MAX_VERIFY) {
@@ -269,7 +281,7 @@ export async function verifyTestLabLive(
   }
 
   if (!syncMeeshoSession(options.sscatId)) {
-    return { verified: [], errors: ["Meesho session not ready"] };
+    return { verified: [], errors: ["Test Lab Meesho session not ready"] };
   }
 
   const targetInr = options.targetInr ? Number(options.targetInr) : null;
@@ -368,7 +380,7 @@ export async function runPhase2LiveHunt(file, phase1Results, options = {}) {
     return {
       results: phase1Results,
       phase2: false,
-      error: "Meesho session not ready — add Supplier ID + Browser ID",
+      error: "Test Lab Meesho session not ready — connect session in Test Lab tab",
     };
   }
 
