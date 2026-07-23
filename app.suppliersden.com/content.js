@@ -851,6 +851,10 @@ Please share payment details and license key.`;
       textBgColor: textBgColor?.value || "#667eea",
     });
 
+    if (typeof ImageGenerator.preloadBadges === "function") {
+      ImageGenerator.preloadBadges();
+    }
+
     // Set category in MeeshoAPI
     const categorySelect = document.getElementById("category-select");
     if (
@@ -907,7 +911,7 @@ Please share payment details and license key.`;
     const targetShipping =
       parseInt(document.getElementById("target-shipping")?.value) || 80;
     const maxAttempts =
-      parseInt(document.getElementById("max-attempts")?.value) || 100;
+      parseInt(document.getElementById("max-attempts")?.value, 10) || 20;
 
     console.log(`🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`);
 
