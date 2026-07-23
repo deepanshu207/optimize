@@ -197,11 +197,17 @@
       background: #fafafa;
       text-align: center;
     }
-    .test-original-pane img {
-      max-width: 100%;
-      max-height: 160px;
-      object-fit: contain;
-      border-radius: 6px;
+    .generate-sticky {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      padding: 8px 0 4px;
+      margin-top: 8px;
+      background: linear-gradient(to top, #fff 85%, rgba(255, 255, 255, 0));
+    }
+    .opt-preview.visible + .generate-sticky,
+    .opt-preview[style*="display: block"] + .generate-sticky {
+      margin-top: 4px;
     }
   </style>
 </head>
@@ -221,7 +227,26 @@
           <button type="button" class="opt-tab active" data-optimizer-tab="live" role="tab" aria-selected="true">Live</button>
           <button type="button" class="opt-tab" data-optimizer-tab="test" role="tab" aria-selected="false">Test Lab</button>
         </div>
-        <div class="opt-body">
+
+          <!-- Shared upload + generate (always visible below tabs) -->
+          <label class="opt-upload-box" id="upload-area" for="image-input" style="display:block;margin:12px 16px 0;">
+            <div style="font-size:40px;margin-bottom:8px;">📸</div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Tap to upload product image</div>
+            <div style="font-size:12px;color:#888;margin-bottom:8px;">JPG, PNG, WebP</div>
+            <span class="opt-file-btn">Choose Image</span>
+            <input type="file" id="image-input" class="file-input-offscreen" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif">
+          </label>
+          <div class="opt-preview" id="preview-box" style="margin:12px 16px 0;">
+            <img id="preview-img" alt="Preview">
+            <div class="preview-label"></div>
+            <div style="color:#10b981;font-size:12px;margin-top:4px;">✓ Image selected</div>
+          </div>
+          <div class="generate-sticky" style="margin:8px 16px 0;">
+            <button type="button" id="generate-btn" class="generate-btn" disabled style="margin-top:0;">🚀 Generate Variants</button>
+            <button type="button" id="test-generate-btn" class="generate-btn" disabled style="margin-top:0;display:none;">🧪 Run Test Lab</button>
+          </div>
+
+        <div class="opt-body" style="padding-top:0;">
           <!-- LIVE TAB — production path (processImage). Do not add Test Lab logic here. -->
           <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
           <div class="opt-section">
@@ -389,20 +414,6 @@
           </div>
           <!-- /test-tab-panel -->
 
-          <label class="opt-upload-box" id="upload-area" for="image-input">
-            <div style="font-size:40px;margin-bottom:8px;">📸</div>
-            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Tap to upload product image</div>
-            <div style="font-size:12px;color:#888;margin-bottom:8px;">JPG, PNG, WebP</div>
-            <span class="opt-file-btn">Choose Image</span>
-            <input type="file" id="image-input" class="file-input-offscreen" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif">
-          </label>
-          <div class="opt-preview" id="preview-box">
-            <img id="preview-img" alt="Preview">
-            <div class="preview-label"></div>
-            <div style="color:#10b981;font-size:12px;margin-top:4px;">✓ Image selected</div>
-          </div>
-
-          <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
 
           <div id="processing-area" style="display:none;"></div>
           <div id="results-area" style="display:none;"></div>
@@ -428,18 +439,34 @@
         window.__webPendingFile = file;
         var box = document.getElementById("preview-box");
         var img = document.getElementById("preview-img");
+        var upload = document.getElementById("upload-area");
         if (!box || !img) return;
         var reader = new FileReader();
         reader.onload = function (e) {
           img.src = e.target.result;
           box.style.display = "block";
+          if (upload) upload.style.display = "none";
           var label = box.querySelector(".preview-label");
           if (label) label.textContent = file.name;
-          if (window.meeshoOptimizer) window.meeshoOptimizer._pendingFile = file;
-          var btn = document.getElementById("generate-btn");
-          if (btn) btn.disabled = false;
+          if (window.meeshoOptimizer) {
+            window.meeshoOptimizer._pendingFile = file;
+            window.meeshoOptimizer.originalImageUrl = e.target.result;
+          }
+          var liveBtn = document.getElementById("generate-btn");
+          var testBtn = document.getElementById("test-generate-btn");
+          if (liveBtn) liveBtn.disabled = false;
+          if (testBtn) testBtn.disabled = false;
           var boot = document.getElementById("boot-msg");
-          if (boot) boot.textContent = "Image ready — tap Generate Variants";
+          var onTest =
+            document.querySelector('[data-optimizer-tab="test"]')?.classList.contains("active");
+          if (boot) {
+            boot.textContent = onTest
+              ? "Image ready — tap Run Test Lab"
+              : "Image ready — tap Generate Variants";
+          }
+          if (window.meeshoOptimizer && window.meeshoOptimizer.setupOptimizerTabs) {
+            window.meeshoOptimizer.setupOptimizerTabs();
+          }
         };
         reader.readAsDataURL(file);
       }
@@ -464,16 +491,16 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=15"></script>
-  <script src="/web-session.js?v=15"></script>
+  <script src="/js/meeshoCategories.js?v=16"></script>
+  <script src="/web-session.js?v=16"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=15"></script>
+  <script src="/js/meeshoApi.js?v=16"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=15"></script>
-  <script src="/content.js?v=15"></script>
-  <script src="/web-app.js?v=15"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=15"></script>
+  <script src="/js/ui.js?v=16"></script>
+  <script src="/content.js?v=16"></script>
+  <script src="/web-app.js?v=16"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=16"></script>
 </body>
 </html>

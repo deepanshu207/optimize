@@ -339,6 +339,7 @@ class MeeshoShippingOptimizer {
     const resultsArea = document.getElementById("results-area");
     const testResultsArea = document.getElementById("test-results-area");
     const generateBtn = document.getElementById("generate-btn");
+    const testGenBtn = document.getElementById("test-generate-btn");
     const uploadArea = document.getElementById("upload-area");
     if (processingArea) processingArea.style.display = "none";
     if (resultsArea) resultsArea.style.display = "none";
@@ -617,6 +618,7 @@ Please share payment details and license key.`;
         previewBox.style.display = "block";
         const label = previewBox.querySelector(".preview-label");
         if (label) label.textContent = file.name;
+        if (uploadArea) uploadArea.style.display = "none";
       };
       reader.readAsDataURL(file);
     };
@@ -650,9 +652,17 @@ Please share payment details and license key.`;
       showFilePreview(file);
 
       const bootMsg = document.getElementById("boot-msg");
+      const testGenBtn = document.getElementById("test-generate-btn");
       if (webGenerateMode) {
         generateBtn.disabled = false;
-        if (bootMsg) bootMsg.textContent = "Image ready — tap Generate Variants";
+        if (testGenBtn) testGenBtn.disabled = false;
+        if (bootMsg) {
+          bootMsg.textContent =
+            this.getActiveOptimizerTab() === "test"
+              ? "Image ready — tap Run Test Lab"
+              : "Image ready — tap Generate Variants";
+        }
+        this.setupOptimizerTabs();
         return;
       }
 
@@ -698,6 +708,11 @@ Please share payment details and license key.`;
 
       generateBtn.disabled = !getUploadFile();
       generateBtn.onclick = runGenerate;
+      const testGenBtn = document.getElementById("test-generate-btn");
+      if (testGenBtn) {
+        testGenBtn.disabled = !getUploadFile();
+        testGenBtn.onclick = runGenerate;
+      }
     }
 
     if (uploadArea) {
@@ -1031,11 +1046,20 @@ Please share payment details and license key.`;
       });
 
       const genBtn = document.getElementById("generate-btn");
+      const testGenBtn = document.getElementById("test-generate-btn");
+      const isTest = this.activeOptimizerTab === "test";
       if (genBtn) {
-        genBtn.textContent =
-          this.activeOptimizerTab === "test"
-            ? "🧪 Run Test Lab"
-            : "🚀 Generate Variants";
+        genBtn.style.display = isTest ? "none" : "block";
+      }
+      if (testGenBtn) {
+        testGenBtn.style.display = isTest ? "block" : "none";
+        if (genBtn && isTest) {
+          testGenBtn.disabled = genBtn.disabled;
+        }
+      }
+
+      if (isTest) {
+        this.preloadTestLabModule();
       }
 
       const liveResults = document.getElementById("results-area");
@@ -1073,7 +1097,19 @@ Please share payment details and license key.`;
     switchTab(this.activeOptimizerTab || "live");
   }
 
-  async waitForTestLabReady(timeoutMs = 12000) {
+  async preloadTestLabModule() {
+    if (window.TestLabOptimizer?.runTestLab) return true;
+    try {
+      await import("/js/testLabBridge.mjs?v=16");
+    } catch (e) {
+      console.warn("Test Lab preload:", e);
+    }
+    return !!window.TestLabOptimizer?.runTestLab;
+  }
+
+  async waitForTestLabReady(timeoutMs = 15000) {
+    if (window.TestLabOptimizer?.runTestLab) return true;
+    await this.preloadTestLabModule();
     if (window.TestLabOptimizer?.runTestLab) return true;
     return new Promise((resolve) => {
       const timer = setTimeout(() => resolve(false), timeoutMs);
@@ -1086,6 +1122,34 @@ Please share payment details and license key.`;
         { once: true }
       );
     });
+  }
+
+  restoreTestLabFormUi() {
+    const uploadArea = document.getElementById("upload-area");
+    const generateBtn = document.getElementById("generate-btn");
+    const testGenBtn = document.getElementById("test-generate-btn");
+    const hasFile =
+      this._pendingFile ||
+      window.__webPendingFile ||
+      document.getElementById("image-input")?.files?.[0];
+
+    if (uploadArea) {
+      uploadArea.style.display = hasFile ? "none" : "block";
+    }
+    document.querySelectorAll(".opt-section").forEach((s) => {
+      s.style.display = "block";
+    });
+    if (generateBtn) {
+      generateBtn.style.display =
+        this.getActiveOptimizerTab() === "test" ? "none" : "block";
+      generateBtn.disabled = !hasFile;
+    }
+    if (testGenBtn) {
+      testGenBtn.style.display =
+        this.getActiveOptimizerTab() === "test" ? "block" : "none";
+      testGenBtn.disabled = !hasFile;
+    }
+    this.setupOptimizerTabs();
   }
 
   getTestLabOptions() {
@@ -1136,11 +1200,16 @@ Please share payment details and license key.`;
     const testResultsArea = document.getElementById("test-results-area");
     const liveResultsArea = document.getElementById("results-area");
     const generateBtn = document.getElementById("generate-btn");
+    const testGenBtn = document.getElementById("test-generate-btn");
 
     if (uploadArea) uploadArea.style.display = "none";
     if (generateBtn) {
       generateBtn.style.display = "none";
       generateBtn.disabled = true;
+    }
+    if (testGenBtn) {
+      testGenBtn.style.display = "none";
+      testGenBtn.disabled = true;
     }
     sections.forEach((s) => (s.style.display = "none"));
     if (liveResultsArea) liveResultsArea.style.display = "none";
@@ -1179,6 +1248,8 @@ Please share payment details and license key.`;
 
       if (this.shouldStop) {
         OptimizerUtils.showNotification("Test Lab stopped", "info");
+        this.restoreTestLabFormUi();
+        this.isProcessing = false;
         return;
       }
 
@@ -1249,12 +1320,7 @@ Please share payment details and license key.`;
       );
       this.setupResultsEvents();
     } else {
-      if (uploadArea) uploadArea.style.display = "block";
-      sections.forEach((s) => (s.style.display = "block"));
-      if (generateBtn) {
-        generateBtn.style.display = "block";
-        generateBtn.disabled = false;
-      }
+      this.restoreTestLabFormUi();
     }
 
     this.isProcessing = false;
