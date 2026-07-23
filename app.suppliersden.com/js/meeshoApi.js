@@ -1026,7 +1026,15 @@ const MeeshoAPI = {
     if (!result) return "";
     const layers = result.layers;
     const flags = result.editFlags || {};
-    if (!layers) return result.imageUrl || result.dataUrl || "";
+    if (!layers) {
+      return (
+        result.imageUrl ||
+        result.dataUrl ||
+        result.pricingImageUrl ||
+        result.uploadedUrl ||
+        ""
+      );
+    }
 
     const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
     const borderOnlyRemoved = !!flags.borderOnlyRemoved;
