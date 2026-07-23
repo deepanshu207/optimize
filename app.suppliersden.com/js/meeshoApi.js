@@ -70,8 +70,7 @@ const MeeshoAPI = {
 
   // Keep generateVariation for fallback but use minimal by default
   generateVariation: async function (originalBlob, seed, strategy, bestParams) {
-    // Use minimal variation for better PID matching
-    return this.generateMinimalVariation(originalBlob, seed);
+    return this.generateVariationFull(originalBlob, seed);
   },
 
   init: function () {
@@ -416,7 +415,7 @@ const MeeshoAPI = {
   },
 
   // Generate variation with random border 20-80px and badges 50-200px
-  generateVariation: async function (originalBlob, seed) {
+  generateVariationFull: async function (originalBlob, seed) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = async () => {
