@@ -1130,28 +1130,35 @@ Please share payment details and license key.`;
 
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
-    try {
-      await import("/js/testLabBridge.mjs?v=22");
-    } catch (e) {
-      console.warn("Test Lab preload:", e);
+    if (!window.__testLabModulePromise) {
+      window.__testLabModulePromise = (async () => {
+        try {
+          await import("/js/testLabBridge.mjs?v=23");
+          window.__testLabLoadError = null;
+          return !!window.TestLabOptimizer?.runTestLab;
+        } catch (e) {
+          window.__testLabLoadError = e;
+          console.warn("Test Lab preload:", e);
+          return false;
+        }
+      })();
     }
-    return !!window.TestLabOptimizer?.runTestLab;
+    return window.__testLabModulePromise;
   }
 
   async waitForTestLabReady(timeoutMs = 15000) {
     if (window.TestLabOptimizer?.runTestLab) return true;
     await this.preloadTestLabModule();
     if (window.TestLabOptimizer?.runTestLab) return true;
+    if (window.__testLabLoadError) return false;
+    if (window.__testLabReady) return !!window.TestLabOptimizer?.runTestLab;
     return new Promise((resolve) => {
       const timer = setTimeout(() => resolve(false), timeoutMs);
-      window.addEventListener(
-        "testlab-ready",
-        () => {
-          clearTimeout(timer);
-          resolve(!!window.TestLabOptimizer?.runTestLab);
-        },
-        { once: true }
-      );
+      const finish = () => {
+        clearTimeout(timer);
+        resolve(!!window.TestLabOptimizer?.runTestLab);
+      };
+      window.addEventListener("testlab-ready", finish, { once: true });
     });
   }
 
@@ -1371,7 +1378,14 @@ Please share payment details and license key.`;
     try {
       const ready = await this.waitForTestLabReady();
       if (!ready || !window.TestLabOptimizer?.runTestLab) {
-        throw new Error("Test Lab module failed to load — refresh the page");
+        const detail =
+          window.__testLabLoadError?.message ||
+          (window.__testLabReady
+            ? "module loaded without runTestLab"
+            : "timed out waiting for module");
+        throw new Error(
+          `Test Lab module failed to load (${detail}) — hard refresh (Ctrl+Shift+R)`
+        );
       }
 
       this.gatherSettings();
