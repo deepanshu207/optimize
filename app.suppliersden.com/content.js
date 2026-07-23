@@ -669,6 +669,7 @@ Please share payment details and license key.`;
               : "Image ready — tap Generate Variants";
         }
         this.setupOptimizerTabs();
+        this.refreshTestLabCategoryHint();
         return;
       }
 
@@ -760,6 +761,11 @@ Please share payment details and license key.`;
       if (phase2Cb && !phase2Cb.__wired) {
         phase2Cb.__wired = true;
         phase2Cb.addEventListener("change", () => this.refreshTestLabSessionHint());
+      }
+      const testLabCat = document.getElementById("test-lab-category");
+      if (testLabCat && !testLabCat.__wired) {
+        testLabCat.__wired = true;
+        testLabCat.addEventListener("change", () => this.refreshTestLabCategoryHint());
       }
     }
 
@@ -892,6 +898,8 @@ Please share payment details and license key.`;
 
         if (categorySelect) categorySelect.value = id;
         if (categorySearch) categorySearch.value = name;
+        const parentInput = document.getElementById("category-parent-name");
+        if (parentInput) parentInput.value = parent || "";
         if (selectedCategory) selectedCategory.style.display = "block";
         if (selectedCategoryName) {
           selectedCategoryName.textContent = parent
@@ -904,6 +912,7 @@ Please share payment details and license key.`;
         if (typeof MeeshoAPI !== "undefined") {
           MeeshoAPI.setCategory(parseInt(id, 10));
         }
+        this.refreshTestLabCategoryHint();
       };
     });
   }
@@ -1072,6 +1081,7 @@ Please share payment details and license key.`;
       if (isTest) {
         this.preloadTestLabModule();
         this.refreshTestLabSessionHint();
+        this.refreshTestLabCategoryHint();
       }
 
       const resultsArea = document.getElementById("results-area");
@@ -1100,6 +1110,139 @@ Please share payment details and license key.`;
     });
 
     switchTab(this.activeOptimizerTab || "live");
+  }
+
+  getMeeshoCategoryContext() {
+    const parentEl = document.getElementById("category-parent-name");
+    const nameEl = document.getElementById("selected-category-name");
+    let parent = parentEl?.value?.trim() || "";
+    let name = "";
+    if (nameEl?.textContent) {
+      const raw = nameEl.textContent.trim();
+      const m = raw.match(/^(.+?)\s*\((.+)\)\s*$/);
+      if (m) {
+        name = m[1].trim();
+        if (!parent) parent = m[2].trim();
+      } else {
+        name = raw;
+      }
+    }
+    if (!name) {
+      name = document.getElementById("category-search")?.value?.trim() || "";
+    }
+    const sscatId = parseInt(
+      document.getElementById("category-select")?.value,
+      10
+    );
+    return {
+      name,
+      parent,
+      sscatId: Number.isFinite(sscatId) ? sscatId : null,
+    };
+  }
+
+  formatCategoryDetectionHtml(detection, { manual = false } = {}) {
+    if (!detection) return "";
+    const conf = detection.confidence;
+    const confLabel =
+      conf === "high"
+        ? "high confidence"
+        : conf === "medium"
+          ? "medium confidence"
+          : conf === "manual"
+            ? "manual"
+            : "low confidence — please verify";
+    const meesho =
+      detection.meeshoCategory
+        ? `<br><span style="font-size:10px;color:#666;">Meesho: ${detection.meeshoCategory}${
+            detection.meeshoParent ? ` (${detection.meeshoParent})` : ""
+          }${detection.meeshoId ? ` · #${detection.meeshoId}` : ""}</span>`
+        : "";
+    const warn =
+      !manual && conf === "low"
+        ? `<br><span style="font-size:10px;color:#b45309;">⚠ Wrong? Pick the correct category group in the dropdown above.</span>`
+        : "";
+    return `<strong>${manual ? "Using" : "Auto-detected"}:</strong> ${detection.groupName} <span style="color:#666;font-size:10px;">(${confLabel})</span><br><span style="font-size:10px;color:#047857;">${detection.reason}</span>${meesho}${warn}`;
+  }
+
+  async refreshTestLabCategoryHint() {
+    const box = document.getElementById("test-lab-detected-category");
+    const label = document.getElementById("test-lab-detected-label");
+    if (!box || !label || this.getActiveOptimizerTab() !== "test") return;
+
+    const mode = document.getElementById("test-lab-category")?.value || "auto";
+    const ctx = this.getMeeshoCategoryContext();
+
+    if (mode !== "auto") {
+      const groupName =
+        window.TestLabOptimizer?.categoryGroupLabel?.(mode) || mode;
+      box.style.display = "block";
+      box.style.borderColor = "#bbf7d0";
+      box.style.background = "#f0fdf4";
+      label.innerHTML = this.formatCategoryDetectionHtml(
+        {
+          groupId: mode,
+          groupName,
+          confidence: "manual",
+          meeshoCategory: ctx.name || null,
+          meeshoParent: ctx.parent || null,
+          reason: "You selected this category group for strategy planning",
+        },
+        { manual: true }
+      );
+      return;
+    }
+
+    await this.preloadTestLabModule();
+    if (!window.TestLabOptimizer?.previewCategoryDetection) {
+      box.style.display = "none";
+      return;
+    }
+
+    const file =
+      this._pendingFile ||
+      window.__webPendingFile ||
+      document.getElementById("image-input")?.files?.[0];
+
+    let detection;
+    if (file && window.TestLabOptimizer.previewCategoryDetectionWithFile) {
+      try {
+        detection = await window.TestLabOptimizer.previewCategoryDetectionWithFile(
+          file,
+          {
+            sscatId: ctx.sscatId,
+            categoryName: ctx.name,
+            parentName: ctx.parent,
+          }
+        );
+      } catch (e) {
+        console.warn("Category preview:", e);
+        detection = window.TestLabOptimizer.previewCategoryDetection({
+          sscatId: ctx.sscatId,
+          categoryName: ctx.name,
+          parentName: ctx.parent,
+        });
+      }
+    } else {
+      detection = window.TestLabOptimizer.previewCategoryDetection({
+        sscatId: ctx.sscatId,
+        categoryName: ctx.name,
+        parentName: ctx.parent,
+      });
+    }
+
+    box.style.display = "block";
+    if (detection.confidence === "low") {
+      box.style.borderColor = "#fde68a";
+      box.style.background = "#fffbeb";
+    } else if (detection.confidence === "medium") {
+      box.style.borderColor = "#bfdbfe";
+      box.style.background = "#eff6ff";
+    } else {
+      box.style.borderColor = "#bbf7d0";
+      box.style.background = "#f0fdf4";
+    }
+    label.innerHTML = this.formatCategoryDetectionHtml(detection);
   }
 
   refreshTestLabSessionHint() {
@@ -1133,7 +1276,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=24");
+          await import("/js/testLabBridge.mjs?v=28");
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {
@@ -1289,6 +1432,8 @@ Please share payment details and license key.`;
     const categoryName =
       document.getElementById("selected-category-name")?.textContent?.trim() ||
       "";
+    const parentName =
+      document.getElementById("category-parent-name")?.value?.trim() || "";
     const sscatId = parseInt(
       document.getElementById("category-select")?.value,
       10
@@ -1301,6 +1446,7 @@ Please share payment details and license key.`;
       mode,
       category,
       categoryName,
+      parentName,
       sscatId: Number.isFinite(sscatId) ? sscatId : null,
       targetInr: targetRaw ? parseInt(targetRaw, 10) : null,
       borderColor,
@@ -1461,7 +1607,7 @@ Please share payment details and license key.`;
           }
         } else {
           OptimizerUtils.showNotification(
-            "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)",
+            "Phase 2 skipped — connect Meesho session (Live tab → Open Meesho login → Capture session)",
             "info"
           );
         }
@@ -1475,21 +1621,31 @@ Please share payment details and license key.`;
       const analysisEl = document.getElementById("test-lab-analysis");
       if (analysisEl && this.testLabAnalysis) {
         const a = this.testLabAnalysis;
+        const det = a.categoryDetection;
         const tips = (a.smartPlan?.tips || a.smartTips || []).slice(0, 2);
         analysisEl.style.display = "block";
+        const catLine = det
+          ? `<strong>Category:</strong> ${det.groupName}${
+              det.confidence === "manual"
+                ? " (manual)"
+                : det.confidence === "high"
+                  ? ""
+                  : ` (${det.confidence} confidence)`
+            } — ${det.reason}<br>`
+          : `<strong>Category:</strong> ${a.resolvedCategory || a.category}<br>`;
         analysisEl.innerHTML = `
+          ${catLine}
           <strong>Smart Auto plan:</strong> ${a.smartPlan?.summary || a.suggested || "studio compress"}<br>
           <span style="font-size:10px;color:#666;">${a.width}×${a.height}px · ${
           a.studioBg ? "studio bg" : "busy bg"
-        } · ${a.tall ? "tall" : "standard"} · <strong>${
-          a.resolvedCategory || a.category
-        }</strong></span>
+        } · ${a.tall ? "tall" : "standard"}</span>
           ${
             tips.length
               ? `<br><span style="font-size:10px;color:#047857;">${tips.join(" ")}</span>`
               : ""
           }`;
       }
+      this.refreshTestLabCategoryHint();
       this.refreshTestLabSessionHint();
 
       if (this.testLabResults.length) {

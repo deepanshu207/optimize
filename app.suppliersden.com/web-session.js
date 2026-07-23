@@ -87,7 +87,7 @@ const WebSession = {
     return this.save({
       supplierId: val("session-supplier-id"),
       browserId: val("session-browser-id"),
-      identifier: val("session-identifier"),
+      identifier: val("session-identifier") || "ytnlz",
       price: parseInt(val("session-price"), 10) || 100,
       cookie: this.normalizeCookie(val("session-cookie")),
     });
@@ -134,7 +134,7 @@ const WebSession = {
     const ok = s.supplierId && s.browserId;
     const cookieLen = s.cookie ? s.cookie.length : 0;
     if (ok && cookieLen > 0) {
-      el.textContent = `✅ Session saved — cookie ${cookieLen} chars (Supplier ${s.supplierId})`;
+      el.textContent = `✅ Live session ready — Supplier ${s.supplierId} (cookie ${cookieLen} chars)`;
       el.className = "session-status ok";
       return;
     }
@@ -191,6 +191,11 @@ const WebSession = {
       });
     }
     this.applyToForm();
+  },
+
+  hasLiveCredentials() {
+    const s = this.get();
+    return !!(s.supplierId && s.browserId && s.cookie);
   },
 };
 
