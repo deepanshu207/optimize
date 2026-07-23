@@ -74,9 +74,28 @@
       touch-action: manipulation;
     }
     .opt-preview { margin-top: 12px; display: none; }
-    .opt-preview img { max-width: 120px; border-radius: 8px; border: 2px solid #10b981; }
+    .opt-preview img { max-width: 140px; max-height: 140px; border-radius: 8px; border: 2px solid #10b981; object-fit: contain; }
+    .preview-label { font-size: 11px; color: #666; margin-top: 6px; word-break: break-all; }
+    .generate-btn {
+      display: block;
+      width: 100%;
+      margin-top: 14px;
+      padding: 16px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #FFD700, #C9A227);
+      color: #111;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .generate-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     .api-note { font-size: 11px; color: #666; text-align: center; margin-top: 10px; line-height: 1.4; }
-    .boot-msg { padding: 12px; text-align: center; font-size: 13px; color: #666; }
+    .boot-msg { padding: 10px 0 0; text-align: center; font-size: 13px; color: #047857; }
   </style>
 </head>
 <body>
@@ -134,13 +153,16 @@
             <input type="hidden" id="category-select" value="18044">
             <div class="opt-preview" id="preview-box">
               <img id="preview-img" alt="Preview">
-              <div style="color:#10b981;font-size:12px;margin-top:6px;">Ready</div>
+              <div class="preview-label"></div>
+              <div style="color:#10b981;font-size:12px;margin-top:4px;">✓ Image selected</div>
             </div>
           </div>
 
+          <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
+
           <div id="processing-area" style="display:none;"></div>
           <div id="results-area" style="display:none;"></div>
-          <div id="boot-msg" class="boot-msg">Loading engine…</div>
+          <div id="boot-msg" class="boot-msg">Ready — choose an image</div>
         </div>
       </div>
     </div>
@@ -149,13 +171,47 @@
   </main>
 
   <script src="web-shim.js"></script>
-  <script src="config.js" defer></script>
-  <script src="js/utils.js" defer></script>
-  <script src="js/license.js" defer></script>
-  <script src="js/meeshoApi.js" defer></script>
-  <script src="js/imageGenerator.js" defer></script>
-  <script src="js/ui.js" defer></script>
-  <script src="content.js" defer></script>
-  <script src="web-optimizer.js" defer></script>
+  <script>
+    (function () {
+      function onImageChosen(file) {
+        if (!file || !file.type.startsWith("image/")) return;
+        var box = document.getElementById("preview-box");
+        var img = document.getElementById("preview-img");
+        if (!box || !img) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          img.src = e.target.result;
+          box.style.display = "block";
+          var label = box.querySelector(".preview-label");
+          if (label) label.textContent = file.name;
+          var btn = document.getElementById("generate-btn");
+          if (btn) btn.disabled = false;
+          var boot = document.getElementById("boot-msg");
+          if (boot) boot.textContent = "Image ready — tap Generate Variants";
+        };
+        reader.readAsDataURL(file);
+      }
+      function setup() {
+        var input = document.getElementById("image-input");
+        if (input) {
+          input.addEventListener("change", function (e) {
+            onImageChosen(e.target.files && e.target.files[0]);
+          });
+        }
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setup);
+      } else {
+        setup();
+      }
+    })();
+  </script>
+  <script src="config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/license.js"></script>
+  <script src="js/meeshoApi.js"></script>
+  <script src="js/imageGenerator.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="web-app.js"></script>
 </body>
 </html>
