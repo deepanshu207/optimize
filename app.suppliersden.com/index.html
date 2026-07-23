@@ -194,8 +194,9 @@
                 <textarea id="session-cookie" class="opt-input" rows="2" placeholder="Paste cookie string from supplier.meesho.com DevTools" style="resize:vertical;font-size:12px;"></textarea>
               </div>
               <button type="button" id="save-session" class="generate-btn" style="margin-top:10px;padding:12px;font-size:14px;">Save Session</button>
+              <button type="button" id="test-session" class="session-toggle" style="margin-top:8px;">Test live connection</button>
               <div id="session-status" class="session-status warn">⚠️ Add Supplier ID + Browser ID (login to supplier.meesho.com first)</div>
-              <p class="session-hint">Open supplier.meesho.com → DevTools → Application → Cookies. Copy <strong>browser_id</strong> and your supplier ID from the mixpanel cookie.</p>
+              <p class="session-hint">Paste values from supplier.meesho.com while logged in. <strong>Live API from the web app often returns 403</strong> because Meesho blocks cloud-server requests — use the <strong>Chrome extension</strong> on supplier.meesho.com for guaranteed live shipping. This web app still works with built-in categories + local variants.</p>
             </div>
           </div>
 
@@ -217,11 +218,24 @@
               <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
             </div>
             <input type="hidden" id="category-select" value="">
+            <p class="session-hint" style="margin-top:8px;">Categories are pre-loaded from Meesho — search and pick yours (e.g. Kurtis, Sarees, Tshirts).</p>
           </div>
 
           <div class="opt-section">
             <div class="opt-section-title">🎯 Smart Mode</div>
             <div class="opt-row">
+              <div>
+                <label class="opt-label" for="current-shipping-baseline">Your current shipping (₹)</label>
+                <input type="number" id="current-shipping-baseline" class="opt-input" min="0" max="999" placeholder="e.g. 120">
+              </div>
+              <div style="display:flex;align-items:flex-end;padding-bottom:4px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="manual-shipping-mode" checked style="width:18px;height:18px;">
+                  Manual prices (recommended)
+                </label>
+              </div>
+            </div>
+            <div class="opt-row" style="margin-top:10px;">
               <div>
                 <label class="opt-label" for="target-shipping">Target Shipping</label>
                 <select id="target-shipping" class="opt-select">
@@ -246,7 +260,7 @@
                 </select>
               </div>
             </div>
-            <p class="smart-mode-note">Live API tries first when session is saved; local variants fill the rest.</p>
+            <p class="smart-mode-note">Manual mode: generate variants → download → test on Meesho → enter ₹ on each card. Best price sorts to top.</p>
           </div>
 
           <div class="opt-section">
@@ -276,7 +290,7 @@
       </div>
     </div>
 
-    <p class="api-note">Save a Meesho session for live shipping prices. Without a session, variants generate locally in your browser.</p>
+    <p class="api-note">Generate variants here, upload each on Meesho, then type the shipping ₹ on each result. No cookie needed in manual mode.</p>
   </main>
 
   <script src="/web-shim.js"></script>
@@ -327,6 +341,7 @@
       }
     })();
   </script>
+  <script src="/js/meeshoCategories.js"></script>
   <script src="/web-session.js"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>

@@ -35,7 +35,13 @@ const MeeshoAPI = {
       else s = JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}");
     } catch (e) {}
     if (s.supplierId) this.cache.supplierId = parseInt(s.supplierId, 10) || s.supplierId;
-    if (s.browserId) this.cache.browserId = s.browserId;
+    if (s.browserId) {
+      try {
+        this.cache.browserId = decodeURIComponent(s.browserId);
+      } catch (e) {
+        this.cache.browserId = s.browserId;
+      }
+    }
     if (s.identifier) this.cache.supplierTag = s.identifier;
     if (s.price) this.cache.price = parseInt(s.price, 10) || 100;
   },
@@ -50,8 +56,19 @@ const MeeshoAPI = {
   requestHeaders: function (extra) {
     this.syncFromSession();
     const headers = { ...this.getHeaders(), ...(extra || {}) };
-    if (window.WEB_OPTIMIZER_MODE && window.WebSession) {
-      const cookie = WebSession.get().cookie;
+    if (window.WEB_OPTIMIZER_MODE) {
+      let cookie = "";
+      try {
+        if (window.WebSession) cookie = WebSession.get().cookie || "";
+        else {
+          cookie =
+            JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}")
+              .cookie || "";
+        }
+        if (cookie && window.WebSession?.normalizeCookie) {
+          cookie = WebSession.normalizeCookie(cookie);
+        }
+      } catch (e) {}
       if (cookie) headers["x-meesho-cookie"] = cookie;
     }
     return headers;
@@ -86,12 +103,32 @@ const MeeshoAPI = {
   },
 
   detectAllValues: function () {
-    this.cache.browserId = this.getCookie("browser_id") || "";
+    const cookieBrowser = this.getCookie("browser_id") || "";
+    if (cookieBrowser) {
+      this.cache.browserId = cookieBrowser;
+    } else if (window.WEB_OPTIMIZER_MODE) {
+      this.syncFromSession();
+    }
+
     const urlMatch = window.location.href.match(/\/cataloging\/([^\/]+)/);
-    if (urlMatch) this.cache.supplierTag = urlMatch[1];
-    this.cache.supplierId = this.detectSupplierId();
-    this.cache.categoryId = this.detectCategoryId();
-    this.cache.price = this.detectPrice();
+    if (urlMatch) {
+      this.cache.supplierTag = urlMatch[1];
+    } else if (window.WEB_OPTIMIZER_MODE) {
+      this.syncFromSession();
+    }
+
+    const detectedSupplier = this.detectSupplierId();
+    if (detectedSupplier) this.cache.supplierId = detectedSupplier;
+
+    if (!window.WEB_OPTIMIZER_MODE || !this.cache.price) {
+      const detectedPrice = this.detectPrice();
+      if (detectedPrice) this.cache.price = detectedPrice;
+    }
+
+    if (!this.cache.categoryId) {
+      this.cache.categoryId = this.detectCategoryId();
+    }
+
     console.log("🔍 Auto-detected:", this.cache);
   },
 
@@ -158,56 +195,135 @@ const MeeshoAPI = {
     };
   },
 
-  fetchCategories: async function () {
-    if (this.cache.categories) return this.cache.categories;
-    try {
-      const resp = await fetch(
-        this.apiUrl(
-          "/api/cataloging/bulkCatalogUpload/fetchCategoryTreeOld",
-        ),
-        {
-        method: "POST",
-        headers: this.requestHeaders(),
-        body: JSON.stringify({
-          bulk_upload_enabled: false,
-          supplier_id: this.cache.supplierId,
-          identifier: this.cache.supplierTag,
-        }),
-        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
-      });
-      if (!resp.ok) {
-        console.warn(
-          "⚠️ fetchCategories failed:",
-          resp.status,
-          resp.statusText,
-        );
-        return null;
-      }
-      const result = await resp.json();
-      if (result.items?.length > 0) {
-        const subCat = result.items.find((i) => i.type === "sub-sub-category");
-        if (subCat?.data) {
-          this.cache.categories = subCat.data.map((c) => ({
-            id: parseInt(c.id),
-            name: c.name,
-            parentName: c.parent_name,
-          }));
-          console.log("✅ Categories loaded:", this.cache.categories.length);
-          return this.cache.categories;
-        }
-      }
-    } catch (e) {
-      console.error("Categories error:", e);
+  fetchCategories: async function (forceLive) {
+    if (this.cache.categories && !forceLive) return this.cache.categories;
+    this._lastCategoryFetchWasFallback = false;
+    this._lastCategoryFetchWasEmbedded = false;
+
+    const embedded = this.getEmbeddedCategories();
+
+    // Web app: use built-in Meesho category tree (no API / JSON upload needed)
+    if (window.WEB_OPTIMIZER_MODE && embedded?.length && !forceLive) {
+      this.cache.categories = embedded;
+      this._lastCategoryFetchWasEmbedded = true;
+      console.log("✅ Using embedded categories:", embedded.length);
+      return embedded;
     }
-    if (window.WEB_OPTIMIZER_MODE && window.FALLBACK_CATEGORIES) {
-      this.cache.categories = window.FALLBACK_CATEGORIES;
+
+    const imported = this.getImportedCategories();
+    if (imported?.length && !forceLive) {
+      this.cache.categories = imported;
+      return imported;
+    }
+
+    if (!window.WEB_OPTIMIZER_MODE || forceLive) {
+      try {
+        const resp = await fetch(
+          this.apiUrl(
+            "/api/cataloging/bulkCatalogUpload/fetchCategoryTreeOld",
+          ),
+          {
+          method: "POST",
+          headers: this.requestHeaders(),
+          body: JSON.stringify({
+            bulk_upload_enabled: false,
+            supplier_id: this.cache.supplierId,
+            identifier: this.cache.supplierTag,
+          }),
+          credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
+        });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          console.warn(
+            "⚠️ fetchCategories failed:",
+            resp.status,
+            resp.statusText,
+            errText.slice(0, 200),
+          );
+        } else {
+          const result = await resp.json();
+          if (result.items?.length > 0) {
+            const subCat = result.items.find((i) => i.type === "sub-sub-category");
+            if (subCat?.data) {
+              this.cache.categories = subCat.data.map((c) => ({
+                id: parseInt(c.id),
+                name: c.name,
+                parentName: c.parent_name,
+              }));
+              console.log("✅ Categories loaded:", this.cache.categories.length);
+              return this.cache.categories;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Categories error:", e);
+      }
+    }
+
+    if (embedded?.length) {
+      this.cache.categories = embedded;
+      this._lastCategoryFetchWasEmbedded = true;
       return this.cache.categories;
+    }
+
+    return null;
+  },
+
+  getEmbeddedCategories: function () {
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.getList) {
+      const list = MeeshoCategories.getList();
+      if (list.length) return list;
+    }
+    if (window.MEESHO_EMBEDDED_CATEGORIES?.length) {
+      return window.MEESHO_EMBEDDED_CATEGORIES;
+    }
+    if (window.FALLBACK_CATEGORIES?.length) {
+      return window.FALLBACK_CATEGORIES;
     }
     return null;
   },
 
   getCategories: function () {
     return this.cache.categories || [];
+  },
+
+  getImportedCategories: function () {
+    if (!window.WEB_OPTIMIZER_MODE) return null;
+    try {
+      const raw = localStorage.getItem("meesho_imported_categories_v1");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) && parsed.length ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  importCategoryTreeJson: function (raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      const text = raw.trim();
+      if (!text) throw new Error("Paste Meesho category JSON first");
+      data = JSON.parse(text);
+    }
+
+    const categories =
+      typeof MeeshoCategories !== "undefined"
+        ? MeeshoCategories.parseTree(data)
+        : [];
+
+    if (!categories.length) {
+      throw new Error("Could not find sub-sub-category list in JSON");
+    }
+
+    localStorage.setItem(
+      "meesho_imported_categories_v1",
+      JSON.stringify(categories),
+    );
+    this.cache.categories = categories;
+    this._lastCategoryFetchWasFallback = false;
+    this._lastCategoryFetchWasEmbedded = false;
+    return categories;
   },
 
   uploadImage: async function (blob, filename) {
@@ -233,9 +349,12 @@ const MeeshoAPI = {
           ...(window.WEB_OPTIMIZER_MODE &&
           (() => {
             try {
-              const c = window.WebSession
+              let c = window.WebSession
                 ? WebSession.get().cookie
                 : JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}").cookie;
+              if (c && window.WebSession?.normalizeCookie) {
+                c = WebSession.normalizeCookie(c);
+              }
               return c ? { "x-meesho-cookie": c } : {};
             } catch (e) {
               return {};
