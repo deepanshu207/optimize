@@ -598,11 +598,15 @@ Please share payment details and license key.`;
       return this._pendingFile || null;
     };
 
+    const isImageFile = (file) => {
+      if (!file) return false;
+      if (file.type && file.type.startsWith("image/")) return true;
+      return /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name || "");
+    };
+
     const onFilePicked = (file) => {
       if (!file) return;
-      const isImage =
-        !file.type || file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name || "");
-      if (!isImage) {
+      if (!isImageFile(file)) {
         OptimizerUtils.showNotification("Please choose a JPG, PNG, or WebP image", "error");
         return;
       }
@@ -622,7 +626,20 @@ Please share payment details and license key.`;
     };
 
     if (fileInput) {
+      fileInput.onclick = () => {
+        fileInput.value = "";
+      };
       fileInput.onchange = (e) => onFilePicked(e.target.files?.[0]);
+    }
+
+    const pending =
+      window.__webPendingFile ||
+      fileInput?.files?.[0] ||
+      this._pendingFile;
+    if (pending && webGenerateMode) {
+      onFilePicked(pending);
+    } else if (pending) {
+      this._pendingFile = pending;
     }
 
     if (webGenerateMode) {
