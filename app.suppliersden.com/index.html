@@ -21,140 +21,38 @@
     }
     .topbar h1 { font-size: 20px; font-weight: 700; }
     .topbar p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
-    .wrap {
-      max-width: 520px;
-      margin: 0 auto;
-      padding: 12px 12px 32px;
-    }
-    .session-card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,.06);
-      margin-bottom: 12px;
-      overflow: hidden;
-    }
-    .session-toggle {
-      width: 100%;
-      border: none;
-      background: #fff;
-      padding: 14px 16px;
-      font-size: 14px;
-      font-weight: 600;
-      text-align: left;
-      cursor: pointer;
-    }
-    #session-panel { padding: 0 16px 16px; }
-    #session-panel.collapsed { display: none; }
-    .session-status {
-      font-size: 12px;
-      padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-    }
-    .session-status.ok { background: #ecfdf5; color: #047857; }
-    .session-status.warn { background: #fff7ed; color: #c2410c; }
-    .field { margin-bottom: 10px; }
-    .field label {
-      display: block;
-      font-size: 11px;
-      color: #666;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    .field input, .field textarea {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      font-size: 13px;
-    }
-    .field textarea { min-height: 56px; resize: vertical; }
-    .hint {
-      font-size: 11px;
-      color: #666;
-      line-height: 1.45;
-      margin-bottom: 12px;
-    }
-    .hint a { color: #b45309; }
-    .btn-save {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #FFD700, #C9A227);
-      color: #111;
-      font-weight: 700;
-      font-size: 14px;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 12px 12px 32px; }
     #optimizer-app {
       background: #fff;
       border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0,0,0,.06);
       overflow: hidden;
     }
-    #optimizer-app .opt-modal { border-radius: 12px; }
-    #optimizer-app .opt-header { border-radius: 12px 12px 0 0; }
     #optimizer-app .opt-close { display: none; }
-    .loading-boot {
-      text-align: center;
-      padding: 40px 20px;
+    .api-note {
+      font-size: 11px;
       color: #666;
-      font-size: 14px;
+      text-align: center;
+      margin-top: 10px;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
   <div class="topbar">
     <h1>Meesho Shipping Cost Optimizer</h1>
-    <p>Upload image → AI creates variations → finds lowest shipping price</p>
+    <p>Upload image → AI creates variations → finds lowest shipping</p>
   </div>
 
   <div class="wrap">
-    <div class="session-card">
-      <button type="button" class="session-toggle" id="toggle-session">Meesho session (tap to set up)</button>
-      <div id="session-panel" class="collapsed">
-        <div id="session-status" class="session-status warn">⚠️ Connect your Meesho supplier account for live shipping API</div>
-        <p class="hint">
-          1. <a href="#" id="link-meesho-login">Login to Meesho Supplier</a> in another tab<br>
-          2. Open DevTools → Network → any API call → copy <b>supplier-id</b>, <b>browser-id</b>, <b>identifier</b> headers<br>
-          3. Optional: paste full <b>cookie</b> string for better results
-        </p>
-        <div class="field">
-          <label for="session-supplier-id">Supplier ID *</label>
-          <input id="session-supplier-id" type="text" placeholder="e.g. 12345678" inputmode="numeric">
-        </div>
-        <div class="field">
-          <label for="session-browser-id">Browser ID *</label>
-          <input id="session-browser-id" type="text" placeholder="from request headers">
-        </div>
-        <div class="field">
-          <label for="session-identifier">Identifier</label>
-          <input id="session-identifier" type="text" placeholder="cataloging tag / identifier">
-        </div>
-        <div class="field">
-          <label for="session-price">Product price (₹)</label>
-          <input id="session-price" type="number" value="100" min="1">
-        </div>
-        <div class="field">
-          <label for="session-cookie">Cookie (optional)</label>
-          <textarea id="session-cookie" placeholder="Paste document.cookie from supplier.meesho.com"></textarea>
-        </div>
-        <button type="button" class="btn-save" id="save-session">Save session</button>
-      </div>
-    </div>
-
-    <div id="optimizer-app">
-      <div class="loading-boot">Loading optimizer…</div>
-    </div>
+    <div id="optimizer-app"></div>
+    <p class="api-note">Variations generate in your browser. Live Meesho shipping prices are checked automatically when API is reachable.</p>
   </div>
 
   <script src="web-shim.js"></script>
   <script src="config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/license.js"></script>
-  <script src="web-session.js"></script>
   <script src="js/meeshoApi.js"></script>
   <script src="js/imageGenerator.js"></script>
   <script src="js/ui.js"></script>

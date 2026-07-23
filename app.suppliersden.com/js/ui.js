@@ -48,7 +48,73 @@ const OptimizerUI = {
       return styles + this.getLicenseHTML();
     }
 
+    if (window.WEB_OPTIMIZER_MODE) {
+      return styles + this.getWebHTML();
+    }
+
     return styles + this.getMainHTML();
+  },
+
+  // Simplified web UI — upload only, no session/category setup
+  getWebHTML: function () {
+    return `
+            <div class="opt-modal">
+                <div class="opt-header">
+                    <h2><span>🚀</span> Upload & Optimize</h2>
+                    <button class="opt-close" id="close-modal">&times;</button>
+                </div>
+                <div class="opt-body">
+                    <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, #FFD700, #C9A227),rgba(102,126,234,0.1));border:1px solid rgba(16,185,129,0.3);">
+                        <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode</div>
+                        <div class="opt-row" style="margin-bottom:10px;">
+                            <div>
+                                <label class="opt-label">Target Shipping</label>
+                                <select id="target-shipping" class="opt-select" style="font-size:13px;font-weight:600;">
+                                    <option value="30">≤ ₹30</option>
+                                    <option value="40">≤ ₹40</option>
+                                    <option value="50">≤ ₹50</option>
+                                    <option value="60">≤ ₹60</option>
+                                    <option value="70">≤ ₹70</option>
+                                    <option value="80" selected>≤ ₹80</option>
+                                    <option value="90">≤ ₹90</option>
+                                    <option value="100">≤ ₹100</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="opt-label">Max Variants</label>
+                                <select id="max-attempts" class="opt-select">
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="50" selected>50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="opt-section" style="padding:10px;">
+                        <div class="opt-section-title">✏️ Text on image (optional)</div>
+                        <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING" style="font-size:12px;">
+                    </div>
+
+                    <div class="opt-upload-box" id="upload-area">
+                        <div style="font-size:40px;margin-bottom:8px;">📸</div>
+                        <div style="font-size:15px;font-weight:600;margin-bottom:5px;">Tap to upload product image</div>
+                        <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">JPG, PNG, WebP</div>
+                        <label class="opt-file-btn" for="image-input">Choose Image</label>
+                        <input type="file" id="image-input" accept="image/*" style="display:none;">
+                        <input type="hidden" id="category-select" value="18044">
+                        <div class="opt-preview" id="preview-box">
+                            <img id="preview-img" alt="Preview">
+                            <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
+                        </div>
+                    </div>
+
+                    <div id="processing-area" style="display:none;"></div>
+                    <div id="results-area" style="display:none;"></div>
+                </div>
+            </div>
+        `;
   },
 
   // License activation HTML with WhatsApp button and pricing plans
@@ -291,7 +357,7 @@ const OptimizerUI = {
       };" loading="lazy">
                     <div style="font-size:14px;font-weight:700;color:${
                       isBest ? "#10b981" : "black"
-                    };">₹${r.shippingCost}</div>
+                    };">${r.shippingCost > 0 ? "₹" + r.shippingCost : "Ready"}</div>
                     <div style="display:flex;gap:4px;margin-top:4px;">
                         <button class="dl-btn" data-i="${i}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
                         <button class="apply-btn" data-i="${i}" style="flex:1;background:${

@@ -322,22 +322,23 @@ class MeeshoShippingOptimizer {
 
   mountEmbedded(root) {
     this.embeddedRoot = root;
-    this.checkLicense().then(async () => {
-      if (typeof MeeshoAPI !== "undefined") {
-        MeeshoAPI.init();
-      }
-      root.innerHTML = OptimizerUI.createModalHTML(true);
-      this.setupMainEvents();
-      setTimeout(() => {
-        this.detectShipping();
-        const el = document.getElementById("current-shipping");
-        if (el) {
-          el.textContent = this.currentShippingCost
-            ? "₹" + this.currentShippingCost
-            : "Upload image to check";
-        }
-      }, 100);
-    });
+    this.isLicensed = true;
+
+    if (typeof OptimizerUI === "undefined") {
+      root.innerHTML =
+        '<p style="padding:24px;text-align:center;color:#b45309;">UI failed to load. Refresh the page.</p>';
+      return;
+    }
+
+    root.innerHTML = OptimizerUI.createModalHTML(true);
+    this.setupMainEvents();
+
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.init();
+    }
+
+    const el = document.getElementById("current-shipping");
+    if (el) el.textContent = "Upload image to start";
   }
 
   async openModal() {
@@ -532,11 +533,15 @@ Please share payment details and license key.`;
       };
     }
 
-    // Load categories dropdown
-    if (typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.syncFromSession();
+    // Load categories dropdown (extension / Meesho page only)
+    if (!window.WEB_OPTIMIZER_MODE) {
+      if (typeof MeeshoAPI !== "undefined") {
+        MeeshoAPI.syncFromSession();
+      }
+      this.loadCategoryDropdown();
+    } else if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(18044);
     }
-    this.loadCategoryDropdown();
 
     // Category selection
     const categorySelect = document.getElementById("category-select");
@@ -778,21 +783,16 @@ Please share payment details and license key.`;
       return;
     }
 
+    // Web: default category, no manual session required
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.syncFromSession();
-      if (!MeeshoAPI.cache.supplierId) {
-        OptimizerUtils.showNotification(
-          "Save Meesho session first (Supplier ID + Browser ID)",
-          "error",
-        );
-        document.getElementById("session-panel")?.classList.remove("collapsed");
-        return;
-      }
+      MeeshoAPI.syncFromSession?.();
+      MeeshoAPI.setCategory(18044);
+      const categorySelect = document.getElementById("category-select");
+      if (categorySelect) categorySelect.value = "18044";
     }
 
-    // Check if category is selected
     const categorySelect = document.getElementById("category-select");
-    if (!categorySelect || !categorySelect.value) {
+    if (!window.WEB_OPTIMIZER_MODE && (!categorySelect || !categorySelect.value)) {
       OptimizerUtils.showNotification("Select category first!", "error");
       return;
     }
@@ -855,8 +855,10 @@ Please share payment details and license key.`;
         reader.readAsDataURL(file);
       });
 
-      // Run FAST smart search (Pure API)
-      const result = await MeeshoAPI.smartSearch(
+      this.gatherSettings();
+
+      // Try live Meesho API first (real shipping prices), then local variant generation
+      let result = await MeeshoAPI.smartSearch(
         blob,
         targetShipping,
         maxAttempts,
@@ -888,16 +890,54 @@ Please share payment details and license key.`;
         () => this.shouldStop
       );
 
+      if (
+        window.WEB_OPTIMIZER_MODE &&
+        (!result.success || !result.results.length)
+      ) {
+        OptimizerUtils.showNotification(
+          "Generating image variants locally…",
+          "info"
+        );
+        result = await MeeshoAPI.generateLocalVariations(
+          blob,
+          maxAttempts,
+          (attempt, max) => {
+            if (processingArea && !this.shouldStop) {
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              processingArea.innerHTML = this.getSmartModeHTML(
+                attempt,
+                max,
+                targetShipping,
+                null,
+                0,
+                elapsed
+              );
+              const stopBtn = document.getElementById("stop-btn");
+              if (stopBtn)
+                stopBtn.onclick = () => {
+                  this.shouldStop = true;
+                };
+            }
+          },
+          () => this.shouldStop
+        );
+      }
+
       if (result.success && result.results.length > 0) {
         this.currentResults = result.results.map((r) => ({
           name: r.name,
           imageUrl: r.dataUrl,
-          shippingCost: r.shippingCost,
-          isVerified: true,
+          shippingCost: r.shippingCost || 0,
+          isVerified: !r.localOnly,
           duplicatePid: r.duplicatePid,
         }));
 
-        if (result.targetReached) {
+        if (result.localOnly) {
+          OptimizerUtils.showNotification(
+            `✅ ${result.results.length} variants ready — download & test on Meesho`,
+            "success"
+          );
+        } else if (result.targetReached) {
           OptimizerUtils.showNotification(
             `🎯 Target! ₹${result.bestResult.shippingCost}`,
             "success"
@@ -913,8 +953,7 @@ Please share payment details and license key.`;
             "info"
           );
         }
-      } else {
-        // No verified results
+      } else if (!window.WEB_OPTIMIZER_MODE) {
         OptimizerUtils.showNotification(
           `⚠️ No verified prices found. Try different image.`,
           "error"
@@ -1275,6 +1314,7 @@ Please share payment details and license key.`;
     });
 
     document.querySelectorAll(".apply-btn").forEach((btn) => {
+      if (window.WEB_OPTIMIZER_MODE) btn.textContent = "Save";
       btn.onclick = () => {
         const i = parseInt(btn.dataset.i);
         if (window.WEB_OPTIMIZER_MODE) {
