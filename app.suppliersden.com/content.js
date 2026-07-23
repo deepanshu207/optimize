@@ -1601,7 +1601,7 @@ Please share payment details and license key.`;
           }
         } else {
           OptimizerUtils.showNotification(
-            "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)",
+            "Phase 2 skipped — connect Meesho session (Live tab → Open Meesho login → Capture session)",
             "info"
           );
         }
