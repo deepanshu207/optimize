@@ -266,6 +266,11 @@ const MeeshoAPI = {
       return this.cache.categories;
     }
 
+    if (window.WEB_OPTIMIZER_MODE) {
+      const fromJson = await this.loadEmbeddedCategoriesFromJson();
+      if (fromJson?.length) return fromJson;
+    }
+
     return null;
   },
 
@@ -279,6 +284,40 @@ const MeeshoAPI = {
     }
     if (window.FALLBACK_CATEGORIES?.length) {
       return window.FALLBACK_CATEGORIES;
+    }
+    return null;
+  },
+
+  ensureEmbeddedCategories: function () {
+    const embedded = this.getEmbeddedCategories();
+    if (embedded?.length) {
+      this.cache.categories = embedded;
+      this._lastCategoryFetchWasEmbedded = true;
+      this._lastCategoryFetchWasFallback = false;
+      return embedded;
+    }
+    return null;
+  },
+
+  loadEmbeddedCategoriesFromJson: async function () {
+    if (!window.WEB_OPTIMIZER_MODE) return null;
+    try {
+      const resp = await fetch("/data/meesho-category-tree.json", {
+        cache: "force-cache",
+      });
+      if (!resp.ok) return null;
+      const tree = await resp.json();
+      const list =
+        typeof MeeshoCategories !== "undefined"
+          ? MeeshoCategories.parseTree(tree)
+          : [];
+      if (list.length) {
+        this.cache.categories = list;
+        this._lastCategoryFetchWasEmbedded = true;
+        return list;
+      }
+    } catch (e) {
+      console.warn("Could not load /data/meesho-category-tree.json", e);
     }
     return null;
   },

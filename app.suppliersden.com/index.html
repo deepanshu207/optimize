@@ -202,7 +202,7 @@
 
           <div class="opt-section">
             <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>📁 Category</span>
+              <span>📁 Category <span style="font-size:10px;font-weight:normal;color:#6b7280;">(optional)</span></span>
               <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
             </div>
             <div style="position:relative;">
@@ -211,14 +211,14 @@
             </div>
             <div id="category-dropdown" class="category-dropdown"></div>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
-              <span style="font-size:11px;color:#dc2626;">⚠️ Categories not loaded. Click Refresh or save a Meesho session.</span>
+              <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>
             <div id="selected-category" style="margin-top:8px;padding:8px;background:#ecfdf5;border-radius:6px;display:none;">
               <span style="font-size:11px;color:#047857;">✓ </span>
               <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
             </div>
             <input type="hidden" id="category-select" value="">
-            <p class="session-hint" style="margin-top:8px;">Categories are pre-loaded from Meesho — search and pick yours (e.g. Kurtis, Sarees, Tshirts).</p>
+            <p class="session-hint" style="margin-top:8px;">Optional — only used if you try live Meesho shipping. Image variants are generated the same way for every category.</p>
           </div>
 
           <div class="opt-section">
