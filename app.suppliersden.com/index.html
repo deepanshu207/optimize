@@ -27,7 +27,7 @@
       background: #fff;
       border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0,0,0,.08);
-      overflow: hidden;
+      overflow-x: hidden;
     }
     .opt-header {
       background: linear-gradient(135deg, #FFD700, #C9A227);
@@ -196,6 +196,109 @@
       padding: 8px;
       background: #fafafa;
       text-align: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+    /* Fixed frame — prevents tall variant images from blowing up layout */
+    .test-lab-img-frame {
+      width: 100%;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 0 auto;
+    }
+    .test-lab-img-frame .test-lab-img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+    #test-results-area {
+      padding: 0 16px 16px;
+      overflow-x: hidden;
+    }
+    #test-results-area .test-lab-summary {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    #test-results-area .test-lab-summary-title {
+      font-size: 11px;
+      color: #1d4ed8;
+      line-height: 1.35;
+    }
+    #test-results-area .test-lab-summary-price {
+      font-size: 24px;
+      font-weight: 700;
+      color: #047857;
+      margin-top: 4px;
+    }
+    #test-results-area .test-lab-summary-meta {
+      font-size: 10px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .test-lab-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+      max-height: 420px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    @media (max-width: 560px) {
+      .test-lab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .test-lab-card {
+      background: #fafafa;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      padding: 6px;
+      text-align: center;
+      min-width: 0;
+    }
+    .test-lab-card .test-lab-img-frame {
+      height: 72px;
+    }
+    .test-lab-card-meta {
+      font-size: 8px;
+      color: #2563eb;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .test-lab-card-price {
+      font-size: 10px;
+      font-weight: 700;
+      color: #047857;
+      margin-top: 4px;
+    }
+    .test-lab-card-name {
+      font-size: 8px;
+      color: #888;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .test-lab-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .optimizer-chrome-hidden {
+      display: none !important;
     }
     .generate-sticky {
       position: sticky;
@@ -241,7 +344,7 @@
             <div class="preview-label"></div>
             <div style="color:#10b981;font-size:12px;margin-top:4px;">✓ Image selected</div>
           </div>
-          <div class="generate-sticky" style="margin:8px 16px 0;">
+          <div class="generate-sticky" id="generate-sticky" style="margin:8px 16px 0;">
             <button type="button" id="generate-btn" class="generate-btn" disabled style="margin-top:0;">🚀 Generate Variants</button>
             <button type="button" id="test-generate-btn" class="generate-btn" disabled style="margin-top:0;display:none;">🧪 Run Test Lab</button>
           </div>
@@ -491,16 +594,16 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=16"></script>
-  <script src="/web-session.js?v=16"></script>
+  <script src="/js/meeshoCategories.js?v=17"></script>
+  <script src="/web-session.js?v=17"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=16"></script>
+  <script src="/js/meeshoApi.js?v=17"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=16"></script>
-  <script src="/content.js?v=16"></script>
-  <script src="/web-app.js?v=16"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=16"></script>
+  <script src="/js/ui.js?v=17"></script>
+  <script src="/content.js?v=17"></script>
+  <script src="/web-app.js?v=17"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=17"></script>
 </body>
 </html>

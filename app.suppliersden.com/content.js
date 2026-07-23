@@ -343,7 +343,12 @@ class MeeshoShippingOptimizer {
     const uploadArea = document.getElementById("upload-area");
     if (processingArea) processingArea.style.display = "none";
     if (resultsArea) resultsArea.style.display = "none";
-    if (testResultsArea) testResultsArea.style.display = "none";
+    if (testResultsArea) {
+      testResultsArea.style.display = "none";
+      testResultsArea.innerHTML = "";
+    }
+    this.testLabResults = [];
+    this.setTestLabChromeVisible(true);
     if (uploadArea) uploadArea.style.display = "block";
     if (generateBtn) {
       generateBtn.style.display = "block";
@@ -1100,7 +1105,7 @@ Please share payment details and license key.`;
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=16");
+      await import("/js/testLabBridge.mjs?v=17");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1124,7 +1129,42 @@ Please share payment details and license key.`;
     });
   }
 
+  setTestLabChromeVisible(visible) {
+    const ids = [
+      "upload-area",
+      "preview-box",
+      "generate-sticky",
+      "optimizer-tabs",
+      "boot-msg",
+    ];
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (visible) {
+        el.classList.remove("optimizer-chrome-hidden");
+      } else {
+        el.classList.add("optimizer-chrome-hidden");
+      }
+    });
+    document.querySelectorAll("[data-optimizer-panel]").forEach((panel) => {
+      if (visible) {
+        panel.classList.remove("optimizer-chrome-hidden");
+      } else {
+        panel.classList.add("optimizer-chrome-hidden");
+      }
+    });
+    if (visible) {
+      this.setupOptimizerTabs();
+    }
+  }
+
   restoreTestLabFormUi() {
+    this.setTestLabChromeVisible(true);
+    const testResultsArea = document.getElementById("test-results-area");
+    if (testResultsArea) {
+      testResultsArea.style.display = "none";
+      testResultsArea.innerHTML = "";
+    }
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
@@ -1309,6 +1349,7 @@ Please share payment details and license key.`;
     if (processingArea) processingArea.style.display = "none";
 
     if (this.testLabResults.length && testResultsArea) {
+      this.setTestLabChromeVisible(false);
       testResultsArea.style.display = "block";
       testResultsArea.innerHTML = OptimizerUI.getTestLabResultsHTML(
         this.testLabResults,

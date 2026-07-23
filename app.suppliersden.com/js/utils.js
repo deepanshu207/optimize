@@ -69,22 +69,25 @@ const OptimizerUtils = {
         
         notification.style.cssText = `
             position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            border-radius: 12px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            color: #111;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.35;
             z-index: 999999;
-            max-width: 380px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            max-width: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
             background: ${style.bg};
             display: flex;
-            align-items: center;
-            gap: 12px;
+            align-items: flex-start;
+            gap: 10px;
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             animation: slideIn 0.3s ease;
+            word-break: break-word;
         `;
         
         notification.innerHTML = `

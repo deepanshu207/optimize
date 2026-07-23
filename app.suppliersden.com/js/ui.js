@@ -523,23 +523,25 @@ const OptimizerUI = {
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
 
     let html = `
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-        <div style="font-size:11px;color:#1d4ed8;">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
-        <div style="font-size:26px;font-weight:700;color:#047857;">${
+      <div class="test-lab-summary">
+        <div class="test-lab-summary-title">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
+        <div class="test-lab-summary-price">${
           bestLive ? "₹" + bestLive + " live" : "est ₹" + bestEst
         }</div>
-        <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · group: ${
+        <div class="test-lab-summary-meta">${results.length} variants · group: ${
           analysis.resolvedCategory || analysis.category || "auto"
         }</div>
       </div>
       <div class="test-side-by-side">
         <div class="test-original-pane">
           <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Original</div>
+          <div class="test-lab-img-frame">
           ${
             originalUrl
-              ? `<img src="${originalUrl}" alt="Original">`
+              ? `<img class="test-lab-img" src="${originalUrl}" alt="Original">`
               : `<div style="font-size:11px;color:#888;">No preview</div>`
           }
+          </div>
           <div style="font-size:10px;color:#666;margin-top:6px;text-align:left;line-height:1.4;">
             ${analysis.suggested ? `Suggest: ${analysis.suggested}<br>` : ""}
             ${analysis.width ? `${analysis.width}×${analysis.height}px` : ""}
@@ -547,14 +549,16 @@ const OptimizerUI = {
         </div>
         <div class="test-original-pane">
           <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Best candidate</div>
-          <img src="${best.imageUrl}" alt="Best test variant" class="result-img" data-variant-id="${best.variantId}">
-          <div style="font-size:10px;color:#666;margin-top:6px;">${best.name}</div>
-          <div style="font-size:11px;color:#047857;font-weight:600;">est ₹${bestEst}${
+          <div class="test-lab-img-frame">
+            <img class="test-lab-img" src="${best.imageUrl}" alt="Best test variant">
+          </div>
+          <div style="font-size:10px;color:#666;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${best.name}</div>
+          <div style="font-size:11px;color:#047857;font-weight:600;margin-top:4px;">est ₹${bestEst}${
             bestLive ? ` · live ₹${bestLive}` : ""
           }</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;max-height:480px;overflow-y:auto;">
+      <div class="test-lab-grid">
     `;
 
     results.forEach((r, i) => {
@@ -562,13 +566,15 @@ const OptimizerUI = {
       const live = r.shippingCost > 0 ? r.shippingCost : null;
       const vid = r.variantId || "test-" + i;
       html += `
-        <div class="result-card" data-variant-id="${vid}" style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>
-          <img class="result-img" data-variant-id="${vid}" src="${r.imageUrl}" style="width:100%;height:70px;object-fit:contain;border-radius:4px;cursor:pointer;">
-          <div style="font-size:10px;font-weight:700;color:#047857;margin-top:4px;">${
+        <div class="test-lab-card" data-variant-id="${vid}">
+          <div class="test-lab-card-meta">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>
+          <div class="test-lab-img-frame">
+            <img class="test-lab-img result-img" data-variant-id="${vid}" src="${r.imageUrl}" alt="${r.name}">
+          </div>
+          <div class="test-lab-card-price">${
             live ? "₹" + live : "est ₹" + est
           }</div>
-          <div style="font-size:8px;color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.name}</div>
+          <div class="test-lab-card-name">${r.name}</div>
           <div style="display:flex;gap:4px;margin-top:4px;">
             <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:#ecfdf5;color:#047857;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
           </div>
@@ -577,7 +583,7 @@ const OptimizerUI = {
 
     html += `
       </div>
-      <div style="display:flex;gap:8px;">
+      <div class="test-lab-actions">
         <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">Download Best</button>
         <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
       </div>`;
