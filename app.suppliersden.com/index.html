@@ -48,6 +48,7 @@
             height: 200%;
             background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 60%);
             animation: pulse 4s ease-in-out infinite;
+            pointer-events: none;
         }
 
         @keyframes pulse {
@@ -148,6 +149,10 @@
             cursor: pointer;
             transition: all 0.3s;
             margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: rgba(201, 162, 39, 0.3);
         }
 
         .btn-primary {
@@ -222,13 +227,14 @@
 
         <div class="footer">
             <button id="support-whatsapp" type="button"
-                style="background:linear-gradient(135deg, #FFD700, #C9A227);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                style="background:linear-gradient(135deg, #FFD700, #C9A227);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;position:relative;z-index:2;touch-action:manipulation;">
                 WhatsApp Support
             </button>
         </div>
     </div>
 
     <script src="web-shim.js"></script>
+    <script src="web-app.js"></script>
     <script src="config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/license.js"></script>
@@ -236,7 +242,9 @@
     <script src="js/imageGenerator.js"></script>
     <script src="js/ui.js"></script>
     <script src="content.js"></script>
-    <script src="web-app.js"></script>
+    <script>
+      if (typeof initWebOptimizerButtons === "function") initWebOptimizerButtons();
+    </script>
 </body>
 
 </html>
