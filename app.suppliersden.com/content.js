@@ -1067,20 +1067,13 @@ Please share payment details and license key.`;
         this.preloadTestLabModule();
       }
 
-      const liveResults = document.getElementById("results-area");
+      const resultsArea = document.getElementById("results-area");
       const testResults = document.getElementById("test-results-area");
-      if (liveResults) {
-        liveResults.style.display =
-          this.activeOptimizerTab === "live" && this.currentResults.length
-            ? "block"
-            : "none";
-      }
       if (testResults) {
-        testResults.style.display =
-          this.activeOptimizerTab === "test" && this.testLabResults.length
-            ? "block"
-            : "none";
+        testResults.style.display = "none";
+        testResults.innerHTML = "";
       }
+      this.refreshResultsAreaForActiveTab();
 
       const boot = document.getElementById("boot-msg");
       const hasFile =
@@ -1105,7 +1098,7 @@ Please share payment details and license key.`;
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=18");
+      await import("/js/testLabBridge.mjs?v=19");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1127,6 +1120,46 @@ Please share payment details and license key.`;
         { once: true }
       );
     });
+  }
+
+  refreshResultsAreaForActiveTab() {
+    const resultsArea = document.getElementById("results-area");
+    const testResults = document.getElementById("test-results-area");
+    if (testResults) {
+      testResults.style.display = "none";
+      testResults.innerHTML = "";
+    }
+    if (!resultsArea) return;
+
+    if (this.activeOptimizerTab === "test" && this.testLabResults.length) {
+      resultsArea.style.display = "block";
+      resultsArea.dataset.view = "test";
+      resultsArea.innerHTML = OptimizerUI.getTestLabResultsHTML(
+        this.testLabResults,
+        {
+          analysis: this.testLabAnalysis,
+          baselineShipping: this.getBaselineShipping(),
+        }
+      );
+      this.setupResultsEvents();
+      this.wireTestLabImageFallbacks();
+      return;
+    }
+
+    if (this.activeOptimizerTab === "live" && this.currentResults.length) {
+      resultsArea.style.display = "block";
+      delete resultsArea.dataset.view;
+      resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+        this.currentResults,
+        this.getResultsViewOptions()
+      );
+      this.setupResultsEvents();
+      return;
+    }
+
+    resultsArea.style.display = "none";
+    resultsArea.innerHTML = "";
+    delete resultsArea.dataset.view;
   }
 
   setTestLabChromeVisible(visible) {
@@ -1160,6 +1193,12 @@ Please share payment details and license key.`;
 
   restoreTestLabFormUi() {
     this.setTestLabChromeVisible(true);
+    const resultsArea = document.getElementById("results-area");
+    if (resultsArea) {
+      resultsArea.style.display = "none";
+      resultsArea.innerHTML = "";
+      delete resultsArea.dataset.view;
+    }
     const testResultsArea = document.getElementById("test-results-area");
     if (testResultsArea) {
       testResultsArea.style.display = "none";
@@ -1249,8 +1288,8 @@ Please share payment details and license key.`;
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
     const processingArea = document.getElementById("processing-area");
+    const resultsArea = document.getElementById("results-area");
     const testResultsArea = document.getElementById("test-results-area");
-    const liveResultsArea = document.getElementById("results-area");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
 
@@ -1264,8 +1303,15 @@ Please share payment details and license key.`;
       testGenBtn.disabled = true;
     }
     sections.forEach((s) => (s.style.display = "none"));
-    if (liveResultsArea) liveResultsArea.style.display = "none";
-    if (testResultsArea) testResultsArea.style.display = "none";
+    if (resultsArea) {
+      resultsArea.style.display = "none";
+      resultsArea.innerHTML = "";
+      delete resultsArea.dataset.view;
+    }
+    if (testResultsArea) {
+      testResultsArea.style.display = "none";
+      testResultsArea.innerHTML = "";
+    }
 
     if (processingArea) {
       processingArea.style.display = "block";
@@ -1360,14 +1406,17 @@ Please share payment details and license key.`;
 
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.testLabResults.length && testResultsArea) {
-      this.setTestLabChromeVisible(false);
-      testResultsArea.style.display = "block";
-      testResultsArea.innerHTML = OptimizerUI.getTestLabResultsHTML(
+    if (this.testLabResults.length && resultsArea) {
+      if (testResultsArea) {
+        testResultsArea.style.display = "none";
+        testResultsArea.innerHTML = "";
+      }
+      resultsArea.style.display = "block";
+      resultsArea.dataset.view = "test";
+      resultsArea.innerHTML = OptimizerUI.getTestLabResultsHTML(
         this.testLabResults,
         {
           analysis: this.testLabAnalysis,
-          originalUrl: this.originalImageUrl,
           baselineShipping: this.getBaselineShipping(),
         }
       );
@@ -1629,6 +1678,7 @@ Please share payment details and license key.`;
     if (this.currentResults.length > 0) {
       if (resultsArea) {
         resultsArea.style.display = "block";
+        delete resultsArea.dataset.view;
         resultsArea.innerHTML = OptimizerUI.getResultsHTML(
           this.currentResults,
           this.getResultsViewOptions()
@@ -2063,11 +2113,11 @@ Please share payment details and license key.`;
   }
 
   isTestLabResultsActive() {
-    const testArea = document.getElementById("test-results-area");
+    const resultsArea = document.getElementById("results-area");
     return !!(
-      testArea &&
-      testArea.style.display === "block" &&
-      this.testLabResults.length
+      this.testLabResults.length &&
+      resultsArea?.style.display === "block" &&
+      resultsArea?.dataset?.view === "test"
     );
   }
 
@@ -2153,7 +2203,7 @@ Please share payment details and license key.`;
   }
 
   wireTestLabImageFallbacks() {
-    document.querySelectorAll(".test-lab-img[data-variant-id]").forEach((img) => {
+    document.querySelectorAll(".result-img[data-variant-id]").forEach((img) => {
       const variantId = img.dataset.variantId;
       if (!variantId) return;
       img.onerror = () => {
