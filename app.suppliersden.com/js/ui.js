@@ -310,29 +310,40 @@ const OptimizerUI = {
         `;
   },
 
-  // Single result card — reused for main grid and framed "see more" section
+  // Single result card — reused for main grid, framed extras, and Test Lab
   renderResultCard: function (r, i, options) {
     options = options || {};
     const baseline = options.baselineShipping || 0;
     const manualMode = !!options.manualMode;
+    const testLabMode = !!options.testLabMode;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
-    const priceLabel =
-      r.shippingCost > 0 ? "₹" + r.shippingCost : manualMode ? "—" : "Ready";
+    const estInr = r.meta?.estInr || r.estShipping || 0;
+    const priceLabel = testLabMode
+      ? r.shippingCost > 0
+        ? "₹" + r.shippingCost
+        : "est ₹" + estInr
+      : r.shippingCost > 0
+      ? "₹" + r.shippingCost
+      : manualMode
+      ? "—"
+      : "Ready";
     const savings =
       baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
-    const canEdit = !!(r.layers && r.layers.full);
+    const canEdit = !testLabMode && !!(r.layers && r.layers.full);
     const edited =
       r.editFlags?.stickersRemoved ||
       r.editFlags?.borderOnlyRemoved ||
       r.editFlags?.cleanProduct ||
       r.editFlags?.borderRemoved;
     const vid = r.variantId || "var-" + i;
-    const styleTag =
-      r.variantStyle === "framed"
-        ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.actualKb || r.meta?.targetKb || "?"}KB</div>`
-        : "";
+    const imgSrc = testLabMode ? this.pickResultImageSrc(r) : r.imageUrl;
+    const styleTag = testLabMode
+      ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>`
+      : r.variantStyle === "framed"
+      ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.actualKb || r.meta?.targetKb || "?"}KB</div>`
+      : "";
 
     return `
                 <div class="result-card" data-variant-id="${vid}" style="background:${
@@ -348,13 +359,15 @@ const OptimizerUI = {
                     <span class="result-edit-badge" data-variant-id="${vid}" style="display:${
       edited ? "block" : "none"
     };position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">✂️</span>
-                    <img src="${
-                      r.imageUrl
-                    }" class="result-img" data-variant-id="${vid}" title="${
-      canEdit ? "Tap to edit border & stickers" : ""
+                    <img src="${imgSrc}" class="result-img" data-variant-id="${vid}" title="${
+      canEdit
+        ? "Tap to edit border & stickers"
+        : testLabMode
+        ? "Tap to preview"
+        : ""
     }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
       isBest ? "4px" : "0"
-    };cursor:${canEdit ? "pointer" : "default"};" loading="lazy">
+    };cursor:${canEdit || testLabMode ? "pointer" : "default"};" loading="lazy">
                     ${styleTag}
                     ${
                       canEdit
@@ -503,7 +516,7 @@ const OptimizerUI = {
     return html;
   },
 
-  /** TEST LAB ONLY — separate from getResultsHTML (Live mode). */
+  /** TEST LAB ONLY — uses same layout as getResultsHTML (Live mode). */
   pickResultImageSrc: function (r) {
     if (!r) return "";
     return r.dataUrl || r.pricingImageUrl || r.imageUrl || r.uploadedUrl || "";
@@ -511,89 +524,76 @@ const OptimizerUI = {
 
   getTestLabResultsHTML: function (results, options) {
     options = options || {};
-    const originalUrl = options.originalUrl || "";
     const analysis = options.analysis || {};
     const baseline = options.baselineShipping || 0;
 
     if (!results.length) {
       return `
-        <div style="text-align:center;padding:24px;">
-          <p style="color:#666;font-size:12px;">No Test Lab variants. Try Smart Auto or another category group.</p>
-          <button id="restart-btn" class="opt-btn opt-btn-primary" style="margin-top:12px;padding:10px 20px;">Try Again</button>
+        <div style="text-align:center;padding:30px;">
+          <div style="font-size:50px;margin-bottom:15px;">🧪</div>
+          <h3 style="color:#ef4444;margin:0 0 10px 0;">No Test Lab Variants</h3>
+          <p style="color:#9ca3af;font-size:12px;margin-bottom:15px;">Try Smart Auto or another category group.</p>
+          <button id="restart-btn" class="opt-btn opt-btn-primary" style="margin-top:15px;padding:10px 25px;">Try Again</button>
         </div>`;
     }
 
     const best = results[0];
+    const totalResults = results.length;
     const bestEst = best.meta?.estInr || best.estShipping || 0;
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
-    const bestSrc = this.pickResultImageSrc(best);
+    const liveCount = results.filter((r) => r.shippingCost > 0).length;
+    const groupLabel = analysis.resolvedCategory || analysis.category || "auto";
 
     let html = `
-      <div class="test-lab-summary">
-        <div class="test-lab-summary-title">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
-        <div class="test-lab-summary-price">${
-          bestLive ? "₹" + bestLive + " live" : "est ₹" + bestEst
+      <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
+        <div style="font-size:11px;color:#9ca3af;">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
+        <div style="font-size:28px;font-weight:700;color:#10b981;">${
+          bestLive ? "₹" + bestLive : "est ₹" + bestEst
         }</div>
-        <div class="test-lab-summary-meta">${results.length} variants · group: ${
-          analysis.resolvedCategory || analysis.category || "auto"
+        <div style="font-size:10px;color:#10b981;margin-top:2px;">${
+          bestLive
+            ? "✅ Live price checked"
+            : "Download → upload on Meesho → compare ₹"
         }</div>
+        ${
+          baseline > 0
+            ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
+            : ""
+        }
+        <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants · ${groupLabel}${
+          liveCount ? ` · ${liveCount} live checked` : ""
+        }</div>
+        ${
+          analysis.suggested
+            ? `<div style="font-size:10px;color:#6b7280;margin-top:6px;">${analysis.suggested}${
+                analysis.width ? ` · ${analysis.width}×${analysis.height}px` : ""
+              }</div>`
+            : ""
+        }
       </div>
-      <div class="test-side-by-side">
-        <div class="test-original-pane">
-          <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Original</div>
-          <div class="test-lab-img-frame">
-          ${
-            originalUrl
-              ? `<img class="test-lab-img" src="${originalUrl}" alt="Original">`
-              : `<div style="font-size:11px;color:#888;">No preview</div>`
-          }
-          </div>
-          <div style="font-size:10px;color:#666;margin-top:6px;text-align:left;line-height:1.4;">
-            ${analysis.suggested ? `Suggest: ${analysis.suggested}<br>` : ""}
-            ${analysis.width ? `${analysis.width}×${analysis.height}px` : ""}
-          </div>
-        </div>
-        <div class="test-original-pane">
-          <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Best candidate</div>
-          <div class="test-lab-img-frame">
-            <img class="test-lab-img" src="${bestSrc}" alt="Best test variant">
-          </div>
-          <div style="font-size:10px;color:#666;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${best.name}</div>
-          <div style="font-size:11px;color:#047857;font-weight:600;margin-top:4px;">est ₹${bestEst}${
-            bestLive ? ` · live ₹${bestLive}` : ""
-          }</div>
-        </div>
-      </div>
-      <div class="test-lab-grid">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
     `;
 
     results.forEach((r, i) => {
-      const est = r.meta?.estInr || r.estShipping || 0;
-      const live = r.shippingCost > 0 ? r.shippingCost : null;
-      const vid = r.variantId || "test-" + i;
-      const src = this.pickResultImageSrc(r);
-      html += `
-        <div class="test-lab-card" data-variant-id="${vid}">
-          <div class="test-lab-card-meta">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>
-          <div class="test-lab-img-frame">
-            <img class="test-lab-img result-img" data-variant-id="${vid}" src="${src}" alt="${r.name}">
-          </div>
-          <div class="test-lab-card-price">${
-            live ? "₹" + live : "est ₹" + est
-          }</div>
-          <div class="test-lab-card-name">${r.name}</div>
-          <div style="display:flex;gap:4px;margin-top:4px;">
-            <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:#ecfdf5;color:#047857;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-          </div>
-        </div>`;
+      html += this.renderResultCard(r, i, {
+        baselineShipping: baseline,
+        manualMode: false,
+        testLabMode: true,
+        isBest: i === 0,
+      });
     });
 
     html += `
       </div>
-      <div class="test-lab-actions">
-        <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">Download Best</button>
+      <div style="display:flex;gap:8px;">
+        <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
+          bestLive
+            ? "Download Best ₹" + bestLive
+            : "Download Best est ₹" + bestEst
+        }</button>
         <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
-      </div>`;
+      </div>
+    `;
     return html;
   },
 };
