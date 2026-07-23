@@ -7,7 +7,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Accept, browser-id, client-type, client-package-version, identifier, supplier-id, x-meesho-cookie",
+    "Content-Type, Accept, Accept-Language, browser-id, client-type, client-package-version, identifier, supplier-id, x-meesho-cookie, User-Agent",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -41,6 +41,20 @@ async function proxyMeesho(request) {
 
   headers.set("origin", MEESHO_ORIGIN);
   headers.set("referer", MEESHO_ORIGIN + "/");
+
+  const ua = request.headers.get("user-agent");
+  if (ua) headers.set("user-agent", ua);
+
+  const lang = request.headers.get("accept-language");
+  if (lang) headers.set("accept-language", lang);
+
+  const clientIp =
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for");
+  if (clientIp) {
+    headers.set("x-forwarded-for", clientIp);
+    headers.set("x-real-ip", clientIp);
+  }
 
   const cookie = request.headers.get("x-meesho-cookie");
   if (cookie) headers.set("cookie", cookie);

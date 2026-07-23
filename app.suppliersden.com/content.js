@@ -729,8 +729,12 @@ Please share payment details and license key.`;
 
       if (categories && categories.length > 0) {
         this.allCategories = categories;
-        categorySearch.placeholder = "🔍 Type to search category...";
-        if (refreshBtn) refreshBtn.style.display = "none";
+        const usingFallback =
+          window.WEB_OPTIMIZER_MODE && MeeshoAPI._lastCategoryFetchWasFallback;
+        categorySearch.placeholder = usingFallback
+          ? "🔍 Built-in categories (live list blocked by Meesho)"
+          : "🔍 Type to search category...";
+        if (refreshBtn) refreshBtn.style.display = usingFallback ? "block" : "none";
         if (categoryError) categoryError.style.display = "none";
 
         // Show dropdown on focus

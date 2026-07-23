@@ -56,8 +56,19 @@ const MeeshoAPI = {
   requestHeaders: function (extra) {
     this.syncFromSession();
     const headers = { ...this.getHeaders(), ...(extra || {}) };
-    if (window.WEB_OPTIMIZER_MODE && window.WebSession) {
-      const cookie = WebSession.get().cookie;
+    if (window.WEB_OPTIMIZER_MODE) {
+      let cookie = "";
+      try {
+        if (window.WebSession) cookie = WebSession.get().cookie || "";
+        else {
+          cookie =
+            JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}")
+              .cookie || "";
+        }
+        if (cookie && window.WebSession?.normalizeCookie) {
+          cookie = WebSession.normalizeCookie(cookie);
+        }
+      } catch (e) {}
       if (cookie) headers["x-meesho-cookie"] = cookie;
     }
     return headers;
@@ -184,8 +195,9 @@ const MeeshoAPI = {
     };
   },
 
-  fetchCategories: async function () {
-    if (this.cache.categories) return this.cache.categories;
+  fetchCategories: async function (forceLive) {
+    if (this.cache.categories && !forceLive) return this.cache.categories;
+    this._lastCategoryFetchWasFallback = false;
     try {
       const resp = await fetch(
         this.apiUrl(
@@ -202,10 +214,12 @@ const MeeshoAPI = {
         credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
       });
       if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
         console.warn(
           "⚠️ fetchCategories failed:",
           resp.status,
           resp.statusText,
+          errText.slice(0, 200),
         );
       } else {
         const result = await resp.json();
@@ -226,6 +240,7 @@ const MeeshoAPI = {
       console.error("Categories error:", e);
     }
     if (window.WEB_OPTIMIZER_MODE && window.FALLBACK_CATEGORIES) {
+      this._lastCategoryFetchWasFallback = true;
       this.cache.categories = window.FALLBACK_CATEGORIES;
       return this.cache.categories;
     }
@@ -259,9 +274,12 @@ const MeeshoAPI = {
           ...(window.WEB_OPTIMIZER_MODE &&
           (() => {
             try {
-              const c = window.WebSession
+              let c = window.WebSession
                 ? WebSession.get().cookie
                 : JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}").cookie;
+              if (c && window.WebSession?.normalizeCookie) {
+                c = WebSession.normalizeCookie(c);
+              }
               return c ? { "x-meesho-cookie": c } : {};
             } catch (e) {
               return {};
