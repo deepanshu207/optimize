@@ -18,17 +18,19 @@ class MeeshoShippingOptimizer {
   init() {
     console.log("Initializing optimizer...");
 
-    // Listen for messages from popup
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      console.log("Message received:", message);
-      if (message.action === "openOptimizer") {
-        this.checkLicense().then(() => {
-          this.openModal();
-        });
-        sendResponse({ success: true });
-      }
-      return true;
-    });
+    if (!window.WEB_OPTIMIZER_MODE) {
+      // Listen for messages from popup
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        console.log("Message received:", message);
+        if (message.action === "openOptimizer") {
+          this.checkLicense().then(() => {
+            this.openModal();
+          });
+          sendResponse({ success: true });
+        }
+        return true;
+      });
+    }
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => this.setup());
@@ -145,6 +147,11 @@ class MeeshoShippingOptimizer {
   }
 
   async checkLicense() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      this.isLicensed = true;
+      return true;
+    }
+
     try {
       // First check storage directly
       const result = await chrome.storage.sync.get([
@@ -315,10 +322,15 @@ class MeeshoShippingOptimizer {
 
   async openModal() {
     // Always re-check license before opening modal
-    //await this.autoLicenseCheck();
-    chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
+    if (!window.WEB_OPTIMIZER_MODE) {
+      chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
+    }
     await this.checkLicense();
     console.log("Opening modal, license status:", this.isLicensed);
+
+    if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.init();
+    }
 
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
@@ -1383,4 +1395,8 @@ Please share payment details and license key.`;
 }
 
 // Initialize
-new MeeshoShippingOptimizer();
+if (window.WEB_OPTIMIZER_MODE) {
+  window.MeeshoShippingOptimizer = MeeshoShippingOptimizer;
+} else {
+  new MeeshoShippingOptimizer();
+}

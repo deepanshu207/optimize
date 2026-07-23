@@ -1,0 +1,11 @@
+/index.html
+  Cache-Control: no-cache
+
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/Badge/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/icons/*
+  Cache-Control: public, max-age=31536000, immutable
