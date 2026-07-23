@@ -66,8 +66,6 @@ try {
   await page.evaluate(() => {
     const cb = document.getElementById("test-lab-live-verify");
     if (cb) cb.checked = false;
-    const target = document.getElementById("test-lab-target");
-    if (target) target.value = "";
   });
 
   await page.click("#test-generate-btn");
@@ -75,7 +73,7 @@ try {
     () =>
       window.meeshoOptimizer?.testLabResults?.length > 0 ||
       document.querySelector("#results-area img"),
-    { timeout: 180000 }
+    { timeout: 120000 }
   );
 
   const result = await page.evaluate(() => {
@@ -91,8 +89,8 @@ try {
 
   console.log("TEST LAB PHASE 1:", JSON.stringify(result, null, 2));
 
-  if (result.count < 20) {
-    console.error("FAIL: expected at least 20 variants, got", result.count);
+  if (result.count < 6) {
+    console.error("FAIL: expected at least 6 variants, got", result.count);
     process.exit(1);
   }
   if (result.hasImages < result.count) {

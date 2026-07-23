@@ -44,12 +44,6 @@ const MeeshoCategories = {
     }
     return list[0]?.id || null;
   },
-
-  lookupById(id) {
-    const n = parseInt(id, 10);
-    if (!Number.isFinite(n)) return null;
-    return this.getList().find((c) => c.id === n) || null;
-  },
 };
 
 window.MeeshoCategories = MeeshoCategories;
