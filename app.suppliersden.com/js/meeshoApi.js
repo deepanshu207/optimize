@@ -27,8 +27,12 @@ const MeeshoAPI = {
   },
 
   syncFromSession: function () {
-    if (!window.WEB_OPTIMIZER_MODE || !window.WebSession) return;
-    const s = WebSession.get();
+    if (!window.WEB_OPTIMIZER_MODE) return;
+    let s = {};
+    try {
+      if (window.WebSession) s = WebSession.get();
+      else s = JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}");
+    } catch (e) {}
     if (s.supplierId) this.cache.supplierId = parseInt(s.supplierId, 10) || s.supplierId;
     if (s.browserId) this.cache.browserId = s.browserId;
     if (s.identifier) this.cache.supplierTag = s.identifier;
@@ -226,9 +230,17 @@ const MeeshoAPI = {
           "supplier-id": this.cache.supplierId
             ? String(this.cache.supplierId)
             : "",
-          ...(window.WEB_OPTIMIZER_MODE && WebSession?.get()?.cookie
-            ? { "x-meesho-cookie": WebSession.get().cookie }
-            : {}),
+          ...(window.WEB_OPTIMIZER_MODE &&
+          (() => {
+            try {
+              const c = window.WebSession
+                ? WebSession.get().cookie
+                : JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}").cookie;
+              return c ? { "x-meesho-cookie": c } : {};
+            } catch (e) {
+              return {};
+            }
+          })()),
         },
         body: formData,
         credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
@@ -545,6 +557,42 @@ const MeeshoAPI = {
     this.detectAllValues();
     return this.cache.supplierId !== null;
   },
+
+  // Web fallback: generate variants locally (no live API) using same canvas logic
+  generateLocalVariations: async function (
+    originalBlob,
+    maxCount,
+    onProgress,
+    shouldStopFn,
+  ) {
+    const results = [];
+    const count = Math.min(maxCount, 30);
+
+    for (let i = 1; i <= count; i++) {
+      if (shouldStopFn && shouldStopFn()) break;
+      if (onProgress) onProgress(i, count, null, 0);
+
+      const variation = await this.generateVariation(originalBlob, i);
+      results.push({
+        name: "Var-" + i,
+        dataUrl: variation.dataUrl,
+        shippingCost: 0,
+        isVerified: false,
+        localOnly: true,
+      });
+    }
+
+    return {
+      success: results.length > 0,
+      results: results.slice(0, 20),
+      bestResult: results[0] || null,
+      targetReached: false,
+      attempts: results.length,
+      verifiedCount: 0,
+      localOnly: true,
+    };
+  },
+
   isValidCatalogPage: function () {
     return (
       window.location.href.includes("supplier.meesho.com") &&
