@@ -12,6 +12,7 @@ class MeeshoShippingOptimizer {
     // Test Lab state — isolated from Live mode (currentResults / framedExtraResults)
     this.testLabResults = [];
     this.testLabAnalysis = null;
+    this.testLabPhase2Meta = null;
     this.activeOptimizerTab = "live";
     this.variationCount = 6;
     this.isLicensed = false;
@@ -1098,7 +1099,7 @@ Please share payment details and license key.`;
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=19");
+      await import("/js/testLabBridge.mjs?v=20");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1139,6 +1140,7 @@ Please share payment details and license key.`;
         {
           analysis: this.testLabAnalysis,
           baselineShipping: this.getBaselineShipping(),
+          phase2: this.testLabPhase2Meta,
         }
       );
       this.setupResultsEvents();
@@ -1252,6 +1254,9 @@ Please share payment details and license key.`;
       document.getElementById("category-select")?.value,
       10
     );
+    const sessionReady =
+      typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
+    const liveCheckbox = document.getElementById("test-lab-live-verify");
 
     return {
       mode,
@@ -1260,7 +1265,9 @@ Please share payment details and license key.`;
       sscatId: Number.isFinite(sscatId) ? sscatId : null,
       targetInr: targetRaw ? parseInt(targetRaw, 10) : null,
       borderColor,
-      liveVerify: !!document.getElementById("test-lab-live-verify")?.checked,
+      liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
+      phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
+      maxLiveVerify: 12,
     };
   }
 
@@ -1278,6 +1285,7 @@ Please share payment details and license key.`;
     this.shouldStop = false;
     this.testLabResults = [];
     this.testLabAnalysis = null;
+    this.testLabPhase2Meta = null;
 
     try {
       await this.ensureOriginalImageUrl(file);
@@ -1351,7 +1359,64 @@ Please share payment details and license key.`;
         return;
       }
 
-      this.testLabResults = (result.results || []).map((r, i) =>
+      let rawResults = result.results || [];
+
+      if ((opts.liveVerify || opts.phase2Live) && rawResults.length) {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.()) {
+          if (window.TestLabOptimizer.runPhase2LiveHunt) {
+            setProgress("Phase 2: hunting lowest live ₹ on Meesho…");
+            const phase2 = await window.TestLabOptimizer.runPhase2LiveHunt(
+              file,
+              rawResults,
+              {
+                sscatId: opts.sscatId,
+                maxVerify: opts.maxLiveVerify || 12,
+                onProgress: (msg) => {
+                  if (!this.shouldStop) setProgress(msg);
+                },
+              }
+            );
+            rawResults = phase2.results || rawResults;
+            this.testLabPhase2Meta = {
+              framedCount: phase2.framedCount || 0,
+              verifiedCount: phase2.verifiedCount || 0,
+              bestLive: phase2.bestLive,
+              errors: phase2.errors || [],
+            };
+            if (phase2.bestLive?.shippingCost) {
+              OptimizerUtils.showNotification(
+                `Phase 2 best live: ₹${phase2.bestLive.shippingCost} (${phase2.bestLive.name})`,
+                "success"
+              );
+            } else if (phase2.errors?.length) {
+              OptimizerUtils.showNotification(
+                "Live hunt partial — " + phase2.errors[0],
+                "info"
+              );
+            }
+          } else {
+            setProgress("Live Meesho check…");
+            await window.TestLabOptimizer.verifyTestLabLive(
+              rawResults,
+              opts.maxLiveVerify || 10,
+              setProgress,
+              { sscatId: opts.sscatId }
+            );
+            rawResults.sort(
+              (a, b) =>
+                (a.shippingCost || a.estShipping || 999) -
+                (b.shippingCost || b.estShipping || 999)
+            );
+          }
+        } else {
+          OptimizerUtils.showNotification(
+            "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)",
+            "info"
+          );
+        }
+      }
+
+      this.testLabResults = rawResults.map((r, i) =>
         this.mapResultFromApi(r, i)
       );
       this.testLabAnalysis = result.analysis || null;
@@ -1367,30 +1432,19 @@ Please share payment details and license key.`;
         }</strong> · suggest: ${a.suggested}`;
       }
 
-      if (opts.liveVerify && this.testLabResults.length) {
-        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.()) {
-          setProgress("Live Meesho check on top 5…");
-          await window.TestLabOptimizer.verifyTestLabLive(
-            this.testLabResults,
-            5,
-            setProgress
-          );
-          this.testLabResults.sort(
-            (a, b) =>
-              (a.shippingCost || a.estShipping || 999) -
-              (b.shippingCost || b.estShipping || 999)
-          );
-        } else {
-          OptimizerUtils.showNotification(
-            "Live verify skipped — add Meesho session first",
-            "info"
-          );
-        }
-      }
-
       if (this.testLabResults.length) {
+        const liveCount = this.testLabResults.filter(
+          (r) => r.shippingCost > 0
+        ).length;
+        const best = this.testLabResults[0];
+        const bestLabel =
+          best.shippingCost > 0
+            ? `₹${best.shippingCost} live`
+            : `est ₹${best.estShipping || best.meta?.estInr || "?"}`;
         OptimizerUtils.showNotification(
-          `Test Lab: ${this.testLabResults.length} variants (estimated ₹ ranking)`,
+          `Test Lab: ${this.testLabResults.length} variants · best ${bestLabel}${
+            liveCount ? ` · ${liveCount} live checked` : ""
+          }`,
           "success"
         );
       } else {
@@ -1418,6 +1472,7 @@ Please share payment details and license key.`;
         {
           analysis: this.testLabAnalysis,
           baselineShipping: this.getBaselineShipping(),
+          phase2: this.testLabPhase2Meta,
         }
       );
       this.setupResultsEvents();

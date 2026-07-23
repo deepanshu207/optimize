@@ -425,7 +425,48 @@ const MeeshoAPI = {
         credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
         signal: AbortSignal.timeout(20000),
       });
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        const fallback = await fetch(
+          this.apiUrl(
+            "/catalogingapi/api/singleCatalogUpload/uploadSingleCatalogImages",
+          ),
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json, text/plain, */*",
+              "browser-id": this.cache.browserId || "",
+              "client-type": "d-web",
+              "client-package-version": "1.0.1",
+              identifier: this.cache.supplierTag || "",
+              "supplier-id": this.cache.supplierId
+                ? String(this.cache.supplierId)
+                : "",
+              ...(window.WEB_OPTIMIZER_MODE &&
+              (() => {
+                try {
+                  let c = window.WebSession
+                    ? WebSession.get().cookie
+                    : JSON.parse(
+                        localStorage.getItem("meesho_web_session_v1") || "{}"
+                      ).cookie;
+                  if (c && window.WebSession?.normalizeCookie) {
+                    c = WebSession.normalizeCookie(c);
+                  }
+                  return c ? { "x-meesho-cookie": c } : {};
+                } catch (e) {
+                  return {};
+                }
+              })()),
+            },
+            body: formData,
+            credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
+            signal: AbortSignal.timeout(20000),
+          }
+        );
+        if (!fallback.ok) return null;
+        const fb = await fallback.json();
+        return fb.image || null;
+      }
       const result = await resp.json();
       console.log("📤 Image uploaded:", result.image);
       return result.image;

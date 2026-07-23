@@ -543,6 +543,15 @@ const OptimizerUI = {
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
     const liveCount = results.filter((r) => r.shippingCost > 0).length;
     const groupLabel = analysis.resolvedCategory || analysis.category || "auto";
+    const phase2 = options.phase2 || {};
+    const phase2Note =
+      phase2.verifiedCount > 0
+        ? ` · Phase 2: ${phase2.verifiedCount} live checked`
+        : phase2.framedCount > 0
+        ? ` · Phase 2: ${phase2.framedCount} ₹49 frames added`
+        : liveCount
+        ? ` · ${liveCount} live checked`
+        : "";
 
     let html = `
       <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
@@ -560,9 +569,7 @@ const OptimizerUI = {
             ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
             : ""
         }
-        <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants · ${groupLabel}${
-          liveCount ? ` · ${liveCount} live checked` : ""
-        }</div>
+        <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants · ${groupLabel}${phase2Note}</div>
         ${
           analysis.suggested
             ? `<div style="font-size:10px;color:#6b7280;margin-top:6px;">${analysis.suggested}${
