@@ -17,6 +17,13 @@ const WebSession = {
       MeeshoAPI.syncFromSession();
     }
     this.updateStatus();
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.cache.categories = null;
+      MeeshoAPI.syncFromSession();
+    }
+    if (window.meeshoOptimizer?.loadCategoryDropdown) {
+      window.meeshoOptimizer.loadCategoryDropdown();
+    }
     return next;
   },
 

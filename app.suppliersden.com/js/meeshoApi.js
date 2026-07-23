@@ -35,7 +35,13 @@ const MeeshoAPI = {
       else s = JSON.parse(localStorage.getItem("meesho_web_session_v1") || "{}");
     } catch (e) {}
     if (s.supplierId) this.cache.supplierId = parseInt(s.supplierId, 10) || s.supplierId;
-    if (s.browserId) this.cache.browserId = s.browserId;
+    if (s.browserId) {
+      try {
+        this.cache.browserId = decodeURIComponent(s.browserId);
+      } catch (e) {
+        this.cache.browserId = s.browserId;
+      }
+    }
     if (s.identifier) this.cache.supplierTag = s.identifier;
     if (s.price) this.cache.price = parseInt(s.price, 10) || 100;
   },
@@ -86,12 +92,32 @@ const MeeshoAPI = {
   },
 
   detectAllValues: function () {
-    this.cache.browserId = this.getCookie("browser_id") || "";
+    const cookieBrowser = this.getCookie("browser_id") || "";
+    if (cookieBrowser) {
+      this.cache.browserId = cookieBrowser;
+    } else if (window.WEB_OPTIMIZER_MODE) {
+      this.syncFromSession();
+    }
+
     const urlMatch = window.location.href.match(/\/cataloging\/([^\/]+)/);
-    if (urlMatch) this.cache.supplierTag = urlMatch[1];
-    this.cache.supplierId = this.detectSupplierId();
-    this.cache.categoryId = this.detectCategoryId();
-    this.cache.price = this.detectPrice();
+    if (urlMatch) {
+      this.cache.supplierTag = urlMatch[1];
+    } else if (window.WEB_OPTIMIZER_MODE) {
+      this.syncFromSession();
+    }
+
+    const detectedSupplier = this.detectSupplierId();
+    if (detectedSupplier) this.cache.supplierId = detectedSupplier;
+
+    if (!window.WEB_OPTIMIZER_MODE || !this.cache.price) {
+      const detectedPrice = this.detectPrice();
+      if (detectedPrice) this.cache.price = detectedPrice;
+    }
+
+    if (!this.cache.categoryId) {
+      this.cache.categoryId = this.detectCategoryId();
+    }
+
     console.log("🔍 Auto-detected:", this.cache);
   },
 
@@ -181,19 +207,19 @@ const MeeshoAPI = {
           resp.status,
           resp.statusText,
         );
-        return null;
-      }
-      const result = await resp.json();
-      if (result.items?.length > 0) {
-        const subCat = result.items.find((i) => i.type === "sub-sub-category");
-        if (subCat?.data) {
-          this.cache.categories = subCat.data.map((c) => ({
-            id: parseInt(c.id),
-            name: c.name,
-            parentName: c.parent_name,
-          }));
-          console.log("✅ Categories loaded:", this.cache.categories.length);
-          return this.cache.categories;
+      } else {
+        const result = await resp.json();
+        if (result.items?.length > 0) {
+          const subCat = result.items.find((i) => i.type === "sub-sub-category");
+          if (subCat?.data) {
+            this.cache.categories = subCat.data.map((c) => ({
+              id: parseInt(c.id),
+              name: c.name,
+              parentName: c.parent_name,
+            }));
+            console.log("✅ Categories loaded:", this.cache.categories.length);
+            return this.cache.categories;
+          }
         }
       }
     } catch (e) {

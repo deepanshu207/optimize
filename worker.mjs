@@ -39,6 +39,9 @@ async function proxyMeesho(request) {
     if (value) headers.set(name, value);
   }
 
+  headers.set("origin", MEESHO_ORIGIN);
+  headers.set("referer", MEESHO_ORIGIN + "/");
+
   const cookie = request.headers.get("x-meesho-cookie");
   if (cookie) headers.set("cookie", cookie);
 
