@@ -2,6 +2,17 @@
 
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
+  // Tuned for lowest Meesho shipping tiers (₹49–50): square/tall canvas + white mat + ~40–50KB JPEG
+  LOW_SHIPPING_FRAMED_PROFILES: [
+    { id: "square_46", layout: "square", size: 1024, coverage: 0.6, targetKb: 46 },
+    { id: "square_48", layout: "square", size: 1024, coverage: 0.58, targetKb: 48 },
+    { id: "square_50", layout: "square", size: 1024, coverage: 0.62, targetKb: 50 },
+    { id: "square_44", layout: "square", size: 1024, coverage: 0.55, targetKb: 44 },
+    { id: "tall_48", layout: "tall", targetKb: 48 },
+    { id: "tall_50", layout: "tall", targetKb: 50 },
+    { id: "tall_46", layout: "tall", targetKb: 46 },
+    { id: "square_42", layout: "square", size: 1024, coverage: 0.57, targetKb: 42 },
+  ],
   _initialized: false,
   endpoints: {
     // Meesho routes are in flux: prefer /api/cataloging/* and fallback to older /catalogingapi/api/*
@@ -736,118 +747,241 @@ const MeeshoAPI = {
     });
   },
 
-  // White mat + light inner border + 3 stickers — often lowest shipping tier (e.g. ₹49)
-  generateFramedVariation: async function (originalBlob, seed) {
+  // Low-shipping framed style: white mat, scaled product, blue border, ~42-50KB JPEG (₹49 tier)
+  compressCanvasToKb: async function (canvas, targetKb) {
+    const targetBytes = targetKb * 1024;
+    let lo = 0.32;
+    let hi = 0.92;
+    let best = null;
+    for (let i = 0; i < 14; i++) {
+      const q = (lo + hi) / 2;
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/jpeg", q);
+      });
+      if (!blob) break;
+      if (blob.size <= targetBytes) {
+        best = { blob, q };
+        lo = q;
+      } else {
+        hi = q;
+      }
+    }
+    if (!best) {
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.45);
+      });
+      best = { blob, q: 0.45 };
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(best.blob);
+    });
+    return {
+      blob: best.blob,
+      dataUrl,
+      quality: best.q,
+      kb: Math.ceil(best.blob.size / 1024),
+    };
+  },
+
+  isTallPortrait: function (img) {
+    return img.height / img.width >= 1.2;
+  },
+
+  dataUrlFromCanvas: function (canvas, quality) {
+    return canvas.toDataURL("image/jpeg", quality ?? 0.82);
+  },
+
+  drawBlueProductFrame: function (ctx, px, py, dw, dh, canvasSize) {
+    const blues = ["#add8e6", "#b8d4e8", "#a8cce8", "#9ec5e8"];
+    ctx.strokeStyle = blues[Math.floor(Math.random() * blues.length)];
+    ctx.lineWidth = Math.max(3, Math.round(canvasSize * 0.004));
+    ctx.strokeRect(px - 2, py - 2, dw + 4, dh + 4);
+  },
+
+  addLowShippingBadges: async function (ctx, px, py, dw, dh, seed) {
+    const badgeNums = [3, 7, 12, 15, 18, 22];
+    const size = Math.max(48, Math.round(Math.min(dw, dh) * 0.2));
+    const inset = Math.max(4, Math.round(size * 0.08));
+    const slots = [
+      { x: px + inset, y: py + inset },
+      { x: px + dw - size - inset, y: py + inset },
+      { x: px + inset, y: py + dh - size - inset },
+    ];
+    const placements = [];
+    const used = new Set();
+    for (let i = 0; i < 3; i++) {
+      let num = badgeNums[(seed + i * 2) % badgeNums.length];
+      while (used.has(num)) num = badgeNums[(num + 1) % badgeNums.length];
+      used.add(num);
+      const p = { num, size, x: slots[i].x, y: slots[i].y };
+      placements.push(p);
+      try {
+        const badge = await this.loadBadge(num);
+        if (badge) ctx.drawImage(badge, p.x, p.y, size, size);
+      } catch (e) {}
+    }
+    return placements;
+  },
+
+  buildSquareLowShippingCanvas: function (img, profile) {
+    const size = profile.size || 1024;
+    const coverage = profile.coverage || 0.6;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+
+    const scale = (size * coverage) / Math.max(img.width, img.height);
+    const dw = Math.round(img.width * scale);
+    const dh = Math.round(img.height * scale);
+    const px = Math.round((size - dw) / 2);
+    const py = Math.round((size - dh) / 2);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, px, py, dw, dh);
+    this.drawBlueProductFrame(ctx, px, py, dw, dh, size);
+
+    return { canvas, px, py, dw, dh, size, layout: "square" };
+  },
+
+  buildTallLowShippingCanvas: function (img) {
+    const outerW = 703;
+    const outerH = 1024;
+    const canvas = document.createElement("canvas");
+    canvas.width = outerW;
+    canvas.height = outerH;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, outerW, outerH);
+
+    const marginX = Math.round(outerW * 0.07);
+    const marginY = Math.round(outerH * 0.05);
+    const areaW = outerW - marginX * 2;
+    const areaH = outerH - marginY * 2;
+    const scale = Math.min(areaW / img.width, areaH / img.height) * 0.92;
+    const dw = Math.round(img.width * scale);
+    const dh = Math.round(img.height * scale);
+    const px = Math.round((outerW - dw) / 2);
+    const py = Math.round((outerH - dh) / 2);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, px, py, dw, dh);
+    this.drawBlueProductFrame(ctx, px, py, dw, dh, outerW);
+
+    return { canvas, px, py, dw, dh, size: outerW, layout: "tall" };
+  },
+
+  buildLowShippingFramedLayers: async function (img, profile, seed) {
+    const useTall =
+      profile.layout === "tall" ||
+      (profile.layout !== "square" && this.isTallPortrait(img));
+    const built = useTall
+      ? this.buildTallLowShippingCanvas(img)
+      : this.buildSquareLowShippingCanvas(img, profile);
+
+    const { canvas, px, py, dw, dh } = built;
+    const noStickersCanvas = document.createElement("canvas");
+    noStickersCanvas.width = canvas.width;
+    noStickersCanvas.height = canvas.height;
+    noStickersCanvas.getContext("2d").drawImage(canvas, 0, 0);
+    const noStickers = this.dataUrlFromCanvas(noStickersCanvas);
+
+    const fullCtx = canvas.getContext("2d");
+    const badgePlacements = await this.addLowShippingBadges(
+      fullCtx,
+      px,
+      py,
+      dw,
+      dh,
+      seed,
+    );
+    const full = this.dataUrlFromCanvas(canvas);
+
+    const productOnlyCanvas = document.createElement("canvas");
+    productOnlyCanvas.width = canvas.width;
+    productOnlyCanvas.height = canvas.height;
+    const pCtx = productOnlyCanvas.getContext("2d");
+    pCtx.fillStyle = "#ffffff";
+    pCtx.fillRect(0, 0, productOnlyCanvas.width, productOnlyCanvas.height);
+    pCtx.drawImage(img, px, py, dw, dh);
+    const productOnly = this.dataUrlFromCanvas(productOnlyCanvas);
+
+    const noBorderCanvas = document.createElement("canvas");
+    noBorderCanvas.width = dw;
+    noBorderCanvas.height = dh;
+    const nbCtx = noBorderCanvas.getContext("2d");
+    nbCtx.drawImage(img, 0, 0, dw, dh);
+    if (badgePlacements.length) {
+      const shifted = badgePlacements.map((p) => ({
+        num: p.num,
+        size: p.size,
+        x: p.x - px,
+        y: p.y - py,
+      }));
+      await this.addBadges(nbCtx, dw, dh, 0, 0, shifted);
+    }
+    const noBorder = this.dataUrlFromCanvas(noBorderCanvas);
+
+    return {
+      canvas,
+      layers: { full, noStickers, noBorder, productOnly },
+      meta: {
+        layout: built.layout,
+        profileId: profile.id,
+        targetKb: profile.targetKb,
+        coverage: profile.coverage,
+        canvasW: canvas.width,
+        canvasH: canvas.height,
+        productW: dw,
+        productH: dh,
+        style: "framed_low",
+      },
+    };
+  },
+
+  generateFramedVariation: async function (originalBlob, seed, profile) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const objectUrl = URL.createObjectURL(originalBlob);
       img.onload = async () => {
         URL.revokeObjectURL(objectUrl);
         try {
-          const w = img.width;
-          const h = img.height;
-          const quality = 0.75 + Math.random() * 0.15;
-          const outerWhite = 35 + Math.floor(Math.random() * 20);
-          const innerBlue = 12 + Math.floor(Math.random() * 10);
-          const frame = outerWhite + innerBlue;
-          const finalW = w + frame * 2;
-          const finalH = h + frame * 2;
-          const blueColors = ["#b8d4e8", "#a8cce8", "#add8e6", "#9ec5e8"];
-          const innerColor =
-            blueColors[Math.floor(Math.random() * blueColors.length)];
+          const profiles = this.LOW_SHIPPING_FRAMED_PROFILES;
+          const chosen =
+            profile ||
+            profiles[Math.abs(seed) % profiles.length] ||
+            profiles[0];
 
-          const productCanvas = document.createElement("canvas");
-          productCanvas.width = w;
-          productCanvas.height = h;
-          const productCtx = productCanvas.getContext("2d");
-          productCtx.drawImage(img, 0, 0);
-          const productOnly = productCanvas.toDataURL("image/jpeg", quality);
-
-          const canvas = document.createElement("canvas");
-          canvas.width = finalW;
-          canvas.height = finalH;
-          const ctx = canvas.getContext("2d");
-
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, finalW, finalH);
-          ctx.fillStyle = innerColor;
-          ctx.fillRect(
-            outerWhite,
-            outerWhite,
-            finalW - outerWhite * 2,
-            finalH - outerWhite * 2,
+          const built = await this.buildLowShippingFramedLayers(
+            img,
+            chosen,
+            seed,
           );
-          ctx.drawImage(img, frame, frame, w, h);
-
-          const noStickersCanvas = document.createElement("canvas");
-          noStickersCanvas.width = finalW;
-          noStickersCanvas.height = finalH;
-          const noStickersCtx = noStickersCanvas.getContext("2d");
-          noStickersCtx.drawImage(canvas, 0, 0);
-          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
-            ImageGenerator.drawText(noStickersCtx, finalW, finalH, frame);
-          }
-          this.addNoise(noStickersCtx, finalW, finalH, seed);
-          const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
-
-          const badgeCount = 3;
-          const badgePlacements = await this.addBadges(
-            ctx,
-            finalW,
-            finalH,
-            frame,
-            badgeCount,
+          const compressed = await this.compressCanvasToKb(
+            built.canvas,
+            chosen.targetKb,
           );
+          built.layers.full = compressed.dataUrl;
 
-          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
-            ImageGenerator.drawText(ctx, finalW, finalH, frame);
-          }
-          this.addNoise(ctx, finalW, finalH, seed);
-          const full = canvas.toDataURL("image/jpeg", quality);
-
-          const noBorderCanvas = document.createElement("canvas");
-          noBorderCanvas.width = w;
-          noBorderCanvas.height = h;
-          const noBorderCtx = noBorderCanvas.getContext("2d");
-          noBorderCtx.drawImage(img, 0, 0);
-          if (badgePlacements.length) {
-            const shiftedPlacements = badgePlacements.map((p) => ({
-              num: p.num,
-              size: p.size,
-              x: Math.max(0, p.x - frame),
-              y: Math.max(0, p.y - frame),
-            }));
-            await this.addBadges(noBorderCtx, w, h, 0, 0, shiftedPlacements);
-          }
-          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
-            ImageGenerator.drawText(noBorderCtx, w, h, 0);
-          }
-          this.addNoise(noBorderCtx, w, h, seed + 1);
-          const noBorder = noBorderCanvas.toDataURL("image/jpeg", quality);
-
-          canvas.toBlob(
-            (blob) =>
-              resolve({
-                blob,
-                dataUrl: full,
-                pricingImageUrl: full,
-                variantStyle: "framed",
-                meta: {
-                  outerWhite,
-                  innerBlue,
-                  badgeCount,
-                  style: "framed",
-                },
-                layers: {
-                  full,
-                  noStickers,
-                  noBorder,
-                  productOnly,
-                },
-              }),
-            "image/jpeg",
-            quality,
-          );
+          resolve({
+            blob: compressed.blob,
+            dataUrl: compressed.dataUrl,
+            pricingImageUrl: compressed.dataUrl,
+            variantStyle: "framed",
+            meta: {
+              ...built.meta,
+              actualKb: compressed.kb,
+              jpegQuality: compressed.quality,
+            },
+            layers: built.layers,
+          });
         } catch (e) {
           reject(e);
         }
@@ -995,17 +1129,19 @@ const MeeshoAPI = {
 
     const framedExtras = [];
     if (typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE) {
-      const framedCount = Math.min(count, 20);
-      for (let i = 1; i <= framedCount; i++) {
+      const profiles = this.LOW_SHIPPING_FRAMED_PROFILES;
+      for (let i = 0; i < profiles.length; i++) {
         if (shouldStopFn && shouldStopFn()) break;
         try {
+          const profile = profiles[i];
           const variation = await this.generateFramedVariation(
             originalBlob,
-            20000 + i,
+            30000 + i,
+            profile,
           );
           if (!variation?.dataUrl) continue;
           framedExtras.push({
-            name: "Framed-" + i,
+            name: profile.id.replace(/_/g, "-"),
             dataUrl: variation.dataUrl,
             layers: variation.layers,
             pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
@@ -1016,7 +1152,7 @@ const MeeshoAPI = {
             localOnly: true,
           });
         } catch (e) {
-          console.error("Framed variation", i, "failed:", e);
+          console.error("Framed variation", profiles[i]?.id, "failed:", e);
         }
       }
     }
