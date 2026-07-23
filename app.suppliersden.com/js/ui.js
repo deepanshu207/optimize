@@ -364,17 +364,21 @@ const OptimizerUI = {
                 }
                 <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants</div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:320px;overflow-y:auto;">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
         `;
 
-    results.slice(0, 20).forEach((r, i) => {
+    results.forEach((r, i) => {
       const isBest = i === 0 && r.shippingCost > 0;
       const priceLabel =
         r.shippingCost > 0 ? "₹" + r.shippingCost : manualMode ? "—" : "Ready";
       const savings =
         baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
+      const canEdit = !!(r.layers && r.layers.full);
+      const edited =
+        r.editFlags?.borderRemoved || r.editFlags?.stickersRemoved;
+      const vid = r.variantId || "var-" + i;
       html += `
-                <div class="result-card" data-i="${i}" style="background:${
+                <div class="result-card" data-variant-id="${vid}" style="background:${
                   isBest ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)"
                 };border:1px solid ${
         isBest ? "#10b981" : "rgba(255,255,255,0.1)"
@@ -384,11 +388,21 @@ const OptimizerUI = {
                         ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">🏆 BEST</div>'
                         : ""
                     }
+                    <span class="result-edit-badge" data-variant-id="${vid}" style="display:${
+        edited ? "block" : "none"
+      };position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">✂️</span>
                     <img src="${
                       r.imageUrl
-                    }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
+                    }" class="result-img" data-variant-id="${vid}" title="${
+        canEdit ? "Tap to remove border / stickers" : ""
+      }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
         isBest ? "4px" : "0"
-      };" loading="lazy">
+      };cursor:${canEdit ? "pointer" : "default"};" loading="lazy">
+                    ${
+                      canEdit
+                        ? '<div style="font-size:9px;color:#6b7280;margin-bottom:2px;">Tap image to edit</div>'
+                        : ""
+                    }
                     <div class="result-price-label" style="font-size:14px;font-weight:700;color:${
                       isBest ? "#10b981" : "black"
                     };">${priceLabel}</div>
@@ -399,14 +413,14 @@ const OptimizerUI = {
                     }
                     ${
                       manualMode
-                        ? `<input type="number" class="manual-price-input opt-input" data-i="${i}" value="${
+                        ? `<input type="number" class="manual-price-input opt-input" data-variant-id="${vid}" value="${
                             r.shippingCost > 0 ? r.shippingCost : ""
                           }" min="0" max="999" placeholder="₹" style="width:100%;margin-top:4px;padding:4px;font-size:12px;text-align:center;">`
                         : ""
                     }
                     <div style="display:flex;gap:4px;margin-top:4px;">
-                        <button class="dl-btn" data-i="${i}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-                        <button class="apply-btn" data-i="${i}" style="flex:1;background:${
+                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
+                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
         isBest ? "#10b981" : "rgba(255,255,255,0.1)"
       };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
                     </div>

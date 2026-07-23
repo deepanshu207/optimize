@@ -1,7 +1,7 @@
 // Meesho API Integration v7.0.0 - Enhanced Variation & Shipping Logic
 
 const MeeshoAPI = {
-  MAX_RESULT_VARIANTS: 20,
+  MAX_RESULT_VARIANTS: 200,
   _initialized: false,
   endpoints: {
     // Meesho routes are in flux: prefer /api/cataloging/* and fallback to older /catalogingapi/api/*
@@ -546,6 +546,8 @@ const MeeshoAPI = {
           const result = {
             name: `Var-${attempt}`,
             dataUrl: variation.dataUrl,
+            layers: variation.layers,
+            pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
             shippingCost: shipping,
             duplicatePid: pid,
             isVerified: true,
@@ -576,9 +578,14 @@ const MeeshoAPI = {
 
     results.sort((a, b) => a.shippingCost - b.shippingCost);
 
+    const resultLimit = Math.min(
+      Math.max(parseInt(maxAttempts, 10) || this.MAX_RESULT_VARIANTS, 1),
+      this.MAX_RESULT_VARIANTS,
+    );
+
     return {
       success: results.length > 0,
-      results: results.slice(0, this.MAX_RESULT_VARIANTS),
+      results: results.slice(0, resultLimit),
       bestResult,
       targetReached: bestResult?.shippingCost <= targetShipping,
       attempts: attempt,
@@ -595,82 +602,99 @@ const MeeshoAPI = {
       img.onload = async () => {
         URL.revokeObjectURL(objectUrl);
         try {
-        const w = img.width;
-        const h = img.height;
+          const w = img.width;
+          const h = img.height;
+          const quality = 0.75 + Math.random() * 0.15;
 
-        // Random border 20-80px
-        const border = 20 + Math.floor(Math.random() * 60);
-        const finalW = w + border * 2;
-        const finalH = h + border * 2;
+          const productCanvas = document.createElement("canvas");
+          productCanvas.width = w;
+          productCanvas.height = h;
+          const productCtx = productCanvas.getContext("2d");
+          productCtx.drawImage(img, 0, 0);
+          const productOnly = productCanvas.toDataURL("image/jpeg", quality);
 
-        const canvas = document.createElement("canvas");
-        canvas.width = finalW;
-        canvas.height = finalH;
-        const ctx = canvas.getContext("2d");
+          const border = 20 + Math.floor(Math.random() * 60);
+          const finalW = w + border * 2;
+          const finalH = h + border * 2;
 
-        // Random gradient background
-        const colors = [
-          "#e74c3c",
-          "#3498db",
-          "#2ecc71",
-          "#f39c12",
-          "#9b59b6",
-          "#1abc9c",
-          "#e67e22",
-          "#16a085",
-          "#ff5722",
-          "#673ab7",
-          "#4caf50",
-          "#03a9f4",
-          "#e91e63",
-          "#8bc34a",
-          "#ff9800",
-          "#00bcd4",
-        ];
-        const c1 = colors[Math.floor(Math.random() * colors.length)];
-        const c2 = colors[Math.floor(Math.random() * colors.length)];
-        const gradType = Math.floor(Math.random() * 4);
+          const canvas = document.createElement("canvas");
+          canvas.width = finalW;
+          canvas.height = finalH;
+          const ctx = canvas.getContext("2d");
 
-        if (gradType === 0) {
-          ctx.fillStyle = c1;
-        } else {
-          let grad;
-          if (gradType === 1) grad = ctx.createLinearGradient(0, 0, finalW, 0);
-          else if (gradType === 2)
-            grad = ctx.createLinearGradient(0, 0, 0, finalH);
-          else grad = ctx.createLinearGradient(0, 0, finalW, finalH);
-          grad.addColorStop(0, c1);
-          grad.addColorStop(1, c2);
-          ctx.fillStyle = grad;
-        }
-        ctx.fillRect(0, 0, finalW, finalH);
+          const colors = [
+            "#e74c3c",
+            "#3498db",
+            "#2ecc71",
+            "#f39c12",
+            "#9b59b6",
+            "#1abc9c",
+            "#e67e22",
+            "#16a085",
+            "#ff5722",
+            "#673ab7",
+            "#4caf50",
+            "#03a9f4",
+            "#e91e63",
+            "#8bc34a",
+            "#ff9800",
+            "#00bcd4",
+          ];
+          const c1 = colors[Math.floor(Math.random() * colors.length)];
+          const c2 = colors[Math.floor(Math.random() * colors.length)];
+          const gradType = Math.floor(Math.random() * 4);
 
-        // Draw image
-        ctx.drawImage(img, border, border, w, h);
+          if (gradType === 0) {
+            ctx.fillStyle = c1;
+          } else {
+            let grad;
+            if (gradType === 1) grad = ctx.createLinearGradient(0, 0, finalW, 0);
+            else if (gradType === 2)
+              grad = ctx.createLinearGradient(0, 0, 0, finalH);
+            else grad = ctx.createLinearGradient(0, 0, finalW, finalH);
+            grad.addColorStop(0, c1);
+            grad.addColorStop(1, c2);
+            ctx.fillStyle = grad;
+          }
+          ctx.fillRect(0, 0, finalW, finalH);
+          ctx.drawImage(img, border, border, w, h);
 
-        // Add 2-3 badges (50-200px)
-        const badgeCount = 2 + Math.floor(Math.random() * 2);
-        await this.addBadges(ctx, finalW, finalH, border, badgeCount);
+          const noStickersCanvas = document.createElement("canvas");
+          noStickersCanvas.width = finalW;
+          noStickersCanvas.height = finalH;
+          const noStickersCtx = noStickersCanvas.getContext("2d");
+          noStickersCtx.drawImage(canvas, 0, 0);
 
-        // Optional custom text overlay (from ImageGenerator settings)
-        if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
-          ImageGenerator.drawText(ctx, finalW, finalH, border);
-        }
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(noStickersCtx, finalW, finalH, border);
+          }
+          this.addNoise(noStickersCtx, finalW, finalH, seed);
+          const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
-        // Add noise
-        this.addNoise(ctx, finalW, finalH, seed);
+          const badgeCount = 2 + Math.floor(Math.random() * 2);
+          await this.addBadges(ctx, finalW, finalH, border, badgeCount);
 
-        const quality = 0.75 + Math.random() * 0.15;
+          if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+            ImageGenerator.drawText(ctx, finalW, finalH, border);
+          }
+          this.addNoise(ctx, finalW, finalH, seed);
+          const full = canvas.toDataURL("image/jpeg", quality);
 
-        canvas.toBlob(
-          (blob) =>
-            resolve({
-              blob,
-              dataUrl: canvas.toDataURL("image/jpeg", quality),
-            }),
-          "image/jpeg",
-          quality,
-        );
+          canvas.toBlob(
+            (blob) =>
+              resolve({
+                blob,
+                dataUrl: full,
+                pricingImageUrl: full,
+                layers: {
+                  full,
+                  noStickers,
+                  productOnly,
+                },
+              }),
+            "image/jpeg",
+            quality,
+          );
         } catch (e) {
           reject(e);
         }
@@ -681,6 +705,16 @@ const MeeshoAPI = {
       };
       img.src = objectUrl;
     });
+  },
+
+  resolveDisplayUrl: function (result) {
+    if (!result) return "";
+    const layers = result.layers;
+    const flags = result.editFlags || {};
+    if (!layers) return result.imageUrl || result.dataUrl || "";
+    if (flags.borderRemoved && layers.productOnly) return layers.productOnly;
+    if (flags.stickersRemoved && layers.noStickers) return layers.noStickers;
+    return layers.full || result.pricingImageUrl || result.imageUrl || "";
   },
 
   // Add badges 50-200px
@@ -751,8 +785,10 @@ const MeeshoAPI = {
     onProgress,
     shouldStopFn,
   ) {
-    const limit = this.MAX_RESULT_VARIANTS;
-    const count = Math.min(Math.max(parseInt(maxCount, 10) || limit, 1), limit);
+    const count = Math.min(
+      Math.max(parseInt(maxCount, 10) || 20, 1),
+      this.MAX_RESULT_VARIANTS,
+    );
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
       await ImageGenerator.preloadBadges();
@@ -770,6 +806,8 @@ const MeeshoAPI = {
         results.push({
           name: "Var-" + i,
           dataUrl: variation.dataUrl,
+          layers: variation.layers,
+          pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
           shippingCost: 0,
           isVerified: false,
           localOnly: true,
@@ -807,7 +845,7 @@ const MeeshoAPI = {
 
     return {
       success: results.length > 0,
-      results: results.slice(0, limit),
+      results: results.slice(0, count),
       bestResult: results[0] || null,
       targetReached: false,
       attempts: results.length,

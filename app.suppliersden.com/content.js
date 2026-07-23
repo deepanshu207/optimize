@@ -1182,13 +1182,9 @@ Please share payment details and license key.`;
       }
 
       if (result.success && result.results.length > 0) {
-        this.currentResults = result.results.map((r) => ({
-          name: r.name,
-          imageUrl: r.dataUrl,
-          shippingCost: r.shippingCost || 0,
-          isVerified: !r.localOnly,
-          duplicatePid: r.duplicatePid,
-        }));
+        this.currentResults = result.results.map((r, i) =>
+          this.mapResultFromApi(r, i)
+        );
 
         if (result.localOnly) {
           OptimizerUtils.showNotification(
@@ -1609,6 +1605,165 @@ Please share payment details and license key.`;
     };
   }
 
+  mapResultFromApi(r, index) {
+    const variantId =
+      r.variantId || `var-${index + 1}-${Math.random().toString(36).slice(2, 7)}`;
+    const layers = r.layers || null;
+    const pricingImageUrl = r.pricingImageUrl || r.dataUrl || r.imageUrl || "";
+    const editFlags = r.editFlags || {
+      borderRemoved: false,
+      stickersRemoved: false,
+    };
+    const row = {
+      variantId,
+      name: r.name || `Var-${index + 1}`,
+      pricingImageUrl,
+      layers,
+      editFlags,
+      shippingCost: r.shippingCost || 0,
+      isVerified: r.isVerified ?? !r.localOnly,
+      duplicatePid: r.duplicatePid,
+      manualPrice: !!r.manualPrice,
+      uploadedUrl: r.uploadedUrl,
+      savings: r.savings,
+      isRealPrice: r.isRealPrice,
+    };
+    row.imageUrl =
+      typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl
+        ? MeeshoAPI.resolveDisplayUrl(row)
+        : pricingImageUrl;
+    return row;
+  }
+
+  setVariantEdits(variantId, editFlags) {
+    const row = this.currentResults.find((r) => r.variantId === variantId);
+    if (!row?.layers) return;
+
+    row.editFlags = {
+      borderRemoved: !!editFlags.borderRemoved,
+      stickersRemoved: !!editFlags.stickersRemoved,
+    };
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+      row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+    }
+
+    if (this._editingVariantId === variantId) {
+      this.renderVariantEditorPanel(row);
+    } else {
+      this.refreshVariantCard(row);
+    }
+  }
+
+  refreshVariantCard(row) {
+    const img = document.querySelector(
+      `.result-img[data-variant-id="${row.variantId}"]`
+    );
+    if (img) img.src = row.imageUrl;
+    const badge = document.querySelector(
+      `.result-edit-badge[data-variant-id="${row.variantId}"]`
+    );
+    if (badge) {
+      const edited =
+        row.editFlags?.borderRemoved || row.editFlags?.stickersRemoved;
+      badge.style.display = edited ? "block" : "none";
+    }
+  }
+
+  closeVariantEditor() {
+    const panel = document.getElementById("variant-edit-panel");
+    if (panel) panel.style.display = "none";
+    this._editingVariantId = null;
+  }
+
+  renderVariantEditorPanel(row) {
+    const panel = document.getElementById("variant-edit-panel");
+    if (!panel || !row) return;
+
+    const preview = panel.querySelector("#variant-edit-preview");
+    const borderCb = panel.querySelector("#variant-edit-no-border");
+    const stickerCb = panel.querySelector("#variant-edit-no-stickers");
+    const priceNote = panel.querySelector("#variant-edit-price-note");
+    const title = panel.querySelector("#variant-edit-title");
+
+    if (preview) preview.src = row.imageUrl;
+    if (borderCb) borderCb.checked = !!row.editFlags?.borderRemoved;
+    if (stickerCb) stickerCb.checked = !!row.editFlags?.stickersRemoved;
+    if (title) title.textContent = row.name || "Variant";
+    if (priceNote) {
+      priceNote.textContent =
+        row.shippingCost > 0
+          ? `Shipping ₹${row.shippingCost} is unchanged — you tested the bordered version on Meesho.`
+          : "Shipping price is unchanged — this only affects the image you download.";
+    }
+  }
+
+  ensureVariantEditorPanel() {
+    let panel = document.getElementById("variant-edit-panel");
+    if (panel) return panel;
+
+    panel = document.createElement("div");
+    panel.id = "variant-edit-panel";
+    panel.style.cssText =
+      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
+    panel.innerHTML = `
+      <div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,0.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <strong id="variant-edit-title" style="font-size:15px;">Variant</strong>
+          <button type="button" id="variant-edit-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
+        </div>
+        <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
+        <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+          <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
+          Remove stickers / badges
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;">
+          <input type="checkbox" id="variant-edit-no-border" style="width:18px;height:18px;">
+          Remove border (clean product image)
+        </label>
+        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. Use these options for a cleaner final upload.</p>
+        <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    panel.querySelector("#variant-edit-close").onclick = () =>
+      this.closeVariantEditor();
+    panel.querySelector("#variant-edit-done").onclick = () =>
+      this.closeVariantEditor();
+    panel.onclick = (e) => {
+      if (e.target === panel) this.closeVariantEditor();
+    };
+
+    const onEditChange = () => {
+      const id = this._editingVariantId;
+      if (!id) return;
+      this.setVariantEdits(id, {
+        stickersRemoved: panel.querySelector("#variant-edit-no-stickers").checked,
+        borderRemoved: panel.querySelector("#variant-edit-no-border").checked,
+      });
+    };
+    panel.querySelector("#variant-edit-no-stickers").onchange = onEditChange;
+    panel.querySelector("#variant-edit-no-border").onchange = onEditChange;
+
+    return panel;
+  }
+
+  openVariantEditor(variantId) {
+    const row = this.currentResults.find((r) => r.variantId === variantId);
+    if (!row?.layers) {
+      OptimizerUtils.showNotification(
+        "Layer edit not available for this variant",
+        "info"
+      );
+      return;
+    }
+    this._editingVariantId = variantId;
+    this.ensureVariantEditorPanel();
+    this.renderVariantEditorPanel(row);
+    document.getElementById("variant-edit-panel").style.display = "flex";
+  }
+
   refreshResultsView() {
     const resultsArea = document.getElementById("results-area");
     if (!resultsArea || !this.currentResults.length) return;
@@ -1619,8 +1774,8 @@ Please share payment details and license key.`;
     this.setupResultsEvents();
   }
 
-  setManualShipping(index, price) {
-    const row = this.currentResults[index];
+  setManualShipping(variantId, price) {
+    const row = this.currentResults.find((r) => r.variantId === variantId);
     if (!row) return;
     const value = parseInt(price, 10);
     if (!value || value <= 0) {
@@ -1667,8 +1822,7 @@ Please share payment details and license key.`;
   setupResultsEvents() {
     document.querySelectorAll(".manual-price-input").forEach((input) => {
       const apply = () => {
-        const i = parseInt(input.dataset.i, 10);
-        this.setManualShipping(i, input.value);
+        this.setManualShipping(input.dataset.variantId, input.value);
       };
       input.onchange = apply;
       input.onblur = apply;
@@ -1680,21 +1834,33 @@ Please share payment details and license key.`;
       };
     });
 
+    document.querySelectorAll(".result-img").forEach((img) => {
+      img.onclick = () => {
+        const variantId = img.dataset.variantId;
+        if (variantId) this.openVariantEditor(variantId);
+      };
+    });
+
     document.querySelectorAll(".dl-btn").forEach((btn) => {
       btn.onclick = () => {
-        const i = parseInt(btn.dataset.i);
-        this.downloadImage(this.currentResults[i]);
+        const row = this.currentResults.find(
+          (r) => r.variantId === btn.dataset.variantId
+        );
+        if (row) this.downloadImage(row);
       };
     });
 
     document.querySelectorAll(".apply-btn").forEach((btn) => {
       if (window.WEB_OPTIMIZER_MODE) btn.textContent = "Save";
       btn.onclick = () => {
-        const i = parseInt(btn.dataset.i);
+        const row = this.currentResults.find(
+          (r) => r.variantId === btn.dataset.variantId
+        );
+        if (!row) return;
         if (window.WEB_OPTIMIZER_MODE) {
-          this.downloadImage(this.currentResults[i]);
+          this.downloadImage(row);
         } else {
-          this.applyImage(this.currentResults[i]);
+          this.applyImage(row);
         }
       };
     });
