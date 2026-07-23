@@ -1613,7 +1613,7 @@ Please share payment details and license key.`;
       editFlags.cleanProduct ||
       editFlags.borderRemoved
     );
-  },
+  }
 
   normalizeEditFlags(editFlags) {
     const flags = editFlags || {};
@@ -1623,7 +1623,7 @@ Please share payment details and license key.`;
       borderOnlyRemoved: cleanProduct ? false : !!flags.borderOnlyRemoved,
       cleanProduct,
     };
-  },
+  }
 
   mapResultFromApi(r, index) {
     const variantId =
