@@ -751,12 +751,6 @@ Please share payment details and license key.`;
     if (window.WEB_OPTIMIZER_MODE && typeof WebSession !== "undefined") {
       WebSession.wireForm();
     }
-    if (window.WEB_OPTIMIZER_MODE && typeof TestLabSession !== "undefined") {
-      TestLabSession.wire();
-    }
-    window.addEventListener("testlab-session-ready", () => {
-      this.refreshTestLabSessionHint();
-    });
     this.loadCategoryDropdown();
 
     // Web-only: Live vs Test Lab tabs (Test Lab must not alter Live handlers)
@@ -1078,9 +1072,6 @@ Please share payment details and license key.`;
       if (isTest) {
         this.preloadTestLabModule();
         this.refreshTestLabSessionHint();
-        if (typeof TestLabSession !== "undefined") {
-          TestLabSession.applyToForm();
-        }
       }
 
       const resultsArea = document.getElementById("results-area");
@@ -1116,15 +1107,13 @@ Please share payment details and license key.`;
     if (!el) return;
     const phase2On = !!document.getElementById("test-lab-live-verify")?.checked;
     const sessionReady =
-      typeof TestLabSession !== "undefined"
-        ? TestLabSession.isReady()
-        : typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
+      typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
     let msg = "";
     if (window.TestLabOptimizer?.getSessionGuidance) {
       msg = window.TestLabOptimizer.getSessionGuidance(sessionReady, phase2On);
     } else if (phase2On && !sessionReady) {
       msg =
-        "Test Lab → Open Meesho login → Capture session to unlock Phase 2 live ₹.";
+        "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt.";
     } else if (sessionReady && phase2On) {
       msg = "Session ready — Phase 2 will live-check Meesho prices.";
     }
@@ -1144,7 +1133,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=30");
+          await import("/js/testLabBridge.mjs?v=24");
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {
@@ -1305,9 +1294,7 @@ Please share payment details and license key.`;
       10
     );
     const sessionReady =
-      typeof TestLabSession !== "undefined"
-        ? TestLabSession.isReady()
-        : typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
+      typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
     const liveCheckbox = document.getElementById("test-lab-live-verify");
 
     return {
@@ -1423,11 +1410,7 @@ Please share payment details and license key.`;
       let rawResults = result.results || [];
 
       if ((opts.liveVerify || opts.phase2Live) && rawResults.length) {
-        const testLabLiveReady =
-          typeof TestLabSession !== "undefined"
-            ? TestLabSession.isReady()
-            : typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
-        if (testLabLiveReady) {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.()) {
           if (window.TestLabOptimizer.runPhase2LiveHunt) {
             setProgress("Phase 2: hunting lowest live ₹ on Meesho…");
             const phase2 = await window.TestLabOptimizer.runPhase2LiveHunt(
@@ -1478,7 +1461,7 @@ Please share payment details and license key.`;
           }
         } else {
           OptimizerUtils.showNotification(
-            "Phase 2 skipped — connect Meesho session in Test Lab (Open login → Capture)",
+            "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)",
             "info"
           );
         }

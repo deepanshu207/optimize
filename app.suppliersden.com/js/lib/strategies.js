@@ -3,7 +3,7 @@
  * Runs in browser; ranks variants by estimated shipping ₹.
  */
 
-import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=30";
+import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=24";
 import {
   imageToWhiteCanvas,
   trimMargins,
@@ -18,9 +18,9 @@ import {
   measureWhiteRatio,
   MEESHO_COMPACT_COVERAGE,
   MEESHO_SQUARE_SIDE,
-} from "./canvas-utils.js?v=30";
-import { estimateImageShipping } from "./shipping.js?v=30";
-import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=30";
+} from "./canvas-utils.js?v=24";
+import { estimateImageShipping } from "./shipping.js?v=24";
+import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=24";
 
 const STUDIO_ULTRA = [14, 16, 18, 20, 22];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];

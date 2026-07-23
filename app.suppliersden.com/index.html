@@ -348,50 +348,6 @@
             <div class="opt-section">
               <div class="opt-section-title">🧪 Test Lab (category strategies)</div>
               <p class="test-lab-note">Aligned with Meesho 2026 guidelines: <strong>compact product (~65–70% of square)</strong>, pure white background, ≥1200×1200 px. Apparel shipping follows image bounding box — avoid spread flat-lay on kurtis/sarees. Home/electronics: optimize declared package size. <strong>Phase 2 live-checks</strong> real Meesho ₹ (recommended).</p>
-              <div class="opt-section" style="margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-                <div class="opt-section-title" style="margin-bottom:6px;">🔐 Meesho session (Phase 2 live ₹)</div>
-                <p class="session-hint" style="margin:0 0 8px;">Meesho blocks iframe login — use popup, then capture session back here (fields auto-fill).</p>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                  <button type="button" id="test-lab-open-meesho-login" class="session-toggle" style="background:#047857;color:#fff;border-color:#047857;">Open Meesho login</button>
-                  <a id="test-lab-capture-bookmarklet" href="#" onclick="return false;" title="Drag to bookmarks. After login on Meesho, click it to send session here." class="session-toggle" style="display:inline-block;text-decoration:none;background:#1d4ed8;color:#fff;border-color:#1d4ed8;padding:8px 12px;border-radius:8px;font-size:12px;">⬆ Capture session</a>
-                  <button type="button" id="test-lab-copy-capture-script" class="session-toggle">Copy console script</button>
-                </div>
-                <button type="button" id="test-lab-toggle-session" class="session-toggle" style="margin-bottom:8px;">Show session details</button>
-                <div id="test-lab-session-panel" class="collapsed">
-                  <div class="opt-row" style="margin-top:8px;">
-                    <div>
-                      <label class="opt-label" for="test-lab-session-supplier-id">Supplier ID</label>
-                      <input type="text" id="test-lab-session-supplier-id" class="opt-input" placeholder="auto-filled" autocomplete="off" readonly>
-                    </div>
-                    <div>
-                      <label class="opt-label" for="test-lab-session-browser-id">Browser ID</label>
-                      <input type="text" id="test-lab-session-browser-id" class="opt-input" placeholder="auto-filled" autocomplete="off" readonly>
-                    </div>
-                  </div>
-                  <div class="opt-row" style="margin-top:8px;">
-                    <div>
-                      <label class="opt-label" for="test-lab-session-identifier">Identifier</label>
-                      <input type="text" id="test-lab-session-identifier" class="opt-input" value="ytnlz" autocomplete="off">
-                    </div>
-                    <div>
-                      <label class="opt-label" for="test-lab-session-price">Price (₹)</label>
-                      <input type="number" id="test-lab-session-price" class="opt-input" value="100" min="1">
-                    </div>
-                  </div>
-                  <div style="margin-top:8px;">
-                    <label class="opt-label" for="test-lab-session-cookie">Cookie</label>
-                    <textarea id="test-lab-session-cookie" class="opt-input" rows="2" placeholder="Auto-filled by Capture session" style="resize:vertical;font-size:11px;" readonly></textarea>
-                  </div>
-                  <div style="margin-top:8px;">
-                    <label class="opt-label" for="test-lab-import-json">Or paste captured JSON</label>
-                    <textarea id="test-lab-import-json" class="opt-input" rows="2" placeholder='{"type":"meesho-testlab-session",...}' style="resize:vertical;font-size:11px;font-family:monospace;"></textarea>
-                    <button type="button" id="test-lab-import-session" class="session-toggle" style="margin-top:6px;">Import session JSON</button>
-                  </div>
-                  <button type="button" id="test-lab-save-session" class="generate-btn" style="margin-top:10px;padding:10px;font-size:13px;">Save session</button>
-                  <button type="button" id="test-lab-test-session" class="session-toggle" style="margin-top:8px;">Test live connection</button>
-                </div>
-                <div id="test-lab-session-status" class="session-status warn" style="margin-top:8px;">Connect Meesho below to unlock Phase 2 live ₹ checks</div>
-              </div>
               <div id="test-lab-session-hint" class="session-hint" style="margin-top:8px;display:none;"></div>
               <div class="opt-row" style="margin-top:10px;">
                 <div>
@@ -442,7 +398,7 @@
                 <input type="checkbox" id="test-lab-live-verify" style="width:18px;height:18px;" checked>
                 Phase 2: live Meesho hunt for lowest ₹ (auto when session set)
               </label>
-              <p class="session-hint" style="margin-top:6px;">Phase 1 ranks by estimated ₹. Phase 2 adds ₹49 framed variants and checks live Meesho prices when session is connected above.</p>
+              <p class="session-hint" style="margin-top:6px;">Phase 1 ranks by estimated ₹. Phase 2 adds ₹49 framed variants and checks live prices on Meesho when Supplier ID + Browser ID are saved.</p>
               <div id="test-lab-analysis" class="test-lab-note" style="display:none;margin-top:10px;"></div>
             </div>
           </div>
@@ -525,17 +481,16 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=30"></script>
-  <script src="/web-session.js?v=30"></script>
-  <script src="/js/test-lab-session-bridge.js?v=30"></script>
+  <script src="/js/meeshoCategories.js?v=24"></script>
+  <script src="/web-session.js?v=24"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=30"></script>
+  <script src="/js/meeshoApi.js?v=24"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=30"></script>
-  <script src="/content.js?v=30"></script>
-  <script src="/web-app.js?v=30"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=30"></script>
+  <script src="/js/ui.js?v=24"></script>
+  <script src="/content.js?v=24"></script>
+  <script src="/web-app.js?v=24"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=24"></script>
 </body>
 </html>
