@@ -320,7 +320,35 @@ class MeeshoShippingOptimizer {
     return this.currentShippingCost;
   }
 
+  mountEmbedded(root) {
+    this.embeddedRoot = root;
+    this.checkLicense().then(async () => {
+      if (typeof MeeshoAPI !== "undefined") {
+        MeeshoAPI.init();
+      }
+      root.innerHTML = OptimizerUI.createModalHTML(true);
+      this.setupMainEvents();
+      setTimeout(() => {
+        this.detectShipping();
+        const el = document.getElementById("current-shipping");
+        if (el) {
+          el.textContent = this.currentShippingCost
+            ? "₹" + this.currentShippingCost
+            : "Upload image to check";
+        }
+      }, 100);
+    });
+  }
+
   async openModal() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      const root = document.getElementById("optimizer-app");
+      if (root) {
+        this.mountEmbedded(root);
+        return;
+      }
+    }
+
     // Always re-check license before opening modal
     if (!window.WEB_OPTIMIZER_MODE) {
       chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
@@ -379,6 +407,10 @@ class MeeshoShippingOptimizer {
   }
 
   closeModal() {
+    if (window.WEB_OPTIMIZER_MODE && this.embeddedRoot) {
+      this.mountEmbedded(this.embeddedRoot);
+      return;
+    }
     if (this.modal) {
       this.modal.remove();
       this.modal = null;
@@ -490,9 +522,20 @@ Please share payment details and license key.`;
 
   setupMainEvents() {
     const closeBtn = document.getElementById("close-modal");
-    if (closeBtn) closeBtn.onclick = () => this.closeModal();
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        if (window.WEB_OPTIMIZER_MODE) {
+          this.mountEmbedded(this.embeddedRoot || document.getElementById("optimizer-app"));
+        } else {
+          this.closeModal();
+        }
+      };
+    }
 
     // Load categories dropdown
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.syncFromSession();
+    }
     this.loadCategoryDropdown();
 
     // Category selection
@@ -733,6 +776,18 @@ Please share payment details and license key.`;
     if (!this.isLicensed) {
       OptimizerUtils.showNotification("License required", "error");
       return;
+    }
+
+    if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.syncFromSession();
+      if (!MeeshoAPI.cache.supplierId) {
+        OptimizerUtils.showNotification(
+          "Save Meesho session first (Supplier ID + Browser ID)",
+          "error",
+        );
+        document.getElementById("session-panel")?.classList.remove("collapsed");
+        return;
+      }
     }
 
     // Check if category is selected
@@ -1222,7 +1277,11 @@ Please share payment details and license key.`;
     document.querySelectorAll(".apply-btn").forEach((btn) => {
       btn.onclick = () => {
         const i = parseInt(btn.dataset.i);
-        this.applyImage(this.currentResults[i]);
+        if (window.WEB_OPTIMIZER_MODE) {
+          this.downloadImage(this.currentResults[i]);
+        } else {
+          this.applyImage(this.currentResults[i]);
+        }
       };
     });
 
@@ -1237,14 +1296,23 @@ Please share payment details and license key.`;
 
     const applyBestBtn = document.getElementById("apply-best-btn");
     if (applyBestBtn) {
-      applyBestBtn.onclick = () => this.applyImage(this.currentResults[0]);
+      if (window.WEB_OPTIMIZER_MODE) {
+        applyBestBtn.textContent = `Download Best ₹${this.currentResults[0]?.shippingCost || ""}`;
+        applyBestBtn.onclick = () => this.downloadImage(this.currentResults[0]);
+      } else {
+        applyBestBtn.onclick = () => this.applyImage(this.currentResults[0]);
+      }
     }
 
     const restartBtn = document.getElementById("restart-btn");
     if (restartBtn) {
       restartBtn.onclick = () => {
-        this.closeModal();
-        setTimeout(() => this.openModal(), 200);
+        if (window.WEB_OPTIMIZER_MODE && this.embeddedRoot) {
+          this.mountEmbedded(this.embeddedRoot);
+        } else {
+          this.closeModal();
+          setTimeout(() => this.openModal(), 200);
+        }
       };
     }
   }
