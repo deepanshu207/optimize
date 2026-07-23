@@ -3,17 +3,17 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=23";
-import { loadImage } from "./lib/canvas-utils.js?v=23";
-import { blobToDataUrl } from "./lib/encoder.js?v=23";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=24";
+import { loadImage } from "./lib/canvas-utils.js?v=24";
+import { blobToDataUrl } from "./lib/encoder.js?v=24";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=23";
-import { getSessionGuidance } from "./lib/smart-plan.js?v=23";
+} from "./lib/shipping.js?v=24";
+import { getSessionGuidance } from "./lib/smart-plan.js?v=24";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -22,8 +22,10 @@ const JEWELLERY_RE =
   /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket/i;
 const FOOTWEAR_RE =
   /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti/i;
-const HOME_RE = /bed|bath|towel|rug|bean bag|bedding/i;
+const HOME_RE = /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container/i;
 const LINGERIE_RE = /babydoll|nightdress|nightsuit|bra|lingerie/i;
+const ELECTRONICS_RE =
+  /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter|bluetooth|speaker|watch|trimmer/i;
 
 const PHASE2_PROFILE_LIMIT = 16;
 const LIVE_VERIFY_DELAY_MS = 150;
@@ -34,6 +36,7 @@ export function categoryGroupFromSelection(sscatId, categoryName) {
   const name = String(categoryName || "");
   if (JEWELLERY_RE.test(name)) return "jewellery";
   if (FOOTWEAR_RE.test(name)) return "footwear";
+  if (ELECTRONICS_RE.test(name)) return "electronics";
   if (HOME_RE.test(name)) return "home";
   if (LINGERIE_RE.test(name)) return "lingerie";
   if (APPAREL_RE.test(name)) return "apparel";

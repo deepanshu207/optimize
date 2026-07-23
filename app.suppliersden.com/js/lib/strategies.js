@@ -3,7 +3,7 @@
  * Runs in browser; ranks variants by estimated shipping ₹.
  */
 
-import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=23";
+import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=24";
 import {
   imageToWhiteCanvas,
   trimMargins,
@@ -16,9 +16,11 @@ import {
   isTallPortrait,
   measureNearWhiteRatio,
   measureWhiteRatio,
-} from "./canvas-utils.js?v=23";
-import { estimateImageShipping } from "./shipping.js?v=23";
-import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=23";
+  MEESHO_COMPACT_COVERAGE,
+  MEESHO_SQUARE_SIDE,
+} from "./canvas-utils.js?v=24";
+import { estimateImageShipping } from "./shipping.js?v=24";
+import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=24";
 
 const STUDIO_ULTRA = [14, 16, 18, 20, 22];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];
@@ -48,10 +50,13 @@ async function variantFrom(canvas, blob, meta) {
   return v;
 }
 
-async function studioVariants(img, tiers, path, modeName, onProgress) {
-  const out = [];
-  let canvas = trimMargins(imageToWhiteCanvas(img), 0.02);
+async function studioVariants(img, tiers, path, modeName, onProgress, opts = {}) {
+  const side = opts.side ?? MEESHO_SQUARE_SIDE;
+  const coverage = opts.coverage ?? MEESHO_COMPACT_COVERAGE;
+  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
+  let canvas = fitSquare(trimmed, side, coverage);
   const wr = Math.max(measureNearWhiteRatio(canvas), measureWhiteRatio(canvas));
+  const out = [];
   for (let i = 0; i < tiers.length; i++) {
     const kb = tiers[i];
     if (onProgress) onProgress(`Studio · ${kb}KB`);
@@ -120,7 +125,11 @@ async function tallVariants(img, onProgress) {
 
 async function flatlayVariants(img, onProgress) {
   const out = [];
-  const sq = fitSquare(trimMargins(imageToWhiteCanvas(img), 0.02), 1024, 0.84);
+  const sq = fitSquare(
+    trimMargins(imageToWhiteCanvas(img), 0.02),
+    1024,
+    MEESHO_COMPACT_COVERAGE
+  );
   const wr = Math.max(measureNearWhiteRatio(sq), measureWhiteRatio(sq));
   for (const kb of FLATLAY_SLABS) {
     if (onProgress) onProgress(`Flat-Lay · ${kb}KB`);
@@ -242,9 +251,19 @@ export async function optimizeImage(img, options = {}) {
   for (const s of strategies) {
     onProgress(`Running ${strategyLabel(s)}…`);
     if (s === "studio_ultra") {
-      all.push(...(await studioVariants(img, STUDIO_ULTRA, "studio_ultra", "Studio Ultra", onProgress)));
+      all.push(
+        ...(await studioVariants(img, STUDIO_ULTRA, "studio_ultra", "Studio Ultra", onProgress, {
+          side: 1024,
+          coverage: 0.65,
+        }))
+      );
     } else if (s === "studio") {
-      all.push(...(await studioVariants(img, STUDIO_BALANCED, "studio", "Studio White", onProgress)));
+      all.push(
+        ...(await studioVariants(img, STUDIO_BALANCED, "studio", "Studio White", onProgress, {
+          side: MEESHO_SQUARE_SIDE,
+          coverage: MEESHO_COMPACT_COVERAGE,
+        }))
+      );
     } else if (s === "tall") {
       all.push(...(await tallVariants(img, onProgress)));
     } else if (s === "flatlay") {

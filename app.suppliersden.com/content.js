@@ -1133,7 +1133,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=23");
+          await import("/js/testLabBridge.mjs?v=24");
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {
