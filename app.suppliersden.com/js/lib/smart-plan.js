@@ -14,6 +14,124 @@
 export const TALL_ASPECT = 1.2;
 export const WIDE_COLLAGE_ASPECT = 1.35;
 
+export const CATEGORY_GROUP_LABELS = {
+  apparel: "Apparel / Kurti",
+  lingerie: "Lingerie / Bra",
+  footwear: "Footwear",
+  home: "Home & Kitchen",
+  electronics: "Electronics",
+  jewellery: "Jewellery",
+  general: "General",
+};
+
+/** Meesho sscat name/parent → strategy group (order matters — first match wins). */
+const CATEGORY_DETECT_RULES = [
+  {
+    id: "jewellery",
+    re: /jewel|ring|necklace|pendant|anklet|bracelet|bangle|locket|earring|mangalsutra|nose pin|toe ring|brooch/i,
+  },
+  {
+    id: "footwear",
+    re: /shoe|sandal|boot|slipper|bellies|flip.?flop|slider|jutti|footwear|sneaker|floaters|loafer|heel|jutti/i,
+  },
+  {
+    id: "electronics",
+    re: /phone|mobile|charger|cable|earphone|electronic|gadget|usb|power.?bank|adapter|bluetooth|speaker|trimmer|headphone|data cable|smartwatch|watch strap/i,
+  },
+  {
+    id: "home",
+    re: /bed|bath|towel|rug|bean bag|bedding|kitchen|cookware|container|curtain|pillow|cushion|mattress|bedsheet|home decor|storage|dinnerware|utensil/i,
+  },
+  {
+    id: "lingerie",
+    re: /babydoll|nightdress|nightsuit|night.?suit|bra|lingerie|panty|brief|innerwear|camisole|nighty|shapewear|maternity/i,
+  },
+  {
+    id: "apparel",
+    re: /kurti|kurta|saree|sari|dress|suit|gown|lehenga|dupatta|sharara|palazzo|ethnic|jumpsuit|top wear|bottomwear|tshirt|t.?shirt|shirt|jean|jegging|blouse|petticoat|fabric|sherwani|dhoti|salwar|churidar|legging|skirt|shorts|jacket|hoodie|sweater|cardigan|kurta set|co.?ord|western gown/i,
+  },
+];
+
+/**
+ * Detect strategy category group from Meesho category + optional image hints.
+ */
+export function detectCategoryGroup({
+  categoryName = "",
+  parentName = "",
+  imageAnalysis = null,
+} = {}) {
+  const combined = `${categoryName} ${parentName}`.trim();
+  let matchedId = null;
+
+  if (combined) {
+    for (const rule of CATEGORY_DETECT_RULES) {
+      if (rule.re.test(combined)) {
+        matchedId = rule.id;
+        break;
+      }
+    }
+  }
+
+  if (matchedId) {
+    const label = categoryName
+      ? `“${categoryName}”${parentName ? ` (${parentName})` : ""}`
+      : parentName;
+    return {
+      groupId: matchedId,
+      groupName: CATEGORY_GROUP_LABELS[matchedId],
+      confidence: "high",
+      source: "meesho_category",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: `Matched Meesho category ${label}`,
+    };
+  }
+
+  if (imageAnalysis?.collage) {
+    return {
+      groupId: "lingerie",
+      groupName: CATEGORY_GROUP_LABELS.lingerie,
+      confidence: "medium",
+      source: "image_wide",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: categoryName
+        ? `Wide image — guessed Lingerie (Meesho “${categoryName}” not mapped)`
+        : "Wide image — guessed Lingerie / Bra",
+    };
+  }
+
+  if (imageAnalysis?.tall) {
+    return {
+      groupId: "apparel",
+      groupName: CATEGORY_GROUP_LABELS.apparel,
+      confidence: "medium",
+      source: "image_tall",
+      meeshoCategory: categoryName || null,
+      meeshoParent: parentName || null,
+      reason: categoryName
+        ? `Tall portrait — guessed Apparel (Meesho “${categoryName}” not mapped)`
+        : "Tall portrait — guessed Apparel / Kurti",
+    };
+  }
+
+  return {
+    groupId: "general",
+    groupName: CATEGORY_GROUP_LABELS.general,
+    confidence: combined ? "low" : "low",
+    source: "default",
+    meeshoCategory: categoryName || null,
+    meeshoParent: parentName || null,
+    reason: categoryName
+      ? `Could not map Meesho “${categoryName}” — pick category group below if wrong`
+      : "No Meesho category selected — pick category group below",
+  };
+}
+
+export function categoryGroupLabel(groupId) {
+  return CATEGORY_GROUP_LABELS[groupId] || CATEGORY_GROUP_LABELS.general;
+}
+
 /** Category → preferred strategy keys (order = priority). */
 const CATEGORY_STRATEGIES = {
   jewellery: ["studio_ultra", "studio", "flatlay"],
