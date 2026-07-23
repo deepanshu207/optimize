@@ -1,6 +1,7 @@
 // Meesho API Integration v7.0.0 - Enhanced Variation & Shipping Logic
 
 const MeeshoAPI = {
+  MAX_RESULT_VARIANTS: 20,
   _initialized: false,
   endpoints: {
     // Meesho routes are in flux: prefer /api/cataloging/* and fallback to older /catalogingapi/api/*
@@ -405,7 +406,7 @@ const MeeshoAPI = {
 
     return {
       success: results.length > 0,
-      results: results.slice(0, 20),
+      results: results.slice(0, this.MAX_RESULT_VARIANTS),
       bestResult,
       targetReached: bestResult?.shippingCost <= targetShipping,
       attempts: attempt,
@@ -475,6 +476,11 @@ const MeeshoAPI = {
         // Add 2-3 badges (50-200px)
         const badgeCount = 2 + Math.floor(Math.random() * 2);
         await this.addBadges(ctx, finalW, finalH, border, badgeCount);
+
+        // Optional custom text overlay (from ImageGenerator settings)
+        if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
+          ImageGenerator.drawText(ctx, finalW, finalH, border);
+        }
 
         // Add noise
         this.addNoise(ctx, finalW, finalH, seed);
@@ -564,8 +570,14 @@ const MeeshoAPI = {
     onProgress,
     shouldStopFn,
   ) {
+    const limit = this.MAX_RESULT_VARIANTS;
+    const count = Math.min(Math.max(parseInt(maxCount, 10) || limit, 1), limit);
+
+    if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
+      await ImageGenerator.preloadBadges();
+    }
+
     const results = [];
-    const count = Math.min(maxCount, 30);
 
     for (let i = 1; i <= count; i++) {
       if (shouldStopFn && shouldStopFn()) break;
@@ -583,7 +595,7 @@ const MeeshoAPI = {
 
     return {
       success: results.length > 0,
-      results: results.slice(0, 20),
+      results: results.slice(0, limit),
       bestResult: results[0] || null,
       targetReached: false,
       attempts: results.length,

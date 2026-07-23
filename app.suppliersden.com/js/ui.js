@@ -348,7 +348,7 @@ const OptimizerUI = {
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:280px;overflow-y:auto;">
         `;
 
-    results.slice(0, 15).forEach((r, i) => {
+    results.slice(0, 20).forEach((r, i) => {
       const isBest = i === 0;
       html += `
                 <div style="background:${
