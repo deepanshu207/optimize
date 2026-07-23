@@ -1099,7 +1099,7 @@ Please share payment details and license key.`;
   async preloadTestLabModule() {
     if (window.TestLabOptimizer?.runTestLab) return true;
     try {
-      await import("/js/testLabBridge.mjs?v=20");
+      await import("/js/testLabBridge.mjs?v=21");
     } catch (e) {
       console.warn("Test Lab preload:", e);
     }
@@ -1267,7 +1267,7 @@ Please share payment details and license key.`;
       borderColor,
       liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
       phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      maxLiveVerify: 12,
+      maxLiveVerify: 16,
     };
   }
 
@@ -1347,6 +1347,8 @@ Please share payment details and license key.`;
 
       const result = await window.TestLabOptimizer.runTestLab(file, {
         ...opts,
+        // Keep full candidate pool when Phase 2 will live-verify (est filter can hide winners)
+        targetInr: opts.phase2Live ? null : opts.targetInr,
         onProgress: (msg) => {
           if (!this.shouldStop) setProgress(msg);
         },
@@ -1370,7 +1372,8 @@ Please share payment details and license key.`;
               rawResults,
               {
                 sscatId: opts.sscatId,
-                maxVerify: opts.maxLiveVerify || 12,
+                targetInr: opts.targetInr,
+                maxVerify: opts.maxLiveVerify || 16,
                 onProgress: (msg) => {
                   if (!this.shouldStop) setProgress(msg);
                 },
@@ -1385,7 +1388,9 @@ Please share payment details and license key.`;
             };
             if (phase2.bestLive?.shippingCost) {
               OptimizerUtils.showNotification(
-                `Phase 2 best live: ₹${phase2.bestLive.shippingCost} (${phase2.bestLive.name})`,
+                `Phase 2 best live: ₹${phase2.bestLive.shippingCost} (${phase2.bestLive.name})${
+                  phase2.targetReached ? " — target hit!" : ""
+                }`,
                 "success"
               );
             } else if (phase2.errors?.length) {
