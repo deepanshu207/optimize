@@ -7,6 +7,8 @@ class MeeshoShippingOptimizer {
     this.isProcessing = false;
     this.shouldStop = false;
     this.currentResults = [];
+    this.framedExtraResults = [];
+    this.showFramedExtras = false;
     this.variationCount = 6;
     this.isLicensed = false;
     this.originalImageUrl = null;
@@ -1031,6 +1033,8 @@ Please share payment details and license key.`;
     this.isProcessing = true;
     this.shouldStop = false;
     this.currentResults = [];
+    this.framedExtraResults = [];
+    this.showFramedExtras = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -1185,6 +1189,10 @@ Please share payment details and license key.`;
         this.currentResults = result.results.map((r, i) =>
           this.mapResultFromApi(r, i)
         );
+        this.framedExtraResults = (result.framedExtras || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 10000)
+        );
+        this.showFramedExtras = false;
 
         if (result.localOnly) {
           OptimizerUtils.showNotification(
@@ -1602,6 +1610,8 @@ Please share payment details and license key.`;
     return {
       manualMode: this.isManualShippingMode(),
       baselineShipping: this.getBaselineShipping(),
+      framedExtras: this.framedExtraResults,
+      showFramedExtras: this.showFramedExtras,
     };
   }
 
@@ -1637,6 +1647,8 @@ Please share payment details and license key.`;
       pricingImageUrl,
       layers,
       editFlags,
+      variantStyle: r.variantStyle || "standard",
+      meta: r.meta || null,
       shippingCost: r.shippingCost || 0,
       isVerified: r.isVerified ?? !r.localOnly,
       duplicatePid: r.duplicatePid,
@@ -1652,8 +1664,16 @@ Please share payment details and license key.`;
     return row;
   }
 
+  findResultRow(variantId) {
+    return (
+      this.currentResults.find((r) => r.variantId === variantId) ||
+      this.framedExtraResults.find((r) => r.variantId === variantId) ||
+      null
+    );
+  }
+
   setVariantEdits(variantId, editFlags) {
-    const row = this.currentResults.find((r) => r.variantId === variantId);
+    const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
     row.editFlags = this.normalizeEditFlags(editFlags);
@@ -1806,7 +1826,7 @@ Please share payment details and license key.`;
   }
 
   openVariantEditor(variantId) {
-    const row = this.currentResults.find((r) => r.variantId === variantId);
+    const row = this.findResultRow(variantId);
     if (!row?.layers) {
       OptimizerUtils.showNotification(
         "Layer edit not available for this variant",
@@ -1831,9 +1851,12 @@ Please share payment details and license key.`;
   }
 
   setManualShipping(variantId, price) {
-    const row = this.currentResults.find((r) => r.variantId === variantId);
+    const row = this.findResultRow(variantId);
     if (!row) return;
     const value = parseInt(price, 10);
+    const inFramed = this.framedExtraResults.some(
+      (r) => r.variantId === variantId,
+    );
     if (!value || value <= 0) {
       row.shippingCost = 0;
       row.manualPrice = false;
@@ -1843,7 +1866,24 @@ Please share payment details and license key.`;
       row.manualPrice = true;
       row.isVerified = true;
     }
-    this.resortResultsByManualPrice();
+    if (inFramed) {
+      this.resortFramedExtrasByManualPrice();
+    } else {
+      this.resortResultsByManualPrice();
+    }
+  }
+
+  resortFramedExtrasByManualPrice() {
+    this.framedExtraResults.sort((a, b) => {
+      const aPriced = a.shippingCost > 0 ? 0 : 1;
+      const bPriced = b.shippingCost > 0 ? 0 : 1;
+      if (aPriced !== bPriced) return aPriced - bPriced;
+      if (a.shippingCost > 0 && b.shippingCost > 0) {
+        return a.shippingCost - b.shippingCost;
+      }
+      return 0;
+    });
+    this.refreshResultsView();
   }
 
   resortResultsByManualPrice() {
@@ -1899,9 +1939,7 @@ Please share payment details and license key.`;
 
     document.querySelectorAll(".dl-btn").forEach((btn) => {
       btn.onclick = () => {
-        const row = this.currentResults.find(
-          (r) => r.variantId === btn.dataset.variantId
-        );
+        const row = this.findResultRow(btn.dataset.variantId);
         if (row) this.downloadImage(row);
       };
     });
@@ -1909,9 +1947,7 @@ Please share payment details and license key.`;
     document.querySelectorAll(".apply-btn").forEach((btn) => {
       if (window.WEB_OPTIMIZER_MODE) btn.textContent = "Save";
       btn.onclick = () => {
-        const row = this.currentResults.find(
-          (r) => r.variantId === btn.dataset.variantId
-        );
+        const row = this.findResultRow(btn.dataset.variantId);
         if (!row) return;
         if (window.WEB_OPTIMIZER_MODE) {
           this.downloadImage(row);
@@ -1920,6 +1956,14 @@ Please share payment details and license key.`;
         }
       };
     });
+
+    const toggleFramed = document.getElementById("toggle-framed-extras");
+    if (toggleFramed) {
+      toggleFramed.onclick = () => {
+        this.showFramedExtras = !this.showFramedExtras;
+        this.refreshResultsView();
+      };
+    }
 
     const dlAllBtn = document.getElementById("dl-all-btn");
     if (dlAllBtn) {

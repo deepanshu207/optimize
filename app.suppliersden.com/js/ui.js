@@ -310,6 +310,82 @@ const OptimizerUI = {
         `;
   },
 
+  // Single result card — reused for main grid and framed "see more" section
+  renderResultCard: function (r, i, options) {
+    options = options || {};
+    const baseline = options.baselineShipping || 0;
+    const manualMode = !!options.manualMode;
+    const isWeb = !!window.WEB_OPTIMIZER_MODE;
+    const applyLabel = isWeb ? "Save" : "Apply";
+    const isBest = !!options.isBest;
+    const priceLabel =
+      r.shippingCost > 0 ? "₹" + r.shippingCost : manualMode ? "—" : "Ready";
+    const savings =
+      baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
+    const canEdit = !!(r.layers && r.layers.full);
+    const edited =
+      r.editFlags?.stickersRemoved ||
+      r.editFlags?.borderOnlyRemoved ||
+      r.editFlags?.cleanProduct ||
+      r.editFlags?.borderRemoved;
+    const vid = r.variantId || "var-" + i;
+    const styleTag =
+      r.variantStyle === "framed"
+        ? '<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">Framed style</div>'
+        : "";
+
+    return `
+                <div class="result-card" data-variant-id="${vid}" style="background:${
+                  isBest ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)"
+                };border:1px solid ${
+      isBest ? "#10b981" : "rgba(255,255,255,0.1)"
+    };border-radius:8px;padding:8px;text-align:center;position:relative;">
+                    ${
+                      isBest
+                        ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">🏆 BEST</div>'
+                        : ""
+                    }
+                    <span class="result-edit-badge" data-variant-id="${vid}" style="display:${
+      edited ? "block" : "none"
+    };position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">✂️</span>
+                    <img src="${
+                      r.imageUrl
+                    }" class="result-img" data-variant-id="${vid}" title="${
+      canEdit ? "Tap to edit border & stickers" : ""
+    }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
+      isBest ? "4px" : "0"
+    };cursor:${canEdit ? "pointer" : "default"};" loading="lazy">
+                    ${styleTag}
+                    ${
+                      canEdit
+                        ? '<div style="font-size:9px;color:#6b7280;margin-bottom:2px;">Tap image to edit</div>'
+                        : ""
+                    }
+                    <div class="result-price-label" style="font-size:14px;font-weight:700;color:${
+                      isBest ? "#10b981" : "black"
+                    };">${priceLabel}</div>
+                    ${
+                      savings > 0
+                        ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
+                        : ""
+                    }
+                    ${
+                      manualMode
+                        ? `<input type="number" class="manual-price-input opt-input" data-variant-id="${vid}" value="${
+                            r.shippingCost > 0 ? r.shippingCost : ""
+                          }" min="0" max="999" placeholder="₹" style="width:100%;margin-top:4px;padding:4px;font-size:12px;text-align:center;">`
+                        : ""
+                    }
+                    <div style="display:flex;gap:4px;margin-top:4px;">
+                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
+                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
+      isBest ? "#10b981" : "rgba(255,255,255,0.1)"
+    };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
+                    </div>
+                </div>
+            `;
+  },
+
   // Results HTML - Only accurate results
   getResultsHTML: function (results, options) {
     options = options || {};
@@ -368,70 +444,53 @@ const OptimizerUI = {
         `;
 
     results.forEach((r, i) => {
-      const isBest = i === 0 && r.shippingCost > 0;
-      const priceLabel =
-        r.shippingCost > 0 ? "₹" + r.shippingCost : manualMode ? "—" : "Ready";
-      const savings =
-        baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
-      const canEdit = !!(r.layers && r.layers.full);
-      const edited =
-        r.editFlags?.stickersRemoved ||
-        r.editFlags?.borderOnlyRemoved ||
-        r.editFlags?.cleanProduct ||
-        r.editFlags?.borderRemoved;
-      const vid = r.variantId || "var-" + i;
-      html += `
-                <div class="result-card" data-variant-id="${vid}" style="background:${
-                  isBest ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)"
-                };border:1px solid ${
-        isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-      };border-radius:8px;padding:8px;text-align:center;position:relative;">
-                    ${
-                      isBest
-                        ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">🏆 BEST</div>'
-                        : ""
-                    }
-                    <span class="result-edit-badge" data-variant-id="${vid}" style="display:${
-        edited ? "block" : "none"
-      };position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">✂️</span>
-                    <img src="${
-                      r.imageUrl
-                    }" class="result-img" data-variant-id="${vid}" title="${
-        canEdit ? "Tap to edit border & stickers" : ""
-      }" style="width:100%;height:55px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,0.2);margin-bottom:4px;margin-top:${
-        isBest ? "4px" : "0"
-      };cursor:${canEdit ? "pointer" : "default"};" loading="lazy">
-                    ${
-                      canEdit
-                        ? '<div style="font-size:9px;color:#6b7280;margin-bottom:2px;">Tap image to edit</div>'
-                        : ""
-                    }
-                    <div class="result-price-label" style="font-size:14px;font-weight:700;color:${
-                      isBest ? "#10b981" : "black"
-                    };">${priceLabel}</div>
-                    ${
-                      savings > 0
-                        ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
-                        : ""
-                    }
-                    ${
-                      manualMode
-                        ? `<input type="number" class="manual-price-input opt-input" data-variant-id="${vid}" value="${
-                            r.shippingCost > 0 ? r.shippingCost : ""
-                          }" min="0" max="999" placeholder="₹" style="width:100%;margin-top:4px;padding:4px;font-size:12px;text-align:center;">`
-                        : ""
-                    }
-                    <div style="display:flex;gap:4px;margin-top:4px;">
-                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
-        isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-      };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
-                    </div>
-                </div>
-            `;
+      html += this.renderResultCard(r, i, {
+        baselineShipping: baseline,
+        manualMode,
+        isBest: i === 0 && r.shippingCost > 0,
+      });
     });
 
-    html += `</div>
+    html += `</div>`;
+
+    const framedExtras = options.framedExtras || [];
+    if (framedExtras.length > 0) {
+      const showFramed = !!options.showFramedExtras;
+      const framedPriced = framedExtras.filter((r) => r.shippingCost > 0);
+      const framedBest = framedPriced.length
+        ? framedPriced.reduce((a, b) =>
+            a.shippingCost <= b.shippingCost ? a : b,
+          )
+        : null;
+      const framedHint = framedBest
+        ? ` — tested ₹${framedBest.shippingCost} on Meesho`
+        : " — white frame + stickers (often lowest tier, e.g. ₹49)";
+
+      html += `
+            <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
+                <button type="button" id="toggle-framed-extras" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showFramed ? "▼" : "▶"} See more framed variants (${framedExtras.length})${framedHint}
+                </button>
+                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">Extra white-mat + sticker variants — separate from main grid. Test on Meesho; some categories show ₹49 vs ₹63/₹79 for other styles.</p>
+                <div id="framed-extras-panel" style="display:${showFramed ? "block" : "none"};">
+                    <div class="framed-extras-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:480px;overflow-y:auto;">
+        `;
+
+      framedExtras.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode,
+          isBest: i === 0 && r.shippingCost > 0,
+        });
+      });
+
+      html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    html += `
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
                   bestPrice
