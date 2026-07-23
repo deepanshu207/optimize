@@ -329,6 +329,18 @@ class MeeshoShippingOptimizer {
       this.embeddedRoot.innerHTML = OptimizerUI.createModalHTML(true);
     }
 
+    const processingArea = document.getElementById("processing-area");
+    const resultsArea = document.getElementById("results-area");
+    const generateBtn = document.getElementById("generate-btn");
+    const uploadArea = document.getElementById("upload-area");
+    if (processingArea) processingArea.style.display = "none";
+    if (resultsArea) resultsArea.style.display = "none";
+    if (uploadArea) uploadArea.style.display = "block";
+    if (generateBtn) generateBtn.style.display = "block";
+    document.querySelectorAll(".opt-section").forEach((s) => {
+      s.style.display = "block";
+    });
+
     this.setupMainEvents();
 
     if (typeof MeeshoAPI !== "undefined") {
@@ -336,7 +348,11 @@ class MeeshoShippingOptimizer {
     }
 
     const bootMsg = document.getElementById("boot-msg");
-    if (bootMsg) bootMsg.textContent = "";
+    if (bootMsg) {
+      bootMsg.textContent = this._pendingFile || document.getElementById("image-input")?.files?.[0]
+        ? "Image ready — tap Generate Variants"
+        : "Ready — choose an image";
+    }
   }
 
   async openModal() {
@@ -558,28 +574,82 @@ Please share payment details and license key.`;
     // File input
     const fileInput = document.getElementById("image-input");
     const uploadArea = document.getElementById("upload-area");
+    const generateBtn = document.getElementById("generate-btn");
+    const webGenerateMode = window.WEB_OPTIMIZER_MODE && generateBtn;
+
+    const showFilePreview = (file) => {
+      const previewBox = document.getElementById("preview-box");
+      const previewImg = document.getElementById("preview-img");
+      if (!previewBox || !previewImg) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        previewImg.src = ev.target.result;
+        this.originalImageUrl = ev.target.result;
+        previewBox.style.display = "block";
+        const label = previewBox.querySelector(".preview-label");
+        if (label) label.textContent = file.name;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const getUploadFile = () => {
+      if (fileInput?.files?.[0]) return fileInput.files[0];
+      return this._pendingFile || null;
+    };
+
+    const onFilePicked = (file) => {
+      if (!file) return;
+      const isImage =
+        !file.type || file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name || "");
+      if (!isImage) {
+        OptimizerUtils.showNotification("Please choose a JPG, PNG, or WebP image", "error");
+        return;
+      }
+
+      console.log("File selected:", file.name);
+      this._pendingFile = file;
+      showFilePreview(file);
+
+      const bootMsg = document.getElementById("boot-msg");
+      if (webGenerateMode) {
+        generateBtn.disabled = false;
+        if (bootMsg) bootMsg.textContent = "Image ready — tap Generate Variants";
+        return;
+      }
+
+      setTimeout(() => this.processImage(file), 500);
+    };
 
     if (fileInput) {
-      fileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      fileInput.onchange = (e) => onFilePicked(e.target.files?.[0]);
+    }
 
-        console.log("File selected:", file.name);
-
-        const previewBox = document.getElementById("preview-box");
-        const previewImg = document.getElementById("preview-img");
-        if (previewBox && previewImg) {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            previewImg.src = ev.target.result;
-            this.originalImageUrl = ev.target.result;
-            previewBox.style.display = "block";
-          };
-          reader.readAsDataURL(file);
+    if (webGenerateMode) {
+      const runGenerate = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
         }
-
-        setTimeout(() => this.processImage(file), 500);
+        const file = getUploadFile();
+        if (!file) {
+          OptimizerUtils.showNotification("Choose an image first", "error");
+          return;
+        }
+        if (this.isProcessing) return;
+        this.processImage(file);
       };
+
+      generateBtn.disabled = !getUploadFile();
+      generateBtn.onclick = runGenerate;
+      generateBtn.addEventListener(
+        "touchend",
+        (e) => {
+          e.preventDefault();
+          runGenerate(e);
+        },
+        { passive: false }
+      );
     }
 
     if (uploadArea) {
@@ -807,8 +877,13 @@ Please share payment details and license key.`;
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
     const processingArea = document.getElementById("processing-area");
+    const generateBtn = document.getElementById("generate-btn");
 
     if (uploadArea) uploadArea.style.display = "none";
+    if (generateBtn) {
+      generateBtn.style.display = "none";
+      generateBtn.disabled = true;
+    }
     sections.forEach((s) => (s.style.display = "none"));
 
     // ALWAYS use Smart Mode
@@ -855,38 +930,44 @@ Please share payment details and license key.`;
 
       this.gatherSettings();
 
-      // Try live Meesho API first (real shipping prices), then local variant generation
-      let result = await MeeshoAPI.smartSearch(
-        blob,
-        targetShipping,
-        maxAttempts,
-        (attempt, max, bestSoFar, noPidCount) => {
-          if (processingArea && !this.shouldStop) {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            processingArea.innerHTML = this.getSmartModeHTML(
-              attempt,
-              max,
-              targetShipping,
-              bestSoFar,
-              noPidCount,
-              elapsed
+      const useLiveApi =
+        typeof MeeshoAPI.isReady === "function" && MeeshoAPI.isReady();
+
+      let result = { success: false, results: [] };
+
+      if (useLiveApi || !window.WEB_OPTIMIZER_MODE) {
+        result = await MeeshoAPI.smartSearch(
+          blob,
+          targetShipping,
+          maxAttempts,
+          (attempt, max, bestSoFar, noPidCount) => {
+            if (processingArea && !this.shouldStop) {
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              processingArea.innerHTML = this.getSmartModeHTML(
+                attempt,
+                max,
+                targetShipping,
+                bestSoFar,
+                noPidCount,
+                elapsed
+              );
+              const stopBtn = document.getElementById("stop-btn");
+              if (stopBtn)
+                stopBtn.onclick = () => {
+                  console.log("⏹️ Stop");
+                  this.shouldStop = true;
+                };
+            }
+          },
+          (foundResult) => {
+            OptimizerUtils.showNotification(
+              `🎉 Found ₹${foundResult.shippingCost}!`,
+              "success"
             );
-            const stopBtn = document.getElementById("stop-btn");
-            if (stopBtn)
-              stopBtn.onclick = () => {
-                console.log("⏹️ Stop");
-                this.shouldStop = true;
-              };
-          }
-        },
-        (foundResult) => {
-          OptimizerUtils.showNotification(
-            `🎉 Found ₹${foundResult.shippingCost}!`,
-            "success"
-          );
-        },
-        () => this.shouldStop
-      );
+          },
+          () => this.shouldStop
+        );
+      }
 
       if (
         window.WEB_OPTIMIZER_MODE &&
@@ -965,10 +1046,27 @@ Please share payment details and license key.`;
     // Show results
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
-    if (resultsArea) {
-      resultsArea.style.display = "block";
-      resultsArea.innerHTML = OptimizerUI.getResultsHTML(this.currentResults);
-      this.setupResultsEvents();
+
+    if (this.currentResults.length > 0) {
+      if (resultsArea) {
+        resultsArea.style.display = "block";
+        resultsArea.innerHTML = OptimizerUI.getResultsHTML(this.currentResults);
+        this.setupResultsEvents();
+      }
+    } else {
+      if (resultsArea) resultsArea.style.display = "none";
+      if (uploadArea) uploadArea.style.display = "block";
+      sections.forEach((s) => (s.style.display = "block"));
+      if (generateBtn) {
+        generateBtn.style.display = "block";
+        generateBtn.disabled = !this._pendingFile && !document.getElementById("image-input")?.files?.[0];
+      }
+      if (window.WEB_OPTIMIZER_MODE) {
+        OptimizerUtils.showNotification(
+          "No variants generated — try another image",
+          "error"
+        );
+      }
     }
 
     this.isProcessing = false;

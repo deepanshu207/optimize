@@ -171,47 +171,13 @@
   </main>
 
   <script src="web-shim.js"></script>
-  <script>
-    (function () {
-      function onImageChosen(file) {
-        if (!file || !file.type.startsWith("image/")) return;
-        var box = document.getElementById("preview-box");
-        var img = document.getElementById("preview-img");
-        if (!box || !img) return;
-        var reader = new FileReader();
-        reader.onload = function (e) {
-          img.src = e.target.result;
-          box.style.display = "block";
-          var label = box.querySelector(".preview-label");
-          if (label) label.textContent = file.name;
-          var btn = document.getElementById("generate-btn");
-          if (btn) btn.disabled = false;
-          var boot = document.getElementById("boot-msg");
-          if (boot) boot.textContent = "Image ready — tap Generate Variants";
-        };
-        reader.readAsDataURL(file);
-      }
-      function setup() {
-        var input = document.getElementById("image-input");
-        if (input) {
-          input.addEventListener("change", function (e) {
-            onImageChosen(e.target.files && e.target.files[0]);
-          });
-        }
-      }
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", setup);
-      } else {
-        setup();
-      }
-    })();
-  </script>
   <script src="config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/license.js"></script>
   <script src="js/meeshoApi.js"></script>
   <script src="js/imageGenerator.js"></script>
   <script src="js/ui.js"></script>
+  <script src="content.js"></script>
   <script src="web-app.js"></script>
 </body>
 </html>
