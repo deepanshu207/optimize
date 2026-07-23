@@ -1,250 +1,164 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meesho Shipping Cost Optimizer</title>
-    <link rel="icon" href="/icons/icon32.png" type="image/png">
-    <link rel="stylesheet" href="styles.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            min-height: 100vh;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #ffffff;
-            color: #111;
-            overflow-x: hidden;
-        }
-
-        .page {
-            max-width: 420px;
-            margin: 0 auto;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: linear-gradient(180deg, #fff9e6 0%, #ffffff 40%);
-        }
-
-        .header {
-            background: linear-gradient(135deg, #FFD700, #C9A227);
-            padding: 28px 20px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 60%);
-            animation: pulse 4s ease-in-out infinite;
-            pointer-events: none;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.5; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-        }
-
-        .title {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 6px;
-            position: relative;
-            z-index: 1;
-            color: #1a1a1a;
-        }
-
-        .subtitle {
-            font-size: 14px;
-            opacity: 0.9;
-            position: relative;
-            z-index: 1;
-            color: #333;
-        }
-
-        .version-badge {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(255, 255, 255, 0.25);
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #1a1a1a;
-        }
-
-        .content {
-            padding: 20px;
-            flex: 1;
-        }
-
-        .ready-badge {
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 18px;
-            text-align: center;
-            font-size: 13px;
-            color: #047857;
-            font-weight: 600;
-        }
-
-        .features {
-            margin-bottom: 18px;
-        }
-
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background: #fafafa;
-            border: 1px solid #eee;
-            border-radius: 10px;
-            margin-bottom: 8px;
-        }
-
-        .feature-icon {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, #FFD700, #C9A227);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-        }
-
-        .feature-title {
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-
-        .feature-desc {
-            font-size: 11px;
-            color: #6b7280;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 10px;
-            position: relative;
-            z-index: 2;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: rgba(201, 162, 39, 0.3);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #FFD700, #C9A227);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(201, 162, 39, 0.4);
-        }
-
-        .footer {
-            text-align: center;
-            padding: 15px 20px 24px;
-            border-top: 1px solid #eee;
-            font-size: 11px;
-            color: #6b7280;
-        }
-
-        .hint {
-            font-size: 11px;
-            color: #6b7280;
-            text-align: center;
-            margin-top: 8px;
-            line-height: 1.4;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Meesho Shipping Cost Optimizer</title>
+  <link rel="icon" href="/icons/icon32.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f5f5f5;
+      color: #111;
+      min-height: 100vh;
+    }
+    .topbar {
+      background: linear-gradient(135deg, #FFD700, #C9A227);
+      padding: 16px 20px;
+      text-align: center;
+    }
+    .topbar h1 { font-size: 20px; font-weight: 700; }
+    .topbar p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+    .wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 12px 12px 32px;
+    }
+    .session-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .session-toggle {
+      width: 100%;
+      border: none;
+      background: #fff;
+      padding: 14px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+    #session-panel { padding: 0 16px 16px; }
+    #session-panel.collapsed { display: none; }
+    .session-status {
+      font-size: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .session-status.ok { background: #ecfdf5; color: #047857; }
+    .session-status.warn { background: #fff7ed; color: #c2410c; }
+    .field { margin-bottom: 10px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .field input, .field textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .field textarea { min-height: 56px; resize: vertical; }
+    .hint {
+      font-size: 11px;
+      color: #666;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+    .hint a { color: #b45309; }
+    .btn-save {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #FFD700, #C9A227);
+      color: #111;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    #optimizer-app {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+      overflow: hidden;
+    }
+    #optimizer-app .opt-modal { border-radius: 12px; }
+    #optimizer-app .opt-header { border-radius: 12px 12px 0 0; }
+    #optimizer-app .opt-close { display: none; }
+    .loading-boot {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
 </head>
-
 <body>
-    <div class="page">
-        <div class="header">
-            <span class="version-badge">v1.0.0</span>
-            <div class="title">Meesho Shipping Cost Optimizer</div>
-            <div class="subtitle">Reduce Meesho shipping costs by up to 70%</div>
+  <div class="topbar">
+    <h1>Meesho Shipping Cost Optimizer</h1>
+    <p>Upload image → AI creates variations → finds lowest shipping price</p>
+  </div>
+
+  <div class="wrap">
+    <div class="session-card">
+      <button type="button" class="session-toggle" id="toggle-session">Meesho session (tap to set up)</button>
+      <div id="session-panel" class="collapsed">
+        <div id="session-status" class="session-status warn">⚠️ Connect your Meesho supplier account for live shipping API</div>
+        <p class="hint">
+          1. <a href="#" id="link-meesho-login">Login to Meesho Supplier</a> in another tab<br>
+          2. Open DevTools → Network → any API call → copy <b>supplier-id</b>, <b>browser-id</b>, <b>identifier</b> headers<br>
+          3. Optional: paste full <b>cookie</b> string for better results
+        </p>
+        <div class="field">
+          <label for="session-supplier-id">Supplier ID *</label>
+          <input id="session-supplier-id" type="text" placeholder="e.g. 12345678" inputmode="numeric">
         </div>
-
-        <div class="content">
-            <div class="ready-badge">✅ Ready to use — no login or license required</div>
-
-            <div class="features">
-                <div class="feature-item">
-                    <div class="feature-icon">🎨</div>
-                    <div>
-                        <div class="feature-title">Smart AI Image Variations</div>
-                        <div class="feature-desc">Generate unique variations with borders &amp; badges</div>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon">📊</div>
-                    <div>
-                        <div class="feature-title">Live Shipping Detection</div>
-                        <div class="feature-desc">Real-time shipping cost analysis via Meesho API</div>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon">⚡</div>
-                    <div>
-                        <div class="feature-title">One-Click Apply</div>
-                        <div class="feature-desc">Download the best optimized image instantly</div>
-                    </div>
-                </div>
-            </div>
-
-            <button class="btn btn-primary" id="open-catalog" type="button">
-                <span style="margin-right:8px;">🚀</span> Open Image Optimizer
-            </button>
-            <button class="btn btn-primary" id="open-meesho" type="button">Open Meesho Supplier Panel</button>
-            <p class="hint">Log in to supplier.meesho.com in this browser for category &amp; shipping API access.</p>
+        <div class="field">
+          <label for="session-browser-id">Browser ID *</label>
+          <input id="session-browser-id" type="text" placeholder="from request headers">
         </div>
-
-        <div class="footer">
-            <button id="support-whatsapp" type="button"
-                style="background:linear-gradient(135deg, #FFD700, #C9A227);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;position:relative;z-index:2;touch-action:manipulation;">
-                WhatsApp Support
-            </button>
+        <div class="field">
+          <label for="session-identifier">Identifier</label>
+          <input id="session-identifier" type="text" placeholder="cataloging tag / identifier">
         </div>
+        <div class="field">
+          <label for="session-price">Product price (₹)</label>
+          <input id="session-price" type="number" value="100" min="1">
+        </div>
+        <div class="field">
+          <label for="session-cookie">Cookie (optional)</label>
+          <textarea id="session-cookie" placeholder="Paste document.cookie from supplier.meesho.com"></textarea>
+        </div>
+        <button type="button" class="btn-save" id="save-session">Save session</button>
+      </div>
     </div>
 
-    <script src="web-shim.js"></script>
-    <script src="web-app.js"></script>
-    <script src="config.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/license.js"></script>
-    <script src="js/meeshoApi.js"></script>
-    <script src="js/imageGenerator.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="content.js"></script>
-    <script>
-      if (typeof initWebOptimizerButtons === "function") initWebOptimizerButtons();
-    </script>
-</body>
+    <div id="optimizer-app">
+      <div class="loading-boot">Loading optimizer…</div>
+    </div>
+  </div>
 
+  <script src="web-shim.js"></script>
+  <script src="config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/license.js"></script>
+  <script src="web-session.js"></script>
+  <script src="js/meeshoApi.js"></script>
+  <script src="js/imageGenerator.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="content.js"></script>
+  <script src="web-optimizer.js"></script>
+</body>
 </html>

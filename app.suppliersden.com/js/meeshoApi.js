@@ -26,6 +26,39 @@ const MeeshoAPI = {
     categories: null,
   },
 
+  syncFromSession: function () {
+    if (!window.WEB_OPTIMIZER_MODE || !window.WebSession) return;
+    const s = WebSession.get();
+    if (s.supplierId) this.cache.supplierId = parseInt(s.supplierId, 10) || s.supplierId;
+    if (s.browserId) this.cache.browserId = s.browserId;
+    if (s.identifier) this.cache.supplierTag = s.identifier;
+    if (s.price) this.cache.price = parseInt(s.price, 10) || 100;
+  },
+
+  apiUrl: function (path) {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/api/meesho-proxy" + path;
+    }
+    return "https://supplier.meesho.com" + path;
+  },
+
+  requestHeaders: function (extra) {
+    this.syncFromSession();
+    const headers = { ...this.getHeaders(), ...(extra || {}) };
+    if (window.WEB_OPTIMIZER_MODE && window.WebSession) {
+      const cookie = WebSession.get().cookie;
+      if (cookie) headers["x-meesho-cookie"] = cookie;
+    }
+    return headers;
+  },
+
+  assetUrl: function (path) {
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL(path);
+    }
+    return "/" + String(path).replace(/^\//, "");
+  },
+
   badgeCache: {},
 
   // Track shipping results
@@ -40,6 +73,7 @@ const MeeshoAPI = {
   init: function () {
     if (this._initialized) return;
     this._initialized = true;
+    this.syncFromSession();
     this.detectAllValues();
     // Avoid API calls when user is not authenticated yet.
     if (this.cache.supplierId) this.fetchCategories();
@@ -65,6 +99,10 @@ const MeeshoAPI = {
   },
 
   detectSupplierId: function () {
+    if (window.WEB_OPTIMIZER_MODE && window.WebSession) {
+      const s = WebSession.get();
+      if (s.supplierId) return parseInt(s.supplierId, 10) || s.supplierId;
+    }
     try {
       const mpCookie = this.getCookie(
         "mp_a66867feba42257f4b46689d52d48f86_mixpanel",
@@ -119,15 +157,19 @@ const MeeshoAPI = {
   fetchCategories: async function () {
     if (this.cache.categories) return this.cache.categories;
     try {
-      const resp = await fetch(this.endpoints.fetchCategories, {
+      const resp = await fetch(
+        this.apiUrl(
+          "/api/cataloging/bulkCatalogUpload/fetchCategoryTreeOld",
+        ),
+        {
         method: "POST",
-        headers: this.getHeaders(),
+        headers: this.requestHeaders(),
         body: JSON.stringify({
           bulk_upload_enabled: false,
           supplier_id: this.cache.supplierId,
           identifier: this.cache.supplierTag,
         }),
-        credentials: "include",
+        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
       });
       if (!resp.ok) {
         console.warn(
@@ -153,6 +195,10 @@ const MeeshoAPI = {
     } catch (e) {
       console.error("Categories error:", e);
     }
+    if (window.WEB_OPTIMIZER_MODE && window.FALLBACK_CATEGORIES) {
+      this.cache.categories = window.FALLBACK_CATEGORIES;
+      return this.cache.categories;
+    }
     return null;
   },
 
@@ -165,7 +211,11 @@ const MeeshoAPI = {
     formData.append("file", blob, filename || "img-" + Date.now() + ".jpg");
     formData.append("data", "undefined");
     try {
-      const resp = await fetch(this.endpoints.uploadImage, {
+      const resp = await fetch(
+        this.apiUrl(
+          "/api/cataloging/singleCatalogUpload/uploadSingleCatalogImages",
+        ),
+        {
         method: "POST",
         headers: {
           accept: "application/json, text/plain, */*",
@@ -176,9 +226,12 @@ const MeeshoAPI = {
           "supplier-id": this.cache.supplierId
             ? String(this.cache.supplierId)
             : "",
+          ...(window.WEB_OPTIMIZER_MODE && WebSession?.get()?.cookie
+            ? { "x-meesho-cookie": WebSession.get().cookie }
+            : {}),
         },
         body: formData,
-        credentials: "include",
+        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
       });
       if (!resp.ok) return null;
       const result = await resp.json();
@@ -193,15 +246,19 @@ const MeeshoAPI = {
   fetchDuplicatePid: async function (imageUrl, categoryId) {
     const sscatId = categoryId || this.cache.categoryId || 18044;
     try {
-      const resp = await fetch(this.endpoints.fetchDuplicatePid, {
+      const resp = await fetch(
+        this.apiUrl(
+          "/api/cataloging/priceRecommendation/fetchDuplicatePid",
+        ),
+        {
         method: "POST",
-        headers: this.getHeaders(),
+        headers: this.requestHeaders(),
         body: JSON.stringify({
           is_old_image_match_enabled: true,
           sscat_id: sscatId,
           image_url: imageUrl,
         }),
-        credentials: "include",
+        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
       });
       if (!resp.ok) return null;
       const result = await resp.json();
@@ -237,11 +294,13 @@ const MeeshoAPI = {
         duplicatePid ? `pid=${duplicatePid}` : "no pid",
       );
 
-      const resp = await fetch(this.endpoints.getTransferPrice, {
+      const resp = await fetch(
+        this.apiUrl("/api/cataloging/singleCatalogUpload/getTransferPrice"),
+        {
         method: "POST",
-        headers: this.getHeaders(),
+        headers: this.requestHeaders(),
         body: JSON.stringify(body),
-        credentials: "include",
+        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
       });
       if (!resp.ok) return null;
       const result = await resp.json();
@@ -478,7 +537,7 @@ const MeeshoAPI = {
         resolve(img);
       };
       img.onerror = () => resolve(null);
-      img.src = chrome.runtime.getURL("Badge/badge" + num + ".png");
+      img.src = this.assetUrl("Badge/badge" + num + ".png");
     });
   },
 

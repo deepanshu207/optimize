@@ -27,7 +27,10 @@ const ImageGenerator = {
             img.crossOrigin = 'anonymous';
             img.onload = () => { this.badgeCache[num] = img; resolve(img); };
             img.onerror = () => resolve(null);
-            img.src = chrome.runtime.getURL('Badge/badge' + num + '.png');
+      img.src =
+        typeof MeeshoAPI !== "undefined" && MeeshoAPI.assetUrl
+          ? MeeshoAPI.assetUrl("Badge/badge" + num + ".png")
+          : chrome.runtime.getURL("Badge/badge" + num + ".png");
         });
     },
 
