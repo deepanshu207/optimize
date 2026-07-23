@@ -321,24 +321,22 @@ class MeeshoShippingOptimizer {
   }
 
   mountEmbedded(root) {
-    this.embeddedRoot = root;
+    this.embeddedRoot = root || document.getElementById("optimizer-app");
     this.isLicensed = true;
 
-    if (typeof OptimizerUI === "undefined") {
-      root.innerHTML =
-        '<p style="padding:24px;text-align:center;color:#b45309;">UI failed to load. Refresh the page.</p>';
-      return;
+    // Keep static HTML from index.html if upload input already exists
+    if (!document.getElementById("image-input") && typeof OptimizerUI !== "undefined") {
+      this.embeddedRoot.innerHTML = OptimizerUI.createModalHTML(true);
     }
 
-    root.innerHTML = OptimizerUI.createModalHTML(true);
     this.setupMainEvents();
 
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.init();
     }
 
-    const el = document.getElementById("current-shipping");
-    if (el) el.textContent = "Upload image to start";
+    const bootMsg = document.getElementById("boot-msg");
+    if (bootMsg) bootMsg.textContent = "";
   }
 
   async openModal() {

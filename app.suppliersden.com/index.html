@@ -15,48 +15,147 @@
       min-height: 100vh;
     }
     .topbar {
-      background: linear-gradient(135deg, #FFD700, #C9A227);
+      background: linear-gradient(135deg, #FFD700, #C9A227) !important;
       padding: 16px 20px;
       text-align: center;
     }
-    .topbar h1 { font-size: 20px; font-weight: 700; }
-    .topbar p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+    .topbar h1 { font-size: 20px; font-weight: 700; color: #111; }
+    .topbar p { font-size: 13px; margin-top: 4px; color: #222; }
     .wrap { max-width: 520px; margin: 0 auto; padding: 12px 12px 32px; }
     #optimizer-app {
       background: #fff;
       border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+      box-shadow: 0 4px 20px rgba(0,0,0,.08);
       overflow: hidden;
     }
-    #optimizer-app .opt-close { display: none; }
-    .api-note {
-      font-size: 11px;
-      color: #666;
-      text-align: center;
-      margin-top: 10px;
-      line-height: 1.4;
+    .opt-header {
+      background: linear-gradient(135deg, #FFD700, #C9A227);
+      padding: 18px 20px;
+      color: #111;
     }
+    .opt-header h2 { font-size: 18px; font-weight: 700; }
+    .opt-body { padding: 16px; background: #fff; }
+    .opt-section {
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #fafafa;
+    }
+    .opt-section-title { font-size: 13px; font-weight: 700; color: #047857; margin-bottom: 8px; }
+    .opt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .opt-label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; font-weight: 600; }
+    .opt-select, .opt-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+      color: #111;
+    }
+    .opt-upload-box {
+      border: 2px dashed #C9A227;
+      border-radius: 12px;
+      padding: 28px 16px;
+      text-align: center;
+      background: #fffef5;
+    }
+    .opt-file-btn {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, #FFD700, #C9A227);
+      color: #111;
+      font-weight: 700;
+      font-size: 15px;
+      border-radius: 10px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .opt-preview { margin-top: 12px; display: none; }
+    .opt-preview img { max-width: 120px; border-radius: 8px; border: 2px solid #10b981; }
+    .api-note { font-size: 11px; color: #666; text-align: center; margin-top: 10px; line-height: 1.4; }
+    .boot-msg { padding: 12px; text-align: center; font-size: 13px; color: #666; }
   </style>
 </head>
 <body>
-  <div class="topbar">
+  <header class="topbar">
     <h1>Meesho Shipping Cost Optimizer</h1>
     <p>Upload image → AI creates variations → finds lowest shipping</p>
-  </div>
+  </header>
 
-  <div class="wrap">
-    <div id="optimizer-app"></div>
-    <p class="api-note">Variations generate in your browser. Live Meesho shipping prices are checked automatically when API is reachable.</p>
-  </div>
+  <main class="wrap">
+    <div id="optimizer-app">
+      <div class="opt-modal">
+        <div class="opt-header">
+          <h2>🚀 Upload &amp; Optimize</h2>
+        </div>
+        <div class="opt-body">
+          <div class="opt-section">
+            <div class="opt-section-title">🎯 Smart Mode</div>
+            <div class="opt-row">
+              <div>
+                <label class="opt-label" for="target-shipping">Target Shipping</label>
+                <select id="target-shipping" class="opt-select">
+                  <option value="30">≤ ₹30</option>
+                  <option value="40">≤ ₹40</option>
+                  <option value="50">≤ ₹50</option>
+                  <option value="60">≤ ₹60</option>
+                  <option value="70">≤ ₹70</option>
+                  <option value="80" selected>≤ ₹80</option>
+                  <option value="90">≤ ₹90</option>
+                  <option value="100">≤ ₹100</option>
+                </select>
+              </div>
+              <div>
+                <label class="opt-label" for="max-attempts">Max Variants</label>
+                <select id="max-attempts" class="opt-select">
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="opt-section">
+            <label class="opt-label" for="custom-text">✏️ Text on image (optional)</label>
+            <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING">
+          </div>
+
+          <div class="opt-upload-box" id="upload-area">
+            <div style="font-size:40px;margin-bottom:8px;">📸</div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Tap to upload product image</div>
+            <div style="font-size:12px;color:#888;margin-bottom:8px;">JPG, PNG, WebP</div>
+            <label class="opt-file-btn" for="image-input">Choose Image</label>
+            <input type="file" id="image-input" accept="image/*" style="display:none;">
+            <input type="hidden" id="category-select" value="18044">
+            <div class="opt-preview" id="preview-box">
+              <img id="preview-img" alt="Preview">
+              <div style="color:#10b981;font-size:12px;margin-top:6px;">Ready</div>
+            </div>
+          </div>
+
+          <div id="processing-area" style="display:none;"></div>
+          <div id="results-area" style="display:none;"></div>
+          <div id="boot-msg" class="boot-msg">Loading engine…</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="api-note">Variations generate in your browser. Live Meesho shipping prices are checked when API is reachable.</p>
+  </main>
 
   <script src="web-shim.js"></script>
-  <script src="config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/license.js"></script>
-  <script src="js/meeshoApi.js"></script>
-  <script src="js/imageGenerator.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="content.js"></script>
-  <script src="web-optimizer.js"></script>
+  <script src="config.js" defer></script>
+  <script src="js/utils.js" defer></script>
+  <script src="js/license.js" defer></script>
+  <script src="js/meeshoApi.js" defer></script>
+  <script src="js/imageGenerator.js" defer></script>
+  <script src="js/ui.js" defer></script>
+  <script src="content.js" defer></script>
+  <script src="web-optimizer.js" defer></script>
 </body>
 </html>
