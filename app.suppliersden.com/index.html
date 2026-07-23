@@ -242,18 +242,6 @@
             </div>
             <button type="button" id="toggle-session" class="session-toggle">Show Meesho session</button>
             <div id="session-panel" class="collapsed">
-              <p class="session-hint" style="margin-top:10px;"><strong>Live shipping needs your Meesho login.</strong> Iframe embed is blocked by Meesho — use popup + capture below.</p>
-              <ol class="session-steps" style="margin:10px 0 10px 18px;font-size:12px;line-height:1.5;color:#374151;">
-                <li>Click <strong>Open Meesho login</strong> and sign in (catalog add page)</li>
-                <li>On the Meesho tab: drag <strong>Capture session</strong> to bookmarks and click it — or use <strong>Copy console script</strong></li>
-                <li>Return here → <strong>Test live connection</strong> → Test Lab Phase 2 for actual ₹</li>
-              </ol>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                <button type="button" id="open-meesho-login" class="session-toggle" style="background:#047857;color:#fff;border-color:#047857;">Open Meesho login</button>
-                <a id="meesho-capture-bookmarklet" href="#" onclick="return false;" title="Drag this link to your bookmarks bar. After logging into Meesho, click the bookmark to send session here." class="session-toggle" style="display:inline-block;text-decoration:none;background:#1d4ed8;color:#fff;border-color:#1d4ed8;padding:8px 12px;border-radius:8px;font-size:12px;">⬆ Capture session</a>
-                <button type="button" id="copy-meesho-capture-script" class="session-toggle">Copy console script</button>
-              </div>
-              <p class="session-hint" style="font-size:11px;margin-bottom:10px;">Works on <code style="font-size:10px;">supplier.meesho.com/.../catalogs/single/add</code> after you log in.</p>
               <div class="opt-row" style="margin-top:10px;">
                 <div>
                   <label class="opt-label" for="session-supplier-id">Supplier ID</label>
@@ -267,7 +255,7 @@
               <div class="opt-row" style="margin-top:8px;">
                 <div>
                   <label class="opt-label" for="session-identifier">Identifier</label>
-                  <input type="text" id="session-identifier" class="opt-input" placeholder="e.g. ytnlz" value="ytnlz" autocomplete="off">
+                  <input type="text" id="session-identifier" class="opt-input" placeholder="catalog tag (optional)" autocomplete="off">
                 </div>
                 <div>
                   <label class="opt-label" for="session-price">Price (₹)</label>
@@ -275,18 +263,13 @@
                 </div>
               </div>
               <div style="margin-top:8px;">
-                <label class="opt-label" for="session-cookie">Cookie</label>
-                <textarea id="session-cookie" class="opt-input" rows="2" placeholder="Auto-filled by Capture session, or paste from DevTools → Application → Cookies" style="resize:vertical;font-size:12px;"></textarea>
-              </div>
-              <div style="margin-top:8px;">
-                <label class="opt-label" for="import-session-json">Or paste captured session JSON</label>
-                <textarea id="import-session-json" class="opt-input" rows="2" placeholder='{"type":"meesho-optimizer-session",...}' style="resize:vertical;font-size:11px;font-family:monospace;"></textarea>
-                <button type="button" id="import-meesho-session" class="session-toggle" style="margin-top:6px;">Import session JSON</button>
+                <label class="opt-label" for="session-cookie">Cookie (optional)</label>
+                <textarea id="session-cookie" class="opt-input" rows="2" placeholder="Paste cookie string from supplier.meesho.com DevTools" style="resize:vertical;font-size:12px;"></textarea>
               </div>
               <button type="button" id="save-session" class="generate-btn" style="margin-top:10px;padding:12px;font-size:14px;">Save Session</button>
               <button type="button" id="test-session" class="session-toggle" style="margin-top:8px;">Test live connection</button>
               <div id="session-status" class="session-status warn">⚠️ Add Supplier ID + Browser ID (login to supplier.meesho.com first)</div>
-              <p class="session-hint">Session is sent from your browser on supplier.meesho.com (not iframe). Cloud proxy may still 403 — if so, use the <strong>Chrome extension</strong> on Meesho for guaranteed live ₹. Phase 1 local variants always work.</p>
+              <p class="session-hint">Paste values from supplier.meesho.com while logged in. <strong>Live API from the web app often returns 403</strong> because Meesho blocks cloud-server requests — use the <strong>Chrome extension</strong> on supplier.meesho.com for guaranteed live shipping. This web app still works with built-in categories + local variants.</p>
             </div>
           </div>
 
@@ -308,7 +291,6 @@
               <span id="selected-category-name" style="font-size:12px;font-weight:600;"></span>
             </div>
             <input type="hidden" id="category-select" value="">
-            <input type="hidden" id="category-parent-name" value="">
             <p class="session-hint" style="margin-top:8px;">Optional — only used if you try live Meesho shipping. Image variants are generated the same way for every category.</p>
           </div>
 
@@ -384,7 +366,7 @@
                 <div>
                   <label class="opt-label" for="test-lab-category">Category group</label>
                   <select id="test-lab-category" class="opt-select">
-                    <option value="auto" selected>Auto detect (recommended)</option>
+                    <option value="auto" selected>Auto detect</option>
                     <option value="apparel">Apparel / Kurti</option>
                     <option value="lingerie">Lingerie / Bra</option>
                     <option value="footwear">Footwear</option>
@@ -411,9 +393,6 @@
                   <label class="opt-label" for="test-lab-border">Frame color</label>
                   <input type="color" id="test-lab-border" class="opt-input" value="#ff7900" style="height:42px;padding:4px;">
                 </div>
-              </div>
-              <div id="test-lab-detected-category" class="test-lab-note" style="margin-top:8px;padding:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:none;">
-                <div id="test-lab-detected-label" style="font-size:12px;line-height:1.45;"></div>
               </div>
               <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;">
                 <input type="checkbox" id="test-lab-live-verify" style="width:18px;height:18px;" checked>
@@ -502,17 +481,16 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=28"></script>
-  <script src="/web-session.js?v=28"></script>
-  <script src="/js/meesho-session-bridge.js?v=28"></script>
+  <script src="/js/meeshoCategories.js?v=24"></script>
+  <script src="/web-session.js?v=24"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=28"></script>
+  <script src="/js/meeshoApi.js?v=24"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=28"></script>
-  <script src="/content.js?v=28"></script>
-  <script src="/web-app.js?v=28"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=28"></script>
+  <script src="/js/ui.js?v=24"></script>
+  <script src="/content.js?v=24"></script>
+  <script src="/web-app.js?v=24"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=24"></script>
 </body>
 </html>
