@@ -9,6 +9,10 @@ class MeeshoShippingOptimizer {
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
+    // Test Lab state — isolated from Live mode (currentResults / framedExtraResults)
+    this.testLabResults = [];
+    this.testLabAnalysis = null;
+    this.activeOptimizerTab = "live";
     this.variationCount = 6;
     this.isLicensed = false;
     this.originalImageUrl = null;
@@ -333,10 +337,12 @@ class MeeshoShippingOptimizer {
 
     const processingArea = document.getElementById("processing-area");
     const resultsArea = document.getElementById("results-area");
+    const testResultsArea = document.getElementById("test-results-area");
     const generateBtn = document.getElementById("generate-btn");
     const uploadArea = document.getElementById("upload-area");
     if (processingArea) processingArea.style.display = "none";
     if (resultsArea) resultsArea.style.display = "none";
+    if (testResultsArea) testResultsArea.style.display = "none";
     if (uploadArea) uploadArea.style.display = "block";
     if (generateBtn) {
       generateBtn.style.display = "block";
@@ -682,7 +688,12 @@ Please share payment details and license key.`;
           return;
         }
         if (this.isProcessing) return;
-        void this.processImage(file);
+        // Route by tab: Live uses existing processImage — do not modify that path for Test Lab.
+        if (this.getActiveOptimizerTab() === "test") {
+          void this.processImageTestLab(file);
+        } else {
+          void this.processImage(file);
+        }
       };
 
       generateBtn.disabled = !getUploadFile();
@@ -720,6 +731,11 @@ Please share payment details and license key.`;
       WebSession.wireForm();
     }
     this.loadCategoryDropdown();
+
+    // Web-only: Live vs Test Lab tabs (Test Lab must not alter Live handlers)
+    if (window.WEB_OPTIMIZER_MODE) {
+      this.setupOptimizerTabs();
+    }
 
     const categorySelect = document.getElementById("category-select");
     if (categorySelect) {
@@ -987,6 +1003,264 @@ Please share payment details and license key.`;
     }
   }
 
+  // ─── Optimizer tabs (WEB only) ───────────────────────────────────────────
+  // Live tab → processImage() — production path, unchanged below.
+  // Test Lab tab → processImageTestLab() — isolated experiments only.
+
+  getActiveOptimizerTab() {
+    if (!window.WEB_OPTIMIZER_MODE) return "live";
+    return this.activeOptimizerTab || "live";
+  }
+
+  setupOptimizerTabs() {
+    const tabs = document.querySelectorAll("[data-optimizer-tab]");
+    if (!tabs.length) return;
+
+    const switchTab = (tabName) => {
+      this.activeOptimizerTab = tabName === "test" ? "test" : "live";
+      tabs.forEach((btn) => {
+        const active = btn.dataset.optimizerTab === this.activeOptimizerTab;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      document.querySelectorAll("[data-optimizer-panel]").forEach((panel) => {
+        panel.classList.toggle(
+          "active",
+          panel.dataset.optimizerPanel === this.activeOptimizerTab
+        );
+      });
+
+      const genBtn = document.getElementById("generate-btn");
+      if (genBtn) {
+        genBtn.textContent =
+          this.activeOptimizerTab === "test"
+            ? "🧪 Run Test Lab"
+            : "🚀 Generate Variants";
+      }
+
+      const liveResults = document.getElementById("results-area");
+      const testResults = document.getElementById("test-results-area");
+      if (liveResults) {
+        liveResults.style.display =
+          this.activeOptimizerTab === "live" && this.currentResults.length
+            ? "block"
+            : "none";
+      }
+      if (testResults) {
+        testResults.style.display =
+          this.activeOptimizerTab === "test" && this.testLabResults.length
+            ? "block"
+            : "none";
+      }
+
+      const boot = document.getElementById("boot-msg");
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      if (boot && hasFile) {
+        boot.textContent =
+          this.activeOptimizerTab === "test"
+            ? "Image ready — tap Run Test Lab"
+            : "Image ready — tap Generate Variants";
+      }
+    };
+
+    tabs.forEach((btn) => {
+      btn.onclick = () => switchTab(btn.dataset.optimizerTab || "live");
+    });
+
+    switchTab(this.activeOptimizerTab || "live");
+  }
+
+  async waitForTestLabReady(timeoutMs = 12000) {
+    if (window.TestLabOptimizer?.runTestLab) return true;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      window.addEventListener(
+        "testlab-ready",
+        () => {
+          clearTimeout(timer);
+          resolve(!!window.TestLabOptimizer?.runTestLab);
+        },
+        { once: true }
+      );
+    });
+  }
+
+  getTestLabOptions() {
+    const mode =
+      document.getElementById("test-lab-mode")?.value || "smart";
+    const category =
+      document.getElementById("test-lab-category")?.value || "auto";
+    const targetRaw = document.getElementById("test-lab-target")?.value;
+    const borderColor =
+      document.getElementById("test-lab-border")?.value || "#ff7900";
+    const categoryName =
+      document.getElementById("selected-category-name")?.textContent?.trim() ||
+      "";
+    const sscatId = parseInt(
+      document.getElementById("category-select")?.value,
+      10
+    );
+
+    return {
+      mode,
+      category,
+      categoryName,
+      sscatId: Number.isFinite(sscatId) ? sscatId : null,
+      targetInr: targetRaw ? parseInt(targetRaw, 10) : null,
+      borderColor,
+      liveVerify: !!document.getElementById("test-lab-live-verify")?.checked,
+    };
+  }
+
+  /**
+   * TEST LAB ONLY — does not call processImage or MeeshoAPI.generateLocalVariations.
+   */
+  async processImageTestLab(file) {
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+    if (this.isProcessing) return;
+
+    this.isProcessing = true;
+    this.shouldStop = false;
+    this.testLabResults = [];
+    this.testLabAnalysis = null;
+
+    const uploadArea = document.getElementById("upload-area");
+    const sections = document.querySelectorAll(".opt-section");
+    const processingArea = document.getElementById("processing-area");
+    const testResultsArea = document.getElementById("test-results-area");
+    const liveResultsArea = document.getElementById("results-area");
+    const generateBtn = document.getElementById("generate-btn");
+
+    if (uploadArea) uploadArea.style.display = "none";
+    if (generateBtn) {
+      generateBtn.style.display = "none";
+      generateBtn.disabled = true;
+    }
+    sections.forEach((s) => (s.style.display = "none"));
+    if (liveResultsArea) liveResultsArea.style.display = "none";
+    if (testResultsArea) testResultsArea.style.display = "none";
+
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:20px;">
+          <div style="font-size:40px;margin-bottom:8px;">🧪</div>
+          <h3 style="margin:0 0 8px;color:#047857;">Test Lab running…</h3>
+          <p id="test-lab-progress" style="font-size:12px;color:#666;">Loading strategy module…</p>
+        </div>`;
+    }
+
+    const setProgress = (msg) => {
+      const el = document.getElementById("test-lab-progress");
+      if (el) el.textContent = msg;
+    };
+
+    try {
+      const ready = await this.waitForTestLabReady();
+      if (!ready || !window.TestLabOptimizer?.runTestLab) {
+        throw new Error("Test Lab module failed to load — refresh the page");
+      }
+
+      this.gatherSettings();
+      const opts = this.getTestLabOptions();
+
+      const result = await window.TestLabOptimizer.runTestLab(file, {
+        ...opts,
+        onProgress: (msg) => {
+          if (!this.shouldStop) setProgress(msg);
+        },
+      });
+
+      if (this.shouldStop) {
+        OptimizerUtils.showNotification("Test Lab stopped", "info");
+        return;
+      }
+
+      this.testLabResults = (result.results || []).map((r, i) =>
+        this.mapResultFromApi(r, i)
+      );
+      this.testLabAnalysis = result.analysis || null;
+
+      const analysisEl = document.getElementById("test-lab-analysis");
+      if (analysisEl && this.testLabAnalysis) {
+        const a = this.testLabAnalysis;
+        analysisEl.style.display = "block";
+        analysisEl.innerHTML = `Detected: ${a.width}×${a.height}px · aspect ${a.aspect} · ${
+          a.studioBg ? "studio bg" : "busy bg"
+        } · ${a.tall ? "tall" : "not tall"} · group: <strong>${
+          a.resolvedCategory || a.category
+        }</strong> · suggest: ${a.suggested}`;
+      }
+
+      if (opts.liveVerify && this.testLabResults.length) {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.()) {
+          setProgress("Live Meesho check on top 5…");
+          await window.TestLabOptimizer.verifyTestLabLive(
+            this.testLabResults,
+            5,
+            setProgress
+          );
+          this.testLabResults.sort(
+            (a, b) =>
+              (a.shippingCost || a.estShipping || 999) -
+              (b.shippingCost || b.estShipping || 999)
+          );
+        } else {
+          OptimizerUtils.showNotification(
+            "Live verify skipped — add Meesho session first",
+            "info"
+          );
+        }
+      }
+
+      if (this.testLabResults.length) {
+        OptimizerUtils.showNotification(
+          `Test Lab: ${this.testLabResults.length} variants (estimated ₹ ranking)`,
+          "success"
+        );
+      } else {
+        OptimizerUtils.showNotification(
+          "No Test Lab variants — try another mode or category",
+          "error"
+        );
+      }
+    } catch (err) {
+      console.error("Test Lab error:", err);
+      OptimizerUtils.showNotification("Test Lab: " + err.message, "error");
+    }
+
+    if (processingArea) processingArea.style.display = "none";
+
+    if (this.testLabResults.length && testResultsArea) {
+      testResultsArea.style.display = "block";
+      testResultsArea.innerHTML = OptimizerUI.getTestLabResultsHTML(
+        this.testLabResults,
+        {
+          analysis: this.testLabAnalysis,
+          originalUrl: this.originalImageUrl,
+          baselineShipping: this.getBaselineShipping(),
+        }
+      );
+      this.setupResultsEvents();
+    } else {
+      if (uploadArea) uploadArea.style.display = "block";
+      sections.forEach((s) => (s.style.display = "block"));
+      if (generateBtn) {
+        generateBtn.style.display = "block";
+        generateBtn.disabled = false;
+      }
+    }
+
+    this.isProcessing = false;
+  }
+
+  // LIVE MODE ONLY — production generate path. Test Lab uses processImageTestLab().
   async processImage(file) {
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
@@ -1650,6 +1924,7 @@ Please share payment details and license key.`;
       variantStyle: r.variantStyle || "standard",
       meta: r.meta || null,
       shippingCost: r.shippingCost || 0,
+      estShipping: r.estShipping ?? r.meta?.estInr ?? 0,
       isVerified: r.isVerified ?? !r.localOnly,
       duplicatePid: r.duplicatePid,
       manualPrice: !!r.manualPrice,
@@ -1668,6 +1943,7 @@ Please share payment details and license key.`;
     return (
       this.currentResults.find((r) => r.variantId === variantId) ||
       this.framedExtraResults.find((r) => r.variantId === variantId) ||
+      this.testLabResults.find((r) => r.variantId === variantId) ||
       null
     );
   }

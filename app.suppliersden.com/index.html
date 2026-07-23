@@ -148,6 +148,61 @@
       border-radius: 6px;
       line-height: 1.4;
     }
+    /* Optimizer mode tabs — Live is default; Test Lab is isolated experiments */
+    .opt-tabs {
+      display: flex;
+      border-bottom: 2px solid #eee;
+      background: #fafafa;
+    }
+    .opt-tab {
+      flex: 1;
+      padding: 12px 10px;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+      color: #666;
+      cursor: pointer;
+    }
+    .opt-tab.active {
+      color: #047857;
+      background: #fff;
+      box-shadow: inset 0 -3px 0 #C9A227;
+    }
+    .opt-tab-panel { display: none; }
+    .opt-tab-panel.active { display: block; }
+    .test-lab-note {
+      font-size: 11px;
+      color: #666;
+      margin-top: 8px;
+      padding: 8px;
+      background: #eff6ff;
+      border-radius: 6px;
+      line-height: 1.45;
+      border: 1px solid #dbeafe;
+    }
+    .test-side-by-side {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 560px) {
+      .test-side-by-side { grid-template-columns: 1fr; }
+    }
+    .test-original-pane {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fafafa;
+      text-align: center;
+    }
+    .test-original-pane img {
+      max-width: 100%;
+      max-height: 160px;
+      object-fit: contain;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
@@ -162,7 +217,13 @@
         <div class="opt-header">
           <h2>🚀 Upload &amp; Optimize</h2>
         </div>
+        <div class="opt-tabs" id="optimizer-tabs" role="tablist">
+          <button type="button" class="opt-tab active" data-optimizer-tab="live" role="tab" aria-selected="true">Live</button>
+          <button type="button" class="opt-tab" data-optimizer-tab="test" role="tab" aria-selected="false">Test Lab</button>
+        </div>
         <div class="opt-body">
+          <!-- LIVE TAB — production path (processImage). Do not add Test Lab logic here. -->
+          <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
           <div class="opt-section">
             <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
               <span>🔐 Meesho Session (for live shipping)</span>
@@ -267,6 +328,66 @@
             <label class="opt-label" for="custom-text">✏️ Text on image (optional)</label>
             <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING">
           </div>
+          </div>
+          <!-- /live-tab-panel -->
+
+          <!-- TEST LAB TAB — isolated experiments (processImageTestLab). Must not change Live flow. -->
+          <div id="test-tab-panel" class="opt-tab-panel" data-optimizer-panel="test">
+            <div class="opt-section">
+              <div class="opt-section-title">🧪 Test Lab (category strategies)</div>
+              <p class="test-lab-note">Restored smart strategies: studio white, tall ₹50, flat-lay, framed, collage. Ranked by <strong>estimated ₹</strong> from historical patterns — verify on Meesho. Does not replace Live mode.</p>
+              <div class="opt-row" style="margin-top:10px;">
+                <div>
+                  <label class="opt-label" for="test-lab-mode">Strategy mode</label>
+                  <select id="test-lab-mode" class="opt-select">
+                    <option value="smart" selected>Smart Auto (recommended)</option>
+                    <option value="studio_ultra">Studio Ultra (small items)</option>
+                    <option value="studio">Studio White</option>
+                    <option value="tall">Tall ₹50 frame</option>
+                    <option value="flatlay">Flat-Lay 1024²</option>
+                    <option value="framed_low">Framed Low (₹64–71 band)</option>
+                    <option value="framed">Framed Promo (₹93 band)</option>
+                    <option value="collage">Collage split</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="opt-label" for="test-lab-category">Category group</label>
+                  <select id="test-lab-category" class="opt-select">
+                    <option value="auto" selected>Auto detect</option>
+                    <option value="apparel">Apparel / Kurti</option>
+                    <option value="lingerie">Lingerie / Bra</option>
+                    <option value="footwear">Footwear</option>
+                    <option value="home">Home &amp; Kitchen</option>
+                    <option value="jewellery">Jewellery</option>
+                    <option value="general">General</option>
+                  </select>
+                </div>
+              </div>
+              <div class="opt-row" style="margin-top:10px;">
+                <div>
+                  <label class="opt-label" for="test-lab-target">Est. target ₹ (filter)</label>
+                  <select id="test-lab-target" class="opt-select">
+                    <option value="">No filter</option>
+                    <option value="30">≤ ₹30</option>
+                    <option value="40">≤ ₹40</option>
+                    <option value="50" selected>≤ ₹50</option>
+                    <option value="70">≤ ₹70</option>
+                    <option value="93">≤ ₹93</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="opt-label" for="test-lab-border">Frame color</label>
+                  <input type="color" id="test-lab-border" class="opt-input" value="#ff7900" style="height:42px;padding:4px;">
+                </div>
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;">
+                <input type="checkbox" id="test-lab-live-verify" style="width:18px;height:18px;">
+                Try live Meesho price on top 5 (needs session)
+              </label>
+              <div id="test-lab-analysis" class="test-lab-note" style="display:none;margin-top:10px;"></div>
+            </div>
+          </div>
+          <!-- /test-tab-panel -->
 
           <label class="opt-upload-box" id="upload-area" for="image-input">
             <div style="font-size:40px;margin-bottom:8px;">📸</div>
@@ -285,6 +406,7 @@
 
           <div id="processing-area" style="display:none;"></div>
           <div id="results-area" style="display:none;"></div>
+          <div id="test-results-area" style="display:none;"></div>
           <div id="boot-msg" class="boot-msg">Ready — choose an image</div>
         </div>
       </div>
@@ -342,15 +464,16 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=14"></script>
-  <script src="/web-session.js?v=14"></script>
+  <script src="/js/meeshoCategories.js?v=15"></script>
+  <script src="/web-session.js?v=15"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=14"></script>
+  <script src="/js/meeshoApi.js?v=15"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=14"></script>
-  <script src="/content.js?v=14"></script>
-  <script src="/web-app.js?v=14"></script>
+  <script src="/js/ui.js?v=15"></script>
+  <script src="/content.js?v=15"></script>
+  <script src="/web-app.js?v=15"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=15"></script>
 </body>
 </html>

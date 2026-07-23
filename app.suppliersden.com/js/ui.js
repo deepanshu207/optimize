@@ -502,6 +502,87 @@ const OptimizerUI = {
         `;
     return html;
   },
+
+  /** TEST LAB ONLY — separate from getResultsHTML (Live mode). */
+  getTestLabResultsHTML: function (results, options) {
+    options = options || {};
+    const originalUrl = options.originalUrl || "";
+    const analysis = options.analysis || {};
+    const baseline = options.baselineShipping || 0;
+
+    if (!results.length) {
+      return `
+        <div style="text-align:center;padding:24px;">
+          <p style="color:#666;font-size:12px;">No Test Lab variants. Try Smart Auto or another category group.</p>
+          <button id="restart-btn" class="opt-btn opt-btn-primary" style="margin-top:12px;padding:10px 20px;">Try Again</button>
+        </div>`;
+    }
+
+    const best = results[0];
+    const bestEst = best.meta?.estInr || best.estShipping || 0;
+    const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
+
+    let html = `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+        <div style="font-size:11px;color:#1d4ed8;">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
+        <div style="font-size:26px;font-weight:700;color:#047857;">${
+          bestLive ? "₹" + bestLive + " live" : "est ₹" + bestEst
+        }</div>
+        <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · group: ${
+          analysis.resolvedCategory || analysis.category || "auto"
+        }</div>
+      </div>
+      <div class="test-side-by-side">
+        <div class="test-original-pane">
+          <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Original</div>
+          ${
+            originalUrl
+              ? `<img src="${originalUrl}" alt="Original">`
+              : `<div style="font-size:11px;color:#888;">No preview</div>`
+          }
+          <div style="font-size:10px;color:#666;margin-top:6px;text-align:left;line-height:1.4;">
+            ${analysis.suggested ? `Suggest: ${analysis.suggested}<br>` : ""}
+            ${analysis.width ? `${analysis.width}×${analysis.height}px` : ""}
+          </div>
+        </div>
+        <div class="test-original-pane">
+          <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">Best candidate</div>
+          <img src="${best.imageUrl}" alt="Best test variant" class="result-img" data-variant-id="${best.variantId}">
+          <div style="font-size:10px;color:#666;margin-top:6px;">${best.name}</div>
+          <div style="font-size:11px;color:#047857;font-weight:600;">est ₹${bestEst}${
+            bestLive ? ` · live ₹${bestLive}` : ""
+          }</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;max-height:480px;overflow-y:auto;">
+    `;
+
+    results.forEach((r, i) => {
+      const est = r.meta?.estInr || r.estShipping || 0;
+      const live = r.shippingCost > 0 ? r.shippingCost : null;
+      const vid = r.variantId || "test-" + i;
+      html += `
+        <div class="result-card" data-variant-id="${vid}" style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>
+          <img class="result-img" data-variant-id="${vid}" src="${r.imageUrl}" style="width:100%;height:70px;object-fit:contain;border-radius:4px;cursor:pointer;">
+          <div style="font-size:10px;font-weight:700;color:#047857;margin-top:4px;">${
+            live ? "₹" + live : "est ₹" + est
+          }</div>
+          <div style="font-size:8px;color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.name}</div>
+          <div style="display:flex;gap:4px;margin-top:4px;">
+            <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:#ecfdf5;color:#047857;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
+          </div>
+        </div>`;
+    });
+
+    html += `
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">Download Best</button>
+        <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
+      </div>`;
+    return html;
+  },
 };
 
 window.OptimizerUI = OptimizerUI;
