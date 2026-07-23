@@ -326,12 +326,23 @@ const OptimizerUI = {
 
     const best = results[0];
     const totalResults = results.length;
+    const isWeb = !!window.WEB_OPTIMIZER_MODE;
+    const isLocal = !best.shippingCost || best.shippingCost <= 0;
+    const applyLabel = isWeb ? "Save" : "Apply";
 
     let html = `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
-                <div style="font-size:11px;color:#9ca3af;">🏆 Best Shipping Rate Found</div>
-                <div style="font-size:28px;font-weight:700;color:#10b981;">₹${best.shippingCost}</div>
-                <div style="font-size:10px;color:#10b981;margin-top:2px;">✅ Accurate Price</div>
+                <div style="font-size:11px;color:#9ca3af;">${
+                  isLocal
+                    ? "✨ Variants Generated"
+                    : "🏆 Best Shipping Rate Found"
+                }</div>
+                <div style="font-size:28px;font-weight:700;color:#10b981;">${
+                  isLocal ? totalResults + " ready" : "₹" + best.shippingCost
+                }</div>
+                <div style="font-size:10px;color:#10b981;margin-top:2px;">${
+                  isLocal ? "Tap Save to download" : "✅ Accurate Price"
+                }</div>
                 <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} results found</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:280px;overflow-y:auto;">
@@ -362,7 +373,7 @@ const OptimizerUI = {
                         <button class="dl-btn" data-i="${i}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
                         <button class="apply-btn" data-i="${i}" style="flex:1;background:${
         isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-      };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Apply</button>
+      };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
                     </div>
                 </div>
             `;
@@ -370,7 +381,11 @@ const OptimizerUI = {
 
     html += `</div>
             <div style="display:flex;gap:8px;">
-                <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">Apply Best ₹${best.shippingCost}</button>
+                <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
+                  isLocal
+                    ? "Download Best Variant"
+                    : "Download Best ₹" + best.shippingCost
+                }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
             </div>
         `;
