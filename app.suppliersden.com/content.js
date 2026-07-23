@@ -1397,6 +1397,7 @@ Please share payment details and license key.`;
 // Initialize
 if (window.WEB_OPTIMIZER_MODE) {
   window.MeeshoShippingOptimizer = MeeshoShippingOptimizer;
+  if (typeof initWebOptimizerButtons === "function") initWebOptimizerButtons();
 } else {
   new MeeshoShippingOptimizer();
 }
