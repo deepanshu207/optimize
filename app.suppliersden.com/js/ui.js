@@ -331,7 +331,7 @@ const OptimizerUI = {
     const vid = r.variantId || "var-" + i;
     const styleTag =
       r.variantStyle === "framed"
-        ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">Low ₹${r.meta?.targetKb || "?"}KB · ${r.meta?.layout || "framed"}</div>`
+        ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.targetKb || "?"}KB</div>`
         : "";
 
     return `
@@ -471,7 +471,7 @@ const OptimizerUI = {
                 <button type="button" id="toggle-framed-extras" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
                     ${showFramed ? "▼" : "▶"} See more low-shipping variants (${framedExtras.length})${framedHint}
                 </button>
-                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">White mat + blue border + 3 stickers on 1024² or 703×1024, ~42–50KB JPEG — matches the ₹49 screenshot style (avoids ₹93/₹139 tiers).</p>
+                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">Full-size product with blue outer frame + white mat added around it (not shrunk). Same layout as ₹49 screenshot — only JPEG is compressed for Meesho tier.</p>
                 <div id="framed-extras-panel" style="display:${showFramed ? "block" : "none"};">
                     <div class="framed-extras-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:480px;overflow-y:auto;">
         `;

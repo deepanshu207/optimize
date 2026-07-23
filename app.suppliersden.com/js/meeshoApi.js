@@ -2,16 +2,14 @@
 
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
-  // Tuned for lowest Meesho shipping tiers (₹49–50): square/tall canvas + white mat + ~40–50KB JPEG
+  // Borders added OUTWARD around full-size product (screenshot ₹49 style) — never shrink product into canvas
   LOW_SHIPPING_FRAMED_PROFILES: [
-    { id: "square_46", layout: "square", size: 1024, coverage: 0.6, targetKb: 46 },
-    { id: "square_48", layout: "square", size: 1024, coverage: 0.58, targetKb: 48 },
-    { id: "square_50", layout: "square", size: 1024, coverage: 0.62, targetKb: 50 },
-    { id: "square_44", layout: "square", size: 1024, coverage: 0.55, targetKb: 44 },
-    { id: "tall_48", layout: "tall", targetKb: 48 },
-    { id: "tall_50", layout: "tall", targetKb: 50 },
-    { id: "tall_46", layout: "tall", targetKb: 46 },
-    { id: "square_42", layout: "square", size: 1024, coverage: 0.57, targetKb: 42 },
+    { id: "framed_48a", bluePct: 0.12, whitePct: 0.04, targetKb: 48, maxSide: 1200 },
+    { id: "framed_48b", bluePct: 0.14, whitePct: 0.05, targetKb: 48, maxSide: 1200 },
+    { id: "framed_50a", bluePct: 0.11, whitePct: 0.035, targetKb: 50, maxSide: 1200 },
+    { id: "framed_50b", bluePct: 0.13, whitePct: 0.045, targetKb: 50, maxSide: 1200 },
+    { id: "framed_46a", bluePct: 0.15, whitePct: 0.05, targetKb: 46, maxSide: 1200 },
+    { id: "framed_46b", bluePct: 0.1, whitePct: 0.03, targetKb: 46, maxSide: 1200 },
   ],
   _initialized: false,
   endpoints: {
@@ -747,7 +745,7 @@ const MeeshoAPI = {
     });
   },
 
-  // Low-shipping framed style: white mat, scaled product, blue border, ~42-50KB JPEG (₹49 tier)
+  // Low-shipping framed: thick blue outer + white mat + full-size product (screenshot style)
   compressCanvasToKb: async function (canvas, targetKb) {
     const targetBytes = targetKb * 1024;
     let lo = 0.32;
@@ -794,17 +792,29 @@ const MeeshoAPI = {
     return canvas.toDataURL("image/jpeg", quality ?? 0.82);
   },
 
-  drawBlueProductFrame: function (ctx, px, py, dw, dh, canvasSize) {
-    const blues = ["#add8e6", "#b8d4e8", "#a8cce8", "#9ec5e8"];
+  normalizeProductSize: function (img, maxSide) {
+    let w = img.width;
+    let h = img.height;
+    const cap = maxSide || 1200;
+    if (Math.max(w, h) > cap) {
+      const s = cap / Math.max(w, h);
+      w = Math.round(w * s);
+      h = Math.round(h * s);
+    }
+    return { w, h };
+  },
+
+  drawBlueProductFrame: function (ctx, px, py, dw, dh, lineRef) {
+    const blues = ["#9ec5e8", "#add8e6", "#b8d4e8", "#a8cce8", "#7ec8e3"];
     ctx.strokeStyle = blues[Math.floor(Math.random() * blues.length)];
-    ctx.lineWidth = Math.max(3, Math.round(canvasSize * 0.004));
-    ctx.strokeRect(px - 2, py - 2, dw + 4, dh + 4);
+    ctx.lineWidth = Math.max(2, Math.round((lineRef || Math.min(dw, dh)) * 0.006));
+    ctx.strokeRect(px - 1, py - 1, dw + 2, dh + 2);
   },
 
   addLowShippingBadges: async function (ctx, px, py, dw, dh, seed) {
     const badgeNums = [3, 7, 12, 15, 18, 22];
-    const size = Math.max(48, Math.round(Math.min(dw, dh) * 0.2));
-    const inset = Math.max(4, Math.round(size * 0.08));
+    const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
+    const inset = Math.max(6, Math.round(size * 0.06));
     const slots = [
       { x: px + inset, y: py + inset },
       { x: px + dw - size - inset, y: py + inset },
@@ -826,65 +836,49 @@ const MeeshoAPI = {
     return placements;
   },
 
-  buildSquareLowShippingCanvas: function (img, profile) {
-    const size = profile.size || 1024;
-    const coverage = profile.coverage || 0.6;
+  // Screenshot layout: [thick blue outer] → [white mat] → [full-size product + stickers]
+  buildScreenshotFramedCanvas: function (img, profile) {
+    const { w, h } = this.normalizeProductSize(img, profile.maxSide || 1200);
+    const minDim = Math.min(w, h);
+    const blueOuter = Math.max(24, Math.round(minDim * (profile.bluePct || 0.12)));
+    const whitePad = Math.max(10, Math.round(minDim * (profile.whitePct || 0.04)));
+    const inset = blueOuter + whitePad;
+
+    const finalW = w + inset * 2;
+    const finalH = h + inset * 2;
     const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = finalW;
+    canvas.height = finalH;
     const ctx = canvas.getContext("2d");
+
+    const blues = ["#9ec5e8", "#add8e6", "#b8d4e8", "#a8cce8", "#7ec8e3"];
+    ctx.fillStyle = blues[Math.floor(Math.random() * blues.length)];
+    ctx.fillRect(0, 0, finalW, finalH);
+
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(blueOuter, blueOuter, finalW - blueOuter * 2, finalH - blueOuter * 2);
 
-    const scale = (size * coverage) / Math.max(img.width, img.height);
-    const dw = Math.round(img.width * scale);
-    const dh = Math.round(img.height * scale);
-    const px = Math.round((size - dw) / 2);
-    const py = Math.round((size - dh) / 2);
-
+    const px = inset;
+    const py = inset;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, px, py, dw, dh);
-    this.drawBlueProductFrame(ctx, px, py, dw, dh, size);
+    ctx.drawImage(img, 0, 0, img.width, img.height, px, py, w, h);
+    this.drawBlueProductFrame(ctx, px, py, w, h, minDim);
 
-    return { canvas, px, py, dw, dh, size, layout: "square" };
-  },
-
-  buildTallLowShippingCanvas: function (img) {
-    const outerW = 703;
-    const outerH = 1024;
-    const canvas = document.createElement("canvas");
-    canvas.width = outerW;
-    canvas.height = outerH;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, outerW, outerH);
-
-    const marginX = Math.round(outerW * 0.07);
-    const marginY = Math.round(outerH * 0.05);
-    const areaW = outerW - marginX * 2;
-    const areaH = outerH - marginY * 2;
-    const scale = Math.min(areaW / img.width, areaH / img.height) * 0.92;
-    const dw = Math.round(img.width * scale);
-    const dh = Math.round(img.height * scale);
-    const px = Math.round((outerW - dw) / 2);
-    const py = Math.round((outerH - dh) / 2);
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, px, py, dw, dh);
-    this.drawBlueProductFrame(ctx, px, py, dw, dh, outerW);
-
-    return { canvas, px, py, dw, dh, size: outerW, layout: "tall" };
+    return {
+      canvas,
+      px,
+      py,
+      dw: w,
+      dh: h,
+      layout: "screenshot",
+      blueOuter,
+      whitePad,
+    };
   },
 
   buildLowShippingFramedLayers: async function (img, profile, seed) {
-    const useTall =
-      profile.layout === "tall" ||
-      (profile.layout !== "square" && this.isTallPortrait(img));
-    const built = useTall
-      ? this.buildTallLowShippingCanvas(img)
-      : this.buildSquareLowShippingCanvas(img, profile);
+    const built = this.buildScreenshotFramedCanvas(img, profile);
 
     const { canvas, px, py, dw, dh } = built;
     const noStickersCanvas = document.createElement("canvas");
@@ -905,19 +899,17 @@ const MeeshoAPI = {
     const full = this.dataUrlFromCanvas(canvas);
 
     const productOnlyCanvas = document.createElement("canvas");
-    productOnlyCanvas.width = canvas.width;
-    productOnlyCanvas.height = canvas.height;
+    productOnlyCanvas.width = dw;
+    productOnlyCanvas.height = dh;
     const pCtx = productOnlyCanvas.getContext("2d");
-    pCtx.fillStyle = "#ffffff";
-    pCtx.fillRect(0, 0, productOnlyCanvas.width, productOnlyCanvas.height);
-    pCtx.drawImage(img, px, py, dw, dh);
+    pCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
     const productOnly = this.dataUrlFromCanvas(productOnlyCanvas);
 
     const noBorderCanvas = document.createElement("canvas");
     noBorderCanvas.width = dw;
     noBorderCanvas.height = dh;
     const nbCtx = noBorderCanvas.getContext("2d");
-    nbCtx.drawImage(img, 0, 0, dw, dh);
+    nbCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
     if (badgePlacements.length) {
       const shifted = badgePlacements.map((p) => ({
         num: p.num,
@@ -936,7 +928,8 @@ const MeeshoAPI = {
         layout: built.layout,
         profileId: profile.id,
         targetKb: profile.targetKb,
-        coverage: profile.coverage,
+        bluePct: profile.bluePct,
+        whitePct: profile.whitePct,
         canvasW: canvas.width,
         canvasH: canvas.height,
         productW: dw,
