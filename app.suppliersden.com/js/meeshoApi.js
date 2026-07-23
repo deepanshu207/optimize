@@ -2,20 +2,26 @@
 
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
-  // Screenshot-style framed variants — visual match matters for Meesho, not file KB (₹49 ref ≈ 90KB)
+  // Borders outward around full-size product — profiles tuned toward ₹49 (38–48KB slabs)
   LOW_SHIPPING_FRAMED_PROFILES: [
-    { id: "ref_88_a", bluePct: 0.18, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.14 },
-    { id: "ref_88_b", bluePct: 0.16, whitePct: 0.045, maxSide: 1200, quality: 0.88, badgeScale: 0.15 },
-    { id: "ref_85_a", bluePct: 0.2, whitePct: 0.05, maxSide: 1200, quality: 0.85, badgeScale: 0.14 },
-    { id: "ref_85_b", bluePct: 0.17, whitePct: 0.04, maxSide: 1200, quality: 0.85, badgeScale: 0.13 },
-    { id: "ref_90_a", bluePct: 0.19, whitePct: 0.05, maxSide: 1200, quality: 0.9, badgeScale: 0.14 },
-    { id: "ref_90_b", bluePct: 0.15, whitePct: 0.05, maxSide: 1200, quality: 0.9, badgeScale: 0.15 },
-    { id: "ref_88_c", bluePct: 0.18, whitePct: 0.05, maxSide: 1024, quality: 0.88, badgeScale: 0.14 },
-    { id: "ref_85_c", bluePct: 0.21, whitePct: 0.055, maxSide: 1024, quality: 0.85, badgeScale: 0.14 },
-    { id: "tall_88_a", layout: "tall", bluePct: 0.18, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.14 },
-    { id: "tall_88_b", layout: "tall", bluePct: 0.2, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.15 },
-    { id: "tall_85_a", layout: "tall", bluePct: 0.17, whitePct: 0.045, maxSide: 1024, quality: 0.85, badgeScale: 0.14 },
-    { id: "tall_90_a", layout: "tall", bluePct: 0.19, whitePct: 0.05, maxSide: 1024, quality: 0.9, badgeScale: 0.13 },
+    // Original set (often lands ₹63–65 — kept for comparison)
+    { id: "framed_48a", bluePct: 0.12, whitePct: 0.04, targetKb: 48, maxSide: 1200 },
+    { id: "framed_48b", bluePct: 0.14, whitePct: 0.05, targetKb: 48, maxSide: 1200 },
+    { id: "framed_50a", bluePct: 0.11, whitePct: 0.035, targetKb: 50, maxSide: 1200 },
+    { id: "framed_50b", bluePct: 0.13, whitePct: 0.045, targetKb: 50, maxSide: 1200 },
+    { id: "framed_46a", bluePct: 0.15, whitePct: 0.05, targetKb: 46, maxSide: 1200 },
+    { id: "framed_46b", bluePct: 0.1, whitePct: 0.03, targetKb: 46, maxSide: 1200 },
+    // ₹49-tier candidates: thick blue outer (screenshot), lower KB, maxSide 1024
+    { id: "low_44_thick", bluePct: 0.18, whitePct: 0.05, targetKb: 44, maxSide: 1024 },
+    { id: "low_42_thick", bluePct: 0.2, whitePct: 0.05, targetKb: 42, maxSide: 1024 },
+    { id: "low_40_thick", bluePct: 0.17, whitePct: 0.045, targetKb: 40, maxSide: 1024 },
+    { id: "low_38_thick", bluePct: 0.19, whitePct: 0.05, targetKb: 38, maxSide: 1024 },
+    { id: "low_46_med", bluePct: 0.15, whitePct: 0.04, targetKb: 46, maxSide: 1024 },
+    { id: "low_44_med", bluePct: 0.14, whitePct: 0.035, targetKb: 44, maxSide: 1024 },
+    { id: "low_48_tall", layout: "tall", bluePct: 0.16, whitePct: 0.05, targetKb: 48, maxSide: 1024 },
+    { id: "low_46_tall", layout: "tall", bluePct: 0.18, whitePct: 0.05, targetKb: 46, maxSide: 1024 },
+    { id: "low_44_tall", layout: "tall", bluePct: 0.2, whitePct: 0.045, targetKb: 44, maxSide: 1024 },
+    { id: "low_42_tall", layout: "tall", bluePct: 0.17, whitePct: 0.04, targetKb: 42, maxSide: 1024 },
   ],
   _initialized: false,
   endpoints: {
@@ -751,24 +757,56 @@ const MeeshoAPI = {
     });
   },
 
-  // Natural JPEG encode — Meesho tier follows image fingerprint, not file size (₹49 ref ≈ 90KB)
-  encodeCanvasJpeg: async function (canvas, quality) {
-    const q = Math.min(0.95, Math.max(0.75, quality ?? 0.85));
-    const blob = await new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/jpeg", q);
-    });
-    if (!blob) throw new Error("JPEG encode failed");
+  // Low-shipping framed: thick blue outer + white mat + full-size product (screenshot style)
+  compressCanvasToKb: async function (canvas, targetKb) {
+    const targetBytes = targetKb * 1024;
+
+    const encodeAt = (q) =>
+      new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/jpeg", q);
+      });
+
+    let lo = 0.18;
+    let hi = 0.9;
+    let best = null;
+    for (let i = 0; i < 18; i++) {
+      const q = (lo + hi) / 2;
+      const blob = await encodeAt(q);
+      if (!blob) break;
+      if (blob.size <= targetBytes) {
+        best = { blob, q };
+        lo = q;
+      } else {
+        hi = q;
+      }
+    }
+
+    if (!best || best.blob.size > targetBytes) {
+      let q = best ? best.q : 0.45;
+      for (; q >= 0.12; q -= 0.025) {
+        const blob = await encodeAt(q);
+        if (!blob) break;
+        if (!best || blob.size < best.blob.size) best = { blob, q };
+        if (blob.size <= targetBytes) break;
+      }
+    }
+
+    if (!best) {
+      const blob = await encodeAt(0.35);
+      best = { blob, q: 0.35 };
+    }
+
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(best.blob);
     });
     return {
-      blob,
+      blob: best.blob,
       dataUrl,
-      quality: q,
-      kb: Math.ceil(blob.size / 1024),
+      quality: best.q,
+      kb: Math.ceil(best.blob.size / 1024),
     };
   },
 
@@ -799,10 +837,9 @@ const MeeshoAPI = {
     ctx.strokeRect(px - 1, py - 1, dw + 2, dh + 2);
   },
 
-  addLowShippingBadges: async function (ctx, px, py, dw, dh, seed, profile) {
+  addLowShippingBadges: async function (ctx, px, py, dw, dh, seed) {
     const badgeNums = [3, 7, 12, 15, 18, 22];
-    const scale = profile?.badgeScale || 0.14;
-    const size = Math.max(48, Math.round(Math.min(dw, dh) * scale));
+    const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
     const inset = Math.max(6, Math.round(size * 0.06));
     const slots = [
       { x: px + inset, y: py + inset },
@@ -892,7 +929,6 @@ const MeeshoAPI = {
       dw,
       dh,
       seed,
-      profile,
     );
     const full = this.dataUrlFromCanvas(canvas);
 
@@ -925,7 +961,7 @@ const MeeshoAPI = {
       meta: {
         layout: built.layout,
         profileId: profile.id,
-        quality: profile.quality,
+        targetKb: profile.targetKb,
         bluePct: profile.bluePct,
         whitePct: profile.whitePct,
         maxSide: profile.maxSide,
@@ -956,21 +992,21 @@ const MeeshoAPI = {
             chosen,
             seed,
           );
-          const encoded = await this.encodeCanvasJpeg(
+          const compressed = await this.compressCanvasToKb(
             built.canvas,
-            chosen.quality ?? 0.85,
+            chosen.targetKb,
           );
-          built.layers.full = encoded.dataUrl;
+          built.layers.full = compressed.dataUrl;
 
           resolve({
-            blob: encoded.blob,
-            dataUrl: encoded.dataUrl,
-            pricingImageUrl: encoded.dataUrl,
+            blob: compressed.blob,
+            dataUrl: compressed.dataUrl,
+            pricingImageUrl: compressed.dataUrl,
             variantStyle: "framed",
             meta: {
               ...built.meta,
-              fileKb: encoded.kb,
-              jpegQuality: encoded.quality,
+              actualKb: compressed.kb,
+              jpegQuality: compressed.quality,
             },
             layers: built.layers,
           });
