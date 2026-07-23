@@ -1619,6 +1619,7 @@ Please share payment details and license key.`;
       name: r.name || `Var-${index + 1}`,
       pricingImageUrl,
       layers,
+      meta: r.meta || null,
       editFlags,
       shippingCost: r.shippingCost || 0,
       isVerified: r.isVerified ?? !r.localOnly,
@@ -1635,7 +1636,7 @@ Please share payment details and license key.`;
     return row;
   }
 
-  setVariantEdits(variantId, editFlags) {
+  async setVariantEdits(variantId, editFlags) {
     const row = this.currentResults.find((r) => r.variantId === variantId);
     if (!row?.layers) return;
 
@@ -1643,22 +1644,38 @@ Please share payment details and license key.`;
       borderRemoved: !!editFlags.borderRemoved,
       stickersRemoved: !!editFlags.stickersRemoved,
     };
-    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+
+    const panel = document.getElementById("variant-edit-panel");
+    const statusEl = panel?.querySelector("#variant-edit-status");
+    if (statusEl) statusEl.textContent = "Updating preview…";
+
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.computeDisplayUrl) {
+      row.imageUrl = await MeeshoAPI.computeDisplayUrl(row);
+    } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
     }
 
+    this.refreshVariantCard(row);
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
-    } else {
-      this.refreshVariantCard(row);
     }
+  }
+
+  getVariantEditStatusText(row) {
+    if (!row?.editFlags) return "Showing: original (with border + stickers)";
+    if (row.editFlags.borderRemoved) return "Showing: clean product (no border)";
+    if (row.editFlags.stickersRemoved) return "Showing: no stickers (border kept)";
+    return "Showing: original (with border + stickers)";
   }
 
   refreshVariantCard(row) {
     const img = document.querySelector(
       `.result-img[data-variant-id="${row.variantId}"]`
     );
-    if (img) img.src = row.imageUrl;
+    if (img) {
+      img.src = "";
+      img.src = row.imageUrl;
+    }
     const badge = document.querySelector(
       `.result-edit-badge[data-variant-id="${row.variantId}"]`
     );
@@ -1684,11 +1701,16 @@ Please share payment details and license key.`;
     const stickerCb = panel.querySelector("#variant-edit-no-stickers");
     const priceNote = panel.querySelector("#variant-edit-price-note");
     const title = panel.querySelector("#variant-edit-title");
+    const statusEl = panel.querySelector("#variant-edit-status");
 
-    if (preview) preview.src = row.imageUrl;
+    if (preview) {
+      preview.src = "";
+      preview.src = row.imageUrl;
+    }
     if (borderCb) borderCb.checked = !!row.editFlags?.borderRemoved;
     if (stickerCb) stickerCb.checked = !!row.editFlags?.stickersRemoved;
     if (title) title.textContent = row.name || "Variant";
+    if (statusEl) statusEl.textContent = this.getVariantEditStatusText(row);
     if (priceNote) {
       priceNote.textContent =
         row.shippingCost > 0
@@ -1699,10 +1721,9 @@ Please share payment details and license key.`;
 
   ensureVariantEditorPanel() {
     let panel = document.getElementById("variant-edit-panel");
-    if (panel) return panel;
-
-    panel = document.createElement("div");
-    panel.id = "variant-edit-panel";
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "variant-edit-panel";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
     panel.innerHTML = `
@@ -1711,7 +1732,8 @@ Please share payment details and license key.`;
           <strong id="variant-edit-title" style="font-size:15px;">Variant</strong>
           <button type="button" id="variant-edit-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
         </div>
-        <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
+        <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:8px;">
+        <p id="variant-edit-status" style="font-size:12px;font-weight:600;color:#4f46e5;margin-bottom:8px;text-align:center;"></p>
         <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
           <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
@@ -1725,8 +1747,11 @@ Please share payment details and license key.`;
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
-    document.body.appendChild(panel);
+      document.body.appendChild(panel);
+    }
 
+    if (!panel.dataset.wiredV2) {
+      panel.dataset.wiredV2 = "1";
     panel.querySelector("#variant-edit-close").onclick = () =>
       this.closeVariantEditor();
     panel.querySelector("#variant-edit-done").onclick = () =>
@@ -1738,13 +1763,18 @@ Please share payment details and license key.`;
     const onEditChange = () => {
       const id = this._editingVariantId;
       if (!id) return;
-      this.setVariantEdits(id, {
+      void this.setVariantEdits(id, {
         stickersRemoved: panel.querySelector("#variant-edit-no-stickers").checked,
         borderRemoved: panel.querySelector("#variant-edit-no-border").checked,
       });
     };
-    panel.querySelector("#variant-edit-no-stickers").onchange = onEditChange;
-    panel.querySelector("#variant-edit-no-border").onchange = onEditChange;
+    const stickerInput = panel.querySelector("#variant-edit-no-stickers");
+    const borderInput = panel.querySelector("#variant-edit-no-border");
+    stickerInput.onchange = onEditChange;
+    stickerInput.oninput = onEditChange;
+    borderInput.onchange = onEditChange;
+    borderInput.oninput = onEditChange;
+    }
 
     return panel;
   }

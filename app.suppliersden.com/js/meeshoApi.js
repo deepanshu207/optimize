@@ -547,6 +547,7 @@ const MeeshoAPI = {
             name: `Var-${attempt}`,
             dataUrl: variation.dataUrl,
             layers: variation.layers,
+            meta: variation.meta,
             pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
             shippingCost: shipping,
             duplicatePid: pid,
@@ -668,11 +669,15 @@ const MeeshoAPI = {
           if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
             ImageGenerator.drawText(noStickersCtx, finalW, finalH, border);
           }
-          this.addNoise(noStickersCtx, finalW, finalH, seed);
           const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
-          const badgeCount = 2 + Math.floor(Math.random() * 2);
-          await this.addBadges(ctx, finalW, finalH, border, badgeCount);
+          const badgePlacements = await this.addBadges(
+            ctx,
+            finalW,
+            finalH,
+            border,
+            2 + Math.floor(Math.random() * 2),
+          );
 
           if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
             ImageGenerator.drawText(ctx, finalW, finalH, border);
@@ -690,6 +695,16 @@ const MeeshoAPI = {
                   full,
                   noStickers,
                   productOnly,
+                },
+                meta: {
+                  border,
+                  finalW,
+                  finalH,
+                  quality,
+                  seed,
+                  c1,
+                  c2,
+                  badgePlacements,
                 },
               }),
             "image/jpeg",
@@ -717,7 +732,60 @@ const MeeshoAPI = {
     return layers.full || result.pricingImageUrl || result.imageUrl || "";
   },
 
-  // Add badges 50-200px
+  loadDataUrlImage: function (dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = dataUrl;
+    });
+  },
+
+  eraseStickersFromFull: async function (fullUrl, meta) {
+    const placements = meta?.badgePlacements || [];
+    if (!fullUrl || !placements.length) return fullUrl;
+    try {
+      const img = await this.loadDataUrlImage(fullUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const patchColor = meta.c1 || "#ffffff";
+      placements.forEach((p) => {
+        ctx.fillStyle = patchColor;
+        ctx.fillRect(p.x - 2, p.y - 2, p.size + 4, p.size + 4);
+      });
+      return canvas.toDataURL("image/jpeg", meta.quality || 0.85);
+    } catch (e) {
+      console.warn("eraseStickersFromFull failed:", e);
+      return fullUrl;
+    }
+  },
+
+  computeDisplayUrl: async function (result) {
+    if (!result) return "";
+    const layers = result.layers || {};
+    const flags = result.editFlags || {};
+    if (!layers.full) return result.imageUrl || result.dataUrl || "";
+
+    if (flags.borderRemoved && layers.productOnly) {
+      return layers.productOnly;
+    }
+
+    if (flags.stickersRemoved) {
+      if (layers.noStickers && layers.noStickers !== layers.full) {
+        return layers.noStickers;
+      }
+      if (result.meta?.badgePlacements?.length) {
+        return await this.eraseStickersFromFull(layers.full, result.meta);
+      }
+    }
+
+    return layers.full || result.pricingImageUrl || result.imageUrl || "";
+  },
+
+  // Add badges 50-200px — returns placement list for later sticker removal
   addBadges: async function (ctx, w, h, border, count) {
     const positions = [
       { x: border + 5, y: border + 5 },
@@ -726,7 +794,10 @@ const MeeshoAPI = {
       { x: w - border - 150, y: h - border - 150 },
     ];
 
+    const placements = [];
     const used = new Set();
+    const fallbackColors = ["#e74c3c", "#3498db", "#f39c12", "#9b59b6", "#2ecc71"];
+
     for (let i = 0; i < count && i < positions.length; i++) {
       let num;
       do {
@@ -734,14 +805,41 @@ const MeeshoAPI = {
       } while (used.has(num));
       used.add(num);
 
-      const size = 50 + Math.floor(Math.random() * 150); // 50-200px
+      const size = 50 + Math.floor(Math.random() * 150);
+      const x = positions[i].x;
+      const y = positions[i].y;
+      placements.push({ x, y, size, num });
+
       try {
         const badge = await this.loadBadge(num);
         if (badge) {
-          ctx.drawImage(badge, positions[i].x, positions[i].y, size, size);
+          ctx.drawImage(badge, x, y, size, size);
+        } else {
+          this.drawFallbackSticker(ctx, x, y, size, num, fallbackColors);
         }
-      } catch (e) {}
+      } catch (e) {
+        this.drawFallbackSticker(ctx, x, y, size, num, fallbackColors);
+      }
     }
+    return placements;
+  },
+
+  drawFallbackSticker: function (ctx, x, y, size, num, colors) {
+    const color = colors[num % colors.length];
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.max(14, Math.floor(size / 3))}px Arial,sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(num), x + size / 2, y + size / 2);
+    ctx.restore();
   },
 
   // Add noise
@@ -807,6 +905,7 @@ const MeeshoAPI = {
           name: "Var-" + i,
           dataUrl: variation.dataUrl,
           layers: variation.layers,
+          meta: variation.meta,
           pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
           shippingCost: 0,
           isVerified: false,
