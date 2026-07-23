@@ -24,6 +24,7 @@
       const optimizer = new MeeshoShippingOptimizer();
       window.meeshoOptimizer = optimizer;
       optimizer.mountEmbedded(root);
+      optimizer.preloadTestLabModule?.();
 
       const btn = document.getElementById("generate-btn");
       const hasFile =
