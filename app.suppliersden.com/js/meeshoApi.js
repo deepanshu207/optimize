@@ -2,14 +2,20 @@
 
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
-  // Borders added OUTWARD around full-size product (screenshot ₹49 style) — never shrink product into canvas
+  // Screenshot-style framed variants — visual match matters for Meesho, not file KB (₹49 ref ≈ 90KB)
   LOW_SHIPPING_FRAMED_PROFILES: [
-    { id: "framed_48a", bluePct: 0.12, whitePct: 0.04, targetKb: 48, maxSide: 1200 },
-    { id: "framed_48b", bluePct: 0.14, whitePct: 0.05, targetKb: 48, maxSide: 1200 },
-    { id: "framed_50a", bluePct: 0.11, whitePct: 0.035, targetKb: 50, maxSide: 1200 },
-    { id: "framed_50b", bluePct: 0.13, whitePct: 0.045, targetKb: 50, maxSide: 1200 },
-    { id: "framed_46a", bluePct: 0.15, whitePct: 0.05, targetKb: 46, maxSide: 1200 },
-    { id: "framed_46b", bluePct: 0.1, whitePct: 0.03, targetKb: 46, maxSide: 1200 },
+    { id: "ref_88_a", bluePct: 0.18, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.14 },
+    { id: "ref_88_b", bluePct: 0.16, whitePct: 0.045, maxSide: 1200, quality: 0.88, badgeScale: 0.15 },
+    { id: "ref_85_a", bluePct: 0.2, whitePct: 0.05, maxSide: 1200, quality: 0.85, badgeScale: 0.14 },
+    { id: "ref_85_b", bluePct: 0.17, whitePct: 0.04, maxSide: 1200, quality: 0.85, badgeScale: 0.13 },
+    { id: "ref_90_a", bluePct: 0.19, whitePct: 0.05, maxSide: 1200, quality: 0.9, badgeScale: 0.14 },
+    { id: "ref_90_b", bluePct: 0.15, whitePct: 0.05, maxSide: 1200, quality: 0.9, badgeScale: 0.15 },
+    { id: "ref_88_c", bluePct: 0.18, whitePct: 0.05, maxSide: 1024, quality: 0.88, badgeScale: 0.14 },
+    { id: "ref_85_c", bluePct: 0.21, whitePct: 0.055, maxSide: 1024, quality: 0.85, badgeScale: 0.14 },
+    { id: "tall_88_a", layout: "tall", bluePct: 0.18, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.14 },
+    { id: "tall_88_b", layout: "tall", bluePct: 0.2, whitePct: 0.05, maxSide: 1200, quality: 0.88, badgeScale: 0.15 },
+    { id: "tall_85_a", layout: "tall", bluePct: 0.17, whitePct: 0.045, maxSide: 1024, quality: 0.85, badgeScale: 0.14 },
+    { id: "tall_90_a", layout: "tall", bluePct: 0.19, whitePct: 0.05, maxSide: 1024, quality: 0.9, badgeScale: 0.13 },
   ],
   _initialized: false,
   endpoints: {
@@ -745,42 +751,24 @@ const MeeshoAPI = {
     });
   },
 
-  // Low-shipping framed: thick blue outer + white mat + full-size product (screenshot style)
-  compressCanvasToKb: async function (canvas, targetKb) {
-    const targetBytes = targetKb * 1024;
-    let lo = 0.32;
-    let hi = 0.92;
-    let best = null;
-    for (let i = 0; i < 14; i++) {
-      const q = (lo + hi) / 2;
-      const blob = await new Promise((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", q);
-      });
-      if (!blob) break;
-      if (blob.size <= targetBytes) {
-        best = { blob, q };
-        lo = q;
-      } else {
-        hi = q;
-      }
-    }
-    if (!best) {
-      const blob = await new Promise((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.45);
-      });
-      best = { blob, q: 0.45 };
-    }
+  // Natural JPEG encode — Meesho tier follows image fingerprint, not file size (₹49 ref ≈ 90KB)
+  encodeCanvasJpeg: async function (canvas, quality) {
+    const q = Math.min(0.95, Math.max(0.75, quality ?? 0.85));
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/jpeg", q);
+    });
+    if (!blob) throw new Error("JPEG encode failed");
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
-      reader.readAsDataURL(best.blob);
+      reader.readAsDataURL(blob);
     });
     return {
-      blob: best.blob,
+      blob,
       dataUrl,
-      quality: best.q,
-      kb: Math.ceil(best.blob.size / 1024),
+      quality: q,
+      kb: Math.ceil(blob.size / 1024),
     };
   },
 
@@ -811,9 +799,10 @@ const MeeshoAPI = {
     ctx.strokeRect(px - 1, py - 1, dw + 2, dh + 2);
   },
 
-  addLowShippingBadges: async function (ctx, px, py, dw, dh, seed) {
+  addLowShippingBadges: async function (ctx, px, py, dw, dh, seed, profile) {
     const badgeNums = [3, 7, 12, 15, 18, 22];
-    const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
+    const scale = profile?.badgeScale || 0.14;
+    const size = Math.max(48, Math.round(Math.min(dw, dh) * scale));
     const inset = Math.max(6, Math.round(size * 0.06));
     const slots = [
       { x: px + inset, y: py + inset },
@@ -837,11 +826,19 @@ const MeeshoAPI = {
   },
 
   // Screenshot layout: [thick blue outer] → [white mat] → [full-size product + stickers]
-  buildScreenshotFramedCanvas: function (img, profile) {
+  buildScreenshotFramedCanvas: function (img, profile, seed) {
+    const isTallProfile =
+      profile.layout === "tall" && this.isTallPortrait(img);
+    let bluePct = profile.bluePct || 0.12;
+    let whitePct = profile.whitePct || 0.04;
+    if (isTallProfile) {
+      bluePct = Math.min(0.22, bluePct * 1.06);
+    }
+
     const { w, h } = this.normalizeProductSize(img, profile.maxSide || 1200);
     const minDim = Math.min(w, h);
-    const blueOuter = Math.max(24, Math.round(minDim * (profile.bluePct || 0.12)));
-    const whitePad = Math.max(10, Math.round(minDim * (profile.whitePct || 0.04)));
+    const blueOuter = Math.max(24, Math.round(minDim * bluePct));
+    const whitePad = Math.max(10, Math.round(minDim * whitePct));
     const inset = blueOuter + whitePad;
 
     const finalW = w + inset * 2;
@@ -852,7 +849,7 @@ const MeeshoAPI = {
     const ctx = canvas.getContext("2d");
 
     const blues = ["#9ec5e8", "#add8e6", "#b8d4e8", "#a8cce8", "#7ec8e3"];
-    ctx.fillStyle = blues[Math.floor(Math.random() * blues.length)];
+    ctx.fillStyle = blues[Math.abs(seed || 0) % blues.length];
     ctx.fillRect(0, 0, finalW, finalH);
 
     ctx.fillStyle = "#ffffff";
@@ -871,14 +868,14 @@ const MeeshoAPI = {
       py,
       dw: w,
       dh: h,
-      layout: "screenshot",
+      layout: isTallProfile ? "tall" : "screenshot",
       blueOuter,
       whitePad,
     };
   },
 
   buildLowShippingFramedLayers: async function (img, profile, seed) {
-    const built = this.buildScreenshotFramedCanvas(img, profile);
+    const built = this.buildScreenshotFramedCanvas(img, profile, seed);
 
     const { canvas, px, py, dw, dh } = built;
     const noStickersCanvas = document.createElement("canvas");
@@ -895,6 +892,7 @@ const MeeshoAPI = {
       dw,
       dh,
       seed,
+      profile,
     );
     const full = this.dataUrlFromCanvas(canvas);
 
@@ -927,9 +925,10 @@ const MeeshoAPI = {
       meta: {
         layout: built.layout,
         profileId: profile.id,
-        targetKb: profile.targetKb,
+        quality: profile.quality,
         bluePct: profile.bluePct,
         whitePct: profile.whitePct,
+        maxSide: profile.maxSide,
         canvasW: canvas.width,
         canvasH: canvas.height,
         productW: dw,
@@ -957,21 +956,21 @@ const MeeshoAPI = {
             chosen,
             seed,
           );
-          const compressed = await this.compressCanvasToKb(
+          const encoded = await this.encodeCanvasJpeg(
             built.canvas,
-            chosen.targetKb,
+            chosen.quality ?? 0.85,
           );
-          built.layers.full = compressed.dataUrl;
+          built.layers.full = encoded.dataUrl;
 
           resolve({
-            blob: compressed.blob,
-            dataUrl: compressed.dataUrl,
-            pricingImageUrl: compressed.dataUrl,
+            blob: encoded.blob,
+            dataUrl: encoded.dataUrl,
+            pricingImageUrl: encoded.dataUrl,
             variantStyle: "framed",
             meta: {
               ...built.meta,
-              actualKb: compressed.kb,
-              jpegQuality: compressed.quality,
+              fileKb: encoded.kb,
+              jpegQuality: encoded.quality,
             },
             layers: built.layers,
           });
