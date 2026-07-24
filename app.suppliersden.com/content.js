@@ -22,6 +22,24 @@ class MeeshoShippingOptimizer {
     this.init();
   }
 
+  /** Web app or extension modal with Live / Test Lab tabs */
+  isTabbedOptimizerUI() {
+    return (
+      !!window.WEB_OPTIMIZER_MODE ||
+      !!document.querySelector("[data-optimizer-tab]")
+    );
+  }
+
+  getTestLabModuleUrl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/js/testLabBridge.mjs?v=30";
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("js/testLabBridge.mjs?v=30");
+    }
+    return "/js/testLabBridge.mjs?v=30";
+  }
+
   init() {
     console.log("Initializing optimizer...");
 
@@ -132,17 +150,21 @@ class MeeshoShippingOptimizer {
     fab.id = "meesho-optimizer-fab";
     fab.type = "button";
     fab.textContent = "AI Optimizer";
+    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
     fab.style.cssText = `
       position: fixed;
-      right: 18px;
-      bottom: 18px;
+      right: ${isNarrow ? "12px" : "18px"};
+      bottom: ${isNarrow ? "12px" : "18px"};
       z-index: 2147483647;
       background: linear-gradient(135deg, #FFD700, #C9A227);
       color: #fff;
       border: none;
-      padding: 12px 16px;
+      padding: ${isNarrow ? "14px 18px" : "12px 16px"};
+      min-height: 48px;
+      min-width: 48px;
       border-radius: 999px;
       font-weight: 700;
+      font-size: ${isNarrow ? "14px" : "13px"};
       font-family: 'Segoe UI', sans-serif;
       box-shadow: 0 10px 25px rgba(0,0,0,0.25);
       cursor: pointer;
@@ -404,6 +426,9 @@ class MeeshoShippingOptimizer {
 
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.init();
+    } else if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.init?.();
+      MeeshoAPI.detectAllValues?.();
     }
 
     const existing = document.getElementById("opt-modal");
@@ -411,6 +436,7 @@ class MeeshoShippingOptimizer {
 
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
+    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
     this.modal.style.cssText = `
             position: fixed;
             top: 0;
@@ -420,14 +446,15 @@ class MeeshoShippingOptimizer {
             background: rgba(0,0,0,0.8);
             z-index: 99999;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            justify-content: ${isNarrow ? "stretch" : "center"};
+            align-items: ${isNarrow ? "stretch" : "center"};
             backdrop-filter: blur(5px);
         `;
 
     const content = document.createElement("div");
-    content.style.cssText =
-      "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
+    content.style.cssText = isNarrow
+      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
+      : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
     content.innerHTML = OptimizerUI.createModalHTML(this.isLicensed);
 
     this.modal.appendChild(content);
@@ -610,7 +637,7 @@ Please share payment details and license key.`;
     const fileInput = document.getElementById("image-input");
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
-    const webGenerateMode = window.WEB_OPTIMIZER_MODE && generateBtn;
+    const tabbedGenerateMode = this.isTabbedOptimizerUI() && generateBtn;
 
     const showFilePreview = (file) => {
       const previewBox = document.getElementById("preview-box");
@@ -659,7 +686,7 @@ Please share payment details and license key.`;
 
       const bootMsg = document.getElementById("boot-msg");
       const testGenBtn = document.getElementById("test-generate-btn");
-      if (webGenerateMode) {
+      if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (bootMsg) {
@@ -686,13 +713,13 @@ Please share payment details and license key.`;
       window.__webPendingFile ||
       fileInput?.files?.[0] ||
       this._pendingFile;
-    if (pending && webGenerateMode) {
+    if (pending && tabbedGenerateMode) {
       onFilePicked(pending);
     } else if (pending) {
       this._pendingFile = pending;
     }
 
-    if (webGenerateMode) {
+    if (tabbedGenerateMode) {
       const runGenerate = (e) => {
         if (e) {
           e.preventDefault();
@@ -753,8 +780,8 @@ Please share payment details and license key.`;
     }
     this.loadCategoryDropdown();
 
-    // Web-only: Live vs Test Lab tabs (Test Lab must not alter Live handlers)
-    if (window.WEB_OPTIMIZER_MODE) {
+    // Live vs Test Lab tabs (web + extension modal)
+    if (this.isTabbedOptimizerUI()) {
       this.setupOptimizerTabs();
       const phase2Cb = document.getElementById("test-lab-live-verify");
       if (phase2Cb && !phase2Cb.__wired) {
@@ -1029,12 +1056,12 @@ Please share payment details and license key.`;
     }
   }
 
-  // ─── Optimizer tabs (WEB only) ───────────────────────────────────────────
+  // ─── Optimizer tabs (web + extension) ───────────────────────────────────
   // Live tab → processImage() — production path, unchanged below.
   // Test Lab tab → processImageTestLab() — isolated experiments only.
 
   getActiveOptimizerTab() {
-    if (!window.WEB_OPTIMIZER_MODE) return "live";
+    if (!this.isTabbedOptimizerUI()) return "live";
     return this.activeOptimizerTab || "live";
   }
 
@@ -1112,10 +1139,13 @@ Please share payment details and license key.`;
     if (window.TestLabOptimizer?.getSessionGuidance) {
       msg = window.TestLabOptimizer.getSessionGuidance(sessionReady, phase2On);
     } else if (phase2On && !sessionReady) {
-      msg =
-        "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt.";
+      msg = window.WEB_OPTIMIZER_MODE
+        ? "Add Supplier ID + Browser ID on Live tab to unlock Phase 2 live ₹ hunt."
+        : "Stay logged into supplier.meesho.com to unlock Phase 2 live ₹ hunt.";
     } else if (sessionReady && phase2On) {
-      msg = "Session ready — Phase 2 will live-check Meesho prices.";
+      msg = window.WEB_OPTIMIZER_MODE
+        ? "Session ready — Phase 2 will live-check Meesho prices."
+        : "✅ Logged into Meesho — Phase 2 uses your supplier session automatically";
     }
     if (msg) {
       el.textContent = msg;
@@ -1133,7 +1163,7 @@ Please share payment details and license key.`;
     if (!window.__testLabModulePromise) {
       window.__testLabModulePromise = (async () => {
         try {
-          await import("/js/testLabBridge.mjs?v=24");
+          await import(this.getTestLabModuleUrl());
           window.__testLabLoadError = null;
           return !!window.TestLabOptimizer?.runTestLab;
         } catch (e) {
@@ -1461,7 +1491,9 @@ Please share payment details and license key.`;
           }
         } else {
           OptimizerUtils.showNotification(
-            "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)",
+            window.WEB_OPTIMIZER_MODE
+              ? "Phase 2 skipped — add Meesho session (Supplier ID + Browser ID)"
+              : "Phase 2 skipped — open supplier.meesho.com while logged in",
             "info"
           );
         }

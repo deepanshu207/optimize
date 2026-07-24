@@ -3,17 +3,17 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=24";
-import { loadImage } from "./lib/canvas-utils.js?v=24";
-import { blobToDataUrl } from "./lib/encoder.js?v=24";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=30";
+import { loadImage } from "./lib/canvas-utils.js?v=30";
+import { blobToDataUrl } from "./lib/encoder.js?v=30";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=24";
-import { getSessionGuidance } from "./lib/smart-plan.js?v=24";
+} from "./lib/shipping.js?v=30";
+import { getSessionGuidance } from "./lib/smart-plan.js?v=30";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -93,6 +93,7 @@ function sortByBestPrice(results) {
 function syncMeeshoSession(sscatId) {
   if (typeof MeeshoAPI === "undefined") return false;
   MeeshoAPI.syncFromSession?.();
+  MeeshoAPI.detectAllValues?.();
   if (sscatId) MeeshoAPI.setCategory(sscatId);
   return !!MeeshoAPI.isReady?.();
 }
