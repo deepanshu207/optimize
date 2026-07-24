@@ -407,8 +407,6 @@ const OptimizerUI = {
     const baseline = options.baselineShipping || 0;
     const manualMode = !!options.manualMode;
     const testLabMode = !!options.testLabMode;
-    const isWeb = !!window.WEB_OPTIMIZER_MODE;
-    const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
     const estInr = r.meta?.estInr || r.estShipping || 0;
     const priceLabel = testLabMode
@@ -487,12 +485,7 @@ const OptimizerUI = {
                           }" min="0" max="999" placeholder="₹" style="width:100%;margin-top:4px;padding:4px;font-size:12px;text-align:center;">`
                         : ""
                     }
-                    <div style="display:flex;gap:4px;margin-top:4px;">
-                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
-      isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-    };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
-                    </div>
+                    <button class="dl-btn" data-variant-id="${vid}" title="Save image to your device" style="width:100%;margin-top:4px;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
                 </div>
             `;
   },
@@ -515,10 +508,8 @@ const OptimizerUI = {
 
     const best = results[0];
     const totalResults = results.length;
-    const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const manualMode = !!options.manualMode;
     const testedCount = results.filter((r) => r.shippingCost > 0).length;
-    const applyLabel = isWeb ? "Save" : "Apply";
     const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
 
     let html = `
@@ -606,9 +597,7 @@ const OptimizerUI = {
     html += `
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  bestPrice
-                    ? "Download Best ₹" + bestPrice
-                    : "Download Best Variant"
+                  bestPrice ? "Save Best ₹" + bestPrice : "Save Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
             </div>
@@ -704,8 +693,8 @@ const OptimizerUI = {
       <div style="display:flex;gap:8px;">
         <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
           bestLive
-            ? "Download Best ₹" + bestLive
-            : "Download Best est ₹" + bestEst
+            ? "Save Best ₹" + bestLive
+            : "Save Best est ₹" + bestEst
         }</button>
         <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
       </div>
