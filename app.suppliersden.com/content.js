@@ -48,9 +48,7 @@ class MeeshoShippingOptimizer {
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log("Message received:", message);
         if (message.action === "openOptimizer") {
-          this.checkLicense().then(() => {
-            this.openModal();
-          });
+          this.openModal();
           sendResponse({ success: true });
         }
         return true;
@@ -88,7 +86,7 @@ class MeeshoShippingOptimizer {
     if (!this.isMeeshoPage() || !this.isCatalogPage()) return;
 
     console.log("Meesho catalog page detected");
-    await this.checkLicense();
+    this.isLicensed = true;
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI && typeof MeeshoAPI.init === "function") {
       MeeshoAPI.init();
     }
@@ -176,45 +174,8 @@ class MeeshoShippingOptimizer {
   }
 
   async checkLicense() {
-    if (window.WEB_OPTIMIZER_MODE) {
-      this.isLicensed = true;
-      return true;
-    }
-
-    try {
-      // First check storage directly
-      const result = await chrome.storage.sync.get([
-        "licenseKey",
-        "licenseStatus",
-        "licenseInfo",
-      ]);
-      console.log("📋 License storage:", result);
-
-      if (result.licenseStatus === "active" && result.licenseKey) {
-        // Check expiry
-        if (result.licenseInfo && result.licenseInfo.expiresAt) {
-          const expiresAt = new Date(result.licenseInfo.expiresAt);
-          if (new Date() > expiresAt) {
-            console.log("⚠️ License expired");
-            this.isLicensed = false;
-            return false;
-          }
-        }
-
-        this.isLicensed = true;
-        console.log("✅ License active from storage");
-        return true;
-      }
-
-      // Fallback to LicenseManager
-      this.isLicensed = await LicenseManager.checkLicense();
-      console.log("License status from LicenseManager:", this.isLicensed);
-      return this.isLicensed;
-    } catch (error) {
-      console.error("License check error:", error);
-      this.isLicensed = false;
-      return false;
-    }
+    this.isLicensed = true;
+    return true;
   }
 
   addOptimizerButton() {
@@ -239,11 +200,7 @@ class MeeshoShippingOptimizer {
                 <span style="font-size:22px;">🚀</span>
                 <div>
                     <div style="font-weight:700;font-size:15px;">AI Shipping Cost Optimizer</div>
-                    <div style="font-size:11px;opacity:0.9;">${
-                      this.isLicensed
-                        ? "Click to optimize images"
-                        : "Activate license to start"
-                    }</div>
+                    <div style="font-size:11px;opacity:0.9;">Click to optimize images</div>
                 </div>
             </div>
         `;
@@ -417,12 +374,7 @@ class MeeshoShippingOptimizer {
       }
     }
 
-    // Always re-check license before opening modal
-    if (!window.WEB_OPTIMIZER_MODE) {
-      chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
-    }
-    await this.checkLicense();
-    console.log("Opening modal, license status:", this.isLicensed);
+    this.isLicensed = true;
 
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.init();
@@ -455,16 +407,12 @@ class MeeshoShippingOptimizer {
     content.style.cssText = isNarrow
       ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
       : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
-    content.innerHTML = OptimizerUI.createModalHTML(this.isLicensed);
+    content.innerHTML = OptimizerUI.createModalHTML();
 
     this.modal.appendChild(content);
     document.body.appendChild(this.modal);
 
-    if (this.isLicensed) {
-      this.setupMainEvents();
-    } else {
-      this.setupLicenseEvents();
-    }
+    this.setupMainEvents();
 
     this.modal.onclick = (e) => {
       if (e.target === this.modal) this.closeModal();
@@ -1580,13 +1528,6 @@ Please share payment details and license key.`;
   async processImage(file) {
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
-      return;
-    }
-
-    if (window.WEB_OPTIMIZER_MODE) {
-      this.isLicensed = true;
-    } else if (!this.isLicensed) {
-      OptimizerUtils.showNotification("License required", "error");
       return;
     }
 

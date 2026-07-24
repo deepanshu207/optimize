@@ -2,7 +2,7 @@
 
 const OptimizerUI = {
   // Create modal HTML
-  createModalHTML: function (isLicensed) {
+  createModalHTML: function () {
     const styles = `
             <style>
                 .opt-modal * { box-sizing: border-box; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -63,10 +63,6 @@ const OptimizerUI = {
                 }
             </style>
         `;
-
-    if (!isLicensed) {
-      return styles + this.getLicenseHTML();
-    }
 
     if (window.WEB_OPTIMIZER_MODE) {
       return styles + this.getWebHTML();
