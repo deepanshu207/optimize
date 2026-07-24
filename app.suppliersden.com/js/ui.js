@@ -521,6 +521,11 @@ const OptimizerUI = {
     const testedCount = results.filter((r) => r.shippingCost > 0).length;
     const applyLabel = isWeb ? "Save" : "Apply";
     const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
+    const meeshoPriceUsed =
+      best.meeshoPriceUsed ||
+      (typeof MeeshoAPI !== "undefined"
+        ? MeeshoAPI.cache?.catalogPrice || MeeshoAPI.cache?.price
+        : null);
 
     let html = `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
@@ -542,9 +547,11 @@ const OptimizerUI = {
                   manualMode
                     ? "Download → upload on Meesho → type ₹ below"
                     : bestPrice
-                    ? (best.liveVerified
-                        ? "✓ Live Meesho API"
-                        : "✓ Meesho price")
+                    ? best.liveVerified
+                      ? meeshoPriceUsed
+                        ? `✓ Live Meesho API at ₹${meeshoPriceUsed}`
+                        : "✓ Live Meesho API"
+                      : "✓ Meesho price"
                     : "Tap Save to download"
                 }</div>
                 ${
@@ -654,17 +661,32 @@ const OptimizerUI = {
         ? ` · ${liveCount} live checked`
         : "";
 
+    const meeshoPriceUsed =
+      best.meeshoPriceUsed ||
+      options.meeshoPriceUsed ||
+      (typeof MeeshoAPI !== "undefined"
+        ? MeeshoAPI.cache?.catalogPrice || MeeshoAPI.cache?.price
+        : null);
+    const livePriceNote = bestLive
+      ? meeshoPriceUsed
+        ? `✅ Live Meesho API at selling price ₹${meeshoPriceUsed}`
+        : "✅ Live price checked"
+      : "Download → upload on Meesho → compare ₹";
+    const panelGap =
+      baseline > 0 && bestLive && baseline !== bestLive
+        ? `<div style="font-size:10px;color:#047857;margin-top:4px;">Panel shows ₹${baseline} · best found ₹${bestLive}${
+            bestLive < baseline ? ` (−₹${baseline - bestLive})` : ""
+          }</div>`
+        : "";
+
     let html = `
       <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
-        <div style="font-size:11px;color:#9ca3af;">🧪 Test Lab — estimated ranking (verify on Meesho)</div>
+        <div style="font-size:11px;color:#9ca3af;">🧪 Test Lab — live ranking at your catalog Meesho Price</div>
         <div style="font-size:28px;font-weight:700;color:#10b981;">${
           bestLive ? "₹" + bestLive : "est ₹" + bestEst
         }</div>
-        <div style="font-size:10px;color:#10b981;margin-top:2px;">${
-          bestLive
-            ? "✅ Live price checked"
-            : "Download → upload on Meesho → compare ₹"
-        }</div>
+        <div style="font-size:10px;color:#10b981;margin-top:2px;">${livePriceNote}</div>
+        ${panelGap}
         ${
           baseline > 0
             ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
