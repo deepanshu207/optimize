@@ -13,6 +13,7 @@ class MeeshoShippingOptimizer {
     this.testLabResults = [];
     this.testLabAnalysis = null;
     this.testLabPhase2Meta = null;
+    this.huntStats = null;
     this.activeOptimizerTab = "live";
     this.variationCount = 6;
     this.isLicensed = false;
@@ -2250,13 +2251,35 @@ Please share payment details and license key.`;
 
   resolveDownloadUrl(result) {
     if (!result) return "";
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+      const resolved = MeeshoAPI.resolveDisplayUrl(result);
+      if (resolved) return resolved;
+    }
     return (
-      result.pricingImageUrl ||
       result.dataUrl ||
       result.imageUrl ||
+      result.pricingImageUrl ||
       result.uploadedUrl ||
       ""
     );
+  }
+
+  async urlToBlob(url) {
+    if (!url) throw new Error("No image URL");
+    if (url.startsWith("data:")) {
+      const match = url.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?(;base64)?,(.*)$/s);
+      if (!match) throw new Error("Invalid data URL");
+      const mime = match[1] || "image/jpeg";
+      const isBase64 = !!match[2];
+      const data = match[3];
+      const binary = isBase64 ? atob(data) : decodeURIComponent(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Fetch failed");
+    return resp.blob();
   }
 
   resolveResultImageSrc(result) {
@@ -2347,7 +2370,9 @@ Please share payment details and license key.`;
     row.editFlags = this.normalizeEditFlags(editFlags);
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      if (row.imageUrl?.startsWith("data:")) row.dataUrl = row.imageUrl;
     }
+    row.blob = null;
 
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
@@ -2439,7 +2464,8 @@ Please share payment details and license key.`;
           <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
           Remove border and stickers (clean product)
         </label>
-        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. These options only change the image you download — your entered ₹ stays the same.</p>
+        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Edits update preview &amp; download. Upload to Meesho uses the edited image when you tap Upload Best.</p>
+        <button type="button" id="variant-edit-download" class="generate-btn" style="width:100%;padding:12px;margin-bottom:8px;background:linear-gradient(135deg,#667eea,#764ba2);">Download edited image</button>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -2447,6 +2473,10 @@ Please share payment details and license key.`;
 
     panel.querySelector("#variant-edit-close").onclick = () =>
       this.closeVariantEditor();
+    panel.querySelector("#variant-edit-download").onclick = () => {
+      const row = this.findResultRow(this._editingVariantId);
+      if (row) this.downloadImage(row);
+    };
     panel.querySelector("#variant-edit-done").onclick = () =>
       this.closeVariantEditor();
     panel.onclick = (e) => {
@@ -2690,6 +2720,7 @@ Please share payment details and license key.`;
     const name = (result.name || "variant").replace(/\s+/g, "-");
     const filename = "meesho-" + name + "-" + Date.now() + ".jpg";
     const url = this.resolveDownloadUrl(result);
+    const edited = this.isVariantEdited(result.editFlags);
 
     if (!url) {
       OptimizerUtils.showNotification(
@@ -2700,11 +2731,10 @@ Please share payment details and license key.`;
     }
 
     try {
-      let blob = result.blob instanceof Blob ? result.blob : null;
+      let blob =
+        !edited && result.blob instanceof Blob ? result.blob : null;
       if (!blob) {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("Fetch failed");
-        blob = await resp.blob();
+        blob = await this.urlToBlob(url);
       }
 
       const objUrl = URL.createObjectURL(blob);
@@ -2743,10 +2773,13 @@ Please share payment details and license key.`;
         return;
       }
 
-      // Use the SAME image that was tested (from dataUrl)
-      // This ensures consistency between test and apply
-      const resp = await fetch(result.imageUrl);
-      const blob = await resp.blob();
+      // Use edited preview URL when stickers/border were changed
+      const imageUrl = this.resolveDownloadUrl(result);
+      if (!imageUrl) {
+        OptimizerUtils.showNotification("No image to upload", "error");
+        return;
+      }
+      const blob = await this.urlToBlob(imageUrl);
       const file = new File([blob], "optimized-" + Date.now() + ".jpg", {
         type: "image/jpeg",
       });

@@ -424,6 +424,7 @@ const OptimizerUI = {
     const savings =
       baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
     const canEdit = !testLabMode && !!(r.layers && r.layers.full);
+    const showCardUpload = isWeb ? false : !testLabMode && isBest;
     const edited =
       r.editFlags?.stickersRemoved ||
       r.editFlags?.borderOnlyRemoved ||
@@ -491,10 +492,14 @@ const OptimizerUI = {
                     <div style="display:flex;gap:4px;margin-top:4px;">
                         <button class="dl-btn" data-variant-id="${vid}" title="Download image to your device" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${saveLabel}</button>
                         <button class="apply-btn" data-variant-id="${vid}" title="${
-      isWeb ? "Download variant" : "Upload this image to Meesho catalog (updates panel shipping)"
-    }" style="flex:1;background:${
-      isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-    };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
+                          showCardUpload
+                            ? "Upload this image to Meesho catalog (updates panel shipping)"
+                            : "Download variant"
+                        }" style="flex:1;background:${
+                          showCardUpload ? "#10b981" : "rgba(255,255,255,0.1)"
+                        };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:${
+                          showCardUpload || isWeb ? "9px" : "0"
+                        };display:${showCardUpload || isWeb ? "inline-block" : "none"};">${applyLabel}</button>
                     </div>
                 </div>
             `;
