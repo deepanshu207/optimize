@@ -610,13 +610,17 @@ const MeeshoAPI = {
     }
   },
 
-  /** Normalize getTransferPrice JSON — shipping_charges is authoritative live ₹ */
+  /** Normalize getTransferPrice JSON */
   parseTransferPriceResponse: function (raw, duplicatePidFromFetch) {
+    const data = raw?.data;
     const payload =
-      raw?.data &&
-      typeof raw.data === "object" &&
-      (raw.data.shipping_charges != null || raw.data.shippingCharges != null)
-        ? raw.data
+      data && typeof data === "object" &&
+      (data.shipping_charges != null ||
+        data.shippingCharges != null ||
+        data.total_price != null ||
+        data.totalPrice != null ||
+        data.transfer_price != null)
+        ? data
         : raw;
     const shippingRaw =
       payload?.shipping_charges ?? payload?.shippingCharges ?? null;
@@ -634,37 +638,109 @@ const MeeshoAPI = {
       duplicatePid: duplicatePid || null,
       price: payload?.price != null ? Number(payload.price) : null,
       totalPrice:
-        payload?.total_price != null ? Number(payload.total_price) : null,
+        payload?.total_price != null
+          ? Number(payload.total_price)
+          : payload?.totalPrice != null
+          ? Number(payload.totalPrice)
+          : null,
       transferPrice:
         payload?.transfer_price != null ? Number(payload.transfer_price) : null,
       customerShipping: null,
     };
   },
 
-  /** Best live shipping ₹ from getTransferPrice (at the given Meesho selling price). */
+  /** Customer shipping = Customer Price − Meesho Price (same at ₹100 or ₹200 for one image). */
+  deriveCustomerShipping: function (totalPrice, sellingPrice) {
+    if (totalPrice == null || sellingPrice == null) return null;
+    const n = Math.round(Number(totalPrice) - Number(sellingPrice));
+    if (Number.isFinite(n) && n > 0 && n < 500) return n;
+    return null;
+  },
+
+  /**
+   * Customer shipping from getTransferPrice.
+   * Prefer total_price − selling_price (matches panel at any Meesho Price).
+   * shipping_charges alone often under-reports (e.g. ₹64 vs panel ₹79).
+   */
   resolveLiveShippingCost: function (parsed, priceUsed) {
     if (!parsed) return null;
+    const derived = this.deriveCustomerShipping(parsed.totalPrice, priceUsed);
+    if (derived != null) return derived;
     const apiShip = parsed.shippingCharges;
-    let customer = apiShip != null && apiShip > 0 ? apiShip : null;
-    if (
-      parsed.totalPrice != null &&
-      priceUsed != null &&
-      parsed.totalPrice > priceUsed
-    ) {
-      const derived = Math.round(parsed.totalPrice - priceUsed);
-      if (derived > 0 && derived < 500) {
-        customer = customer != null ? Math.max(customer, derived) : derived;
-      }
+    return apiShip != null && apiShip > 0 ? apiShip : null;
+  },
+
+  /** Selling prices to cross-check when API fields disagree (shipping is image-based, not price-tier). */
+  buildShippingProbePrices: function (primaryPrice) {
+    const nums = [primaryPrice, this.cache.catalogPrice, this.cache.price, 100, 200]
+      .map((n) => parseInt(n, 10))
+      .filter((n) => Number.isFinite(n) && n > 0 && n < 30000);
+    return [...new Set(nums)].slice(0, 3);
+  },
+
+  consensusCustomerShipping: function (quotes) {
+    if (!quotes?.length) return null;
+    const withTotal = quotes.filter((q) => q.hasTotal && q.customer != null);
+    if (withTotal.length) {
+      const vals = withTotal.map((q) => q.customer);
+      const max = Math.max(...vals);
+      const min = Math.min(...vals);
+      if (max - min <= 2) return Math.round((max + min) / 2);
+      return max;
     }
-    return customer;
+    const fallback = quotes.map((q) => q.customer).filter((v) => v != null);
+    return fallback.length ? Math.max(...fallback) : null;
+  },
+
+  _requestTransferPrice: async function ({
+    imageUrl,
+    price,
+    duplicatePid,
+    sscatId,
+    supplierId,
+    gstPct,
+  }) {
+    const body = {
+      sscat_id: sscatId,
+      gst_percentage: gstPct,
+      price: price,
+      supplier_id: supplierId,
+      gst_type: "GSTIN",
+      image_url: imageUrl,
+    };
+    if (duplicatePid) body.duplicate_pid = duplicatePid;
+
+    console.log(
+      "getTransferPrice:",
+      duplicatePid ? `pid=${duplicatePid}` : "no pid",
+      `sscat=${sscatId}`,
+      `price=${price}`,
+    );
+
+    const resp = await fetch(
+      this.apiUrl("/api/cataloging/singleCatalogUpload/getTransferPrice"),
+      {
+        method: "POST",
+        headers: this.requestHeaders(),
+        body: JSON.stringify(body),
+        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
+      },
+    );
+    if (!resp.ok) return null;
+    const result = await resp.json();
+    return this.parseTransferPriceResponse(result, duplicatePid);
   },
 
   getShippingCharges: async function (imageUrl, options = {}) {
     this.syncCatalogPricing();
     const sscatId = options.sscatId || this.cache.categoryId || 18044;
     const supplierId = this.cache.supplierId;
-    const price =
-      options.price || this.cache.catalogPrice || this.cache.price || 100;
+    const primaryPrice =
+      options.price ||
+      this.detectPrice() ||
+      this.cache.catalogPrice ||
+      this.cache.price ||
+      100;
     const gstPct = options.gstPercentage ?? 0;
 
     let duplicatePid = null;
@@ -672,43 +748,73 @@ const MeeshoAPI = {
       duplicatePid = await this.fetchDuplicatePid(imageUrl, sscatId);
 
     try {
-      const body = {
-        sscat_id: sscatId,
-        gst_percentage: gstPct,
-        price: price,
-        supplier_id: supplierId,
-        gst_type: "GSTIN",
-        image_url: imageUrl,
+      const runProbe = async (price) => {
+        const parsed = await this._requestTransferPrice({
+          imageUrl,
+          price,
+          duplicatePid,
+          sscatId,
+          supplierId,
+          gstPct,
+        });
+        if (!parsed) return null;
+        if (!duplicatePid && parsed.duplicatePid) duplicatePid = parsed.duplicatePid;
+        const customer = this.resolveLiveShippingCost(parsed, price);
+        return {
+          price,
+          parsed,
+          customer,
+          hasTotal: parsed.totalPrice != null,
+          apiRaw: parsed.shippingCharges,
+        };
       };
-      if (duplicatePid) body.duplicate_pid = duplicatePid;
+
+      const quotes = [];
+      const first = await runProbe(primaryPrice);
+      if (!first) return null;
+      quotes.push(first);
+
+      const needsCrossCheck =
+        !options.skipCrossCheck &&
+        (first.customer == null ||
+          !first.hasTotal ||
+          (first.apiRaw != null &&
+            first.customer != null &&
+            Math.abs(first.apiRaw - first.customer) > 3));
+
+      if (needsCrossCheck) {
+        const alternates = this.buildShippingProbePrices(primaryPrice).filter(
+          (p) => p !== primaryPrice,
+        );
+        for (const alt of alternates.slice(0, 2)) {
+          await new Promise((r) => setTimeout(r, 30));
+          const q = await runProbe(alt);
+          if (q) quotes.push(q);
+          const derived = quotes.filter((x) => x.hasTotal && x.customer != null);
+          if (derived.length >= 2) {
+            const vals = derived.map((x) => x.customer);
+            if (Math.max(...vals) - Math.min(...vals) <= 2) break;
+          }
+        }
+      }
+
+      const customer = this.consensusCustomerShipping(quotes);
+      const anchor = quotes.find((q) => q.customer === customer) || first;
+      const parsed = { ...anchor.parsed };
+      parsed.priceUsed = anchor.price;
+      parsed.customerShipping = customer;
+      parsed.shippingCharges = customer;
+      parsed.probePrices = quotes.map((q) => q.price);
 
       console.log(
-        "getTransferPrice:",
-        duplicatePid ? `pid=${duplicatePid}` : "no pid",
-        `sscat=${sscatId}`,
-        `price=${price}`,
-      );
-
-      const resp = await fetch(
-        this.apiUrl("/api/cataloging/singleCatalogUpload/getTransferPrice"),
-        {
-        method: "POST",
-        headers: this.requestHeaders(),
-        body: JSON.stringify(body),
-        credentials: window.WEB_OPTIMIZER_MODE ? "same-origin" : "include",
-      });
-      if (!resp.ok) return null;
-      const result = await resp.json();
-      const parsed = this.parseTransferPriceResponse(result, duplicatePid);
-      parsed.priceUsed = price;
-      parsed.customerShipping = this.resolveLiveShippingCost(parsed, price);
-      parsed.shippingCharges = parsed.customerShipping;
-      console.log(
-        "Live shipping:",
+        "Live customer shipping:",
         parsed.shippingCharges,
-        `@ Meesho Price ₹${price}`,
+        `(probed ₹${quotes.map((q) => q.price).join(", ₹")})`,
         duplicatePid ? `(pid: ${duplicatePid})` : "(no pid)",
         parsed.totalPrice != null ? `total=${parsed.totalPrice}` : "",
+        anchor.apiRaw != null && anchor.apiRaw !== customer
+          ? `api shipping_charges=${anchor.apiRaw}`
+          : "",
       );
       return parsed;
     } catch (e) {
