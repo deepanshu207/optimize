@@ -1,5 +1,7 @@
 ***** HOW TO INSTALL THE EXTENSION *****
 
+DESKTOP (Chrome / Edge / Brave)
+--------------------------------
 1. Unpack ZIP archive, remember location of "Meesho_Shipping_Cost_Optimizer_AI_-_Unlimited"
 
 2. Open extension page
@@ -16,3 +18,33 @@ Use the menu: ⋮ > More tools > Extensions
 6. Open the folder
 
 7. That's it. You can find the extension on the chrome://extensions page
+
+
+MOBILE (Kiwi Browser — Android)
+--------------------------------
+Kiwi Browser supports Chrome extensions on Android. Use it to run the optimizer
+on supplier.meesho.com with automatic Meesho login (no manual session paste).
+
+1. Install Kiwi Browser from the Play Store (search "Kiwi Browser").
+
+2. Transfer the extension folder or .crx to your phone (Google Drive, USB, etc.).
+
+3. In Kiwi, open the menu (⋮) → Extensions.
+
+4. Turn on Developer mode.
+
+5. Load the extension:
+   - "Load unpacked" — pick the extension folder if you copied it to the phone, OR
+   - "Load (.crx)" — if you have a packed .crx file.
+
+6. Open https://supplier.meesho.com and log in as usual.
+
+7. On a catalog listing page, tap the floating "AI Optimizer" button (bottom-right).
+
+8. Use Live tab for production generate, or Test Lab tab for strategy experiments.
+   Test Lab Phase 2 uses your Meesho supplier session automatically — no paste needed.
+
+Tips for mobile:
+- Use full-screen mode in Kiwi for easier tapping.
+- Keep Kiwi updated; extension APIs match desktop Chrome.
+- If the optimizer does not appear, reload the Meesho page after installing.

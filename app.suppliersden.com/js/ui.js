@@ -41,6 +41,26 @@ const OptimizerUI = {
                 .opt-divider { display: flex; align-items: center; margin: 15px 0; color: #0f0f10; font-size: 12px; }
                 .opt-divider::before, .opt-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1); }
                 .opt-divider span { padding: 0 10px; }
+                .opt-tabs { display: flex; border-bottom: 2px solid #eee; background: #fafafa; }
+                .opt-tab { flex: 1; padding: 12px 10px; border: none; background: transparent; font-size: 13px; font-weight: 700; color: #666; cursor: pointer; min-height: 44px; }
+                .opt-tab.active { color: #047857; background: #fff; box-shadow: inset 0 -3px 0 #C9A227; }
+                .opt-tab-panel { display: none; }
+                .opt-tab-panel.active { display: block; }
+                .test-lab-note { font-size: 11px; color: #666; margin-top: 8px; padding: 8px; background: #eff6ff; border-radius: 6px; line-height: 1.45; border: 1px solid #dbeafe; }
+                .generate-btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, #FFD700, #C9A227); color: #fff; min-height: 48px; }
+                .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+                .generate-sticky { padding: 8px 0 4px; margin-top: 8px; }
+                .session-hint { font-size: 11px; color: #666; line-height: 1.4; }
+                .session-status.ok { color: #047857; }
+                .session-status.warn { color: #b45309; }
+                .optimizer-chrome-hidden { display: none !important; }
+                @media (max-width: 640px) {
+                    .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
+                    .opt-modal-ext .opt-header { border-radius: 0 !important; }
+                    .opt-tab { font-size: 14px; padding: 14px 8px; }
+                    .opt-body { padding: 14px !important; }
+                    .opt-row { grid-template-columns: 1fr !important; }
+                }
             </style>
         `;
 
@@ -182,25 +202,92 @@ const OptimizerUI = {
         `;
   },
 
+  getTestLabPanelHTML: function (options = {}) {
+    const ext = !!options.extension;
+    const sessionNote = ext
+      ? `<div id="test-lab-session-hint" class="session-hint session-status ok" style="margin-top:8px;display:block;">✅ Logged into Meesho — Phase 2 uses your supplier session automatically</div>`
+      : `<div id="test-lab-session-hint" class="session-hint" style="margin-top:8px;display:none;"></div>`;
+    return `
+                    <div class="opt-section" style="padding:12px;">
+                        <div class="opt-section-title">🧪 Test Lab</div>
+                        <p class="test-lab-note">Compact product (~65–70% of square), white background, ≥1200×1200 px. Phase 2 live-checks real Meesho ₹.</p>
+                        ${sessionNote}
+                        <div class="opt-row" style="margin-top:10px;">
+                            <div>
+                                <label class="opt-label" for="test-lab-mode">Strategy mode</label>
+                                <select id="test-lab-mode" class="opt-select">
+                                    <option value="smart" selected>Smart Auto</option>
+                                    <option value="studio_ultra">Studio Ultra</option>
+                                    <option value="studio">Studio White</option>
+                                    <option value="tall">Tall ₹50</option>
+                                    <option value="flatlay">Flat-Lay</option>
+                                    <option value="framed_low">Framed Low</option>
+                                    <option value="framed">Framed Promo</option>
+                                    <option value="collage">Collage</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="opt-label" for="test-lab-category">Category group</label>
+                                <select id="test-lab-category" class="opt-select">
+                                    <option value="auto" selected>Auto detect</option>
+                                    <option value="apparel">Apparel / Kurti</option>
+                                    <option value="lingerie">Lingerie / Bra</option>
+                                    <option value="footwear">Footwear</option>
+                                    <option value="home">Home &amp; Kitchen</option>
+                                    <option value="electronics">Electronics</option>
+                                    <option value="jewellery">Jewellery</option>
+                                    <option value="general">General</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="opt-row" style="margin-top:10px;">
+                            <div>
+                                <label class="opt-label" for="test-lab-target">Est. target ₹</label>
+                                <select id="test-lab-target" class="opt-select">
+                                    <option value="">No filter</option>
+                                    <option value="30">≤ ₹30</option>
+                                    <option value="40">≤ ₹40</option>
+                                    <option value="50" selected>≤ ₹50</option>
+                                    <option value="70">≤ ₹70</option>
+                                    <option value="93">≤ ₹93</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="opt-label" for="test-lab-border">Frame color</label>
+                                <input type="color" id="test-lab-border" class="opt-input" value="#ff7900" style="height:42px;padding:4px;">
+                            </div>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;">
+                            <input type="checkbox" id="test-lab-live-verify" style="width:18px;height:18px;" checked>
+                            Phase 2: live Meesho hunt for lowest ₹
+                        </label>
+                        <div id="test-lab-analysis" class="test-lab-note" style="display:none;margin-top:10px;"></div>
+                    </div>`;
+  },
+
   // Main optimizer HTML (after license) - Enhanced UI, Smart Mode Auto-Selected
   getMainHTML: function () {
     return `
-            <div class="opt-modal">
+            <div class="opt-modal opt-modal-ext">
                 <div class="opt-header">
                     <h2><span>🚀</span> Meesho Shipping Cost AI Optimizer</h2>
                     <button class="opt-close" id="close-modal">&times;</button>
                 </div>
+                <div class="opt-tabs" id="optimizer-tabs" role="tablist">
+                    <button type="button" class="opt-tab active" data-optimizer-tab="live" role="tab">Live</button>
+                    <button type="button" class="opt-tab" data-optimizer-tab="test" role="tab">Test Lab</button>
+                </div>
                 <div class="opt-body">
+                    <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
                     <div class="opt-shipping">
                         <div style="font-size:11px;color:#9ca3af;">Current Shipping</div>
                         <div class="opt-shipping-value" id="current-shipping">Detecting...</div>
                     </div>
 
-                    <!-- Category Selection -->
                     <div class="opt-section" style="padding:12px;">
                         <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
                             <span>📁 Category (Required)</span>
-                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄 Refresh</button>
+                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
                         <div style="position:relative;">
                             <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search category..." style="font-size:12px;padding-right:30px;">
@@ -217,7 +304,6 @@ const OptimizerUI = {
                         <input type="hidden" id="category-select" value="">
                     </div>
 
-                    <!-- Smart Mode Settings - Auto Selected -->
                     <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, #FFD700, #C9A227),rgba(102,126,234,0.1));border:1px solid rgba(16,185,129,0.3);">
                         <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode</div>
                         <div class="opt-row" style="margin-bottom:10px;">
@@ -244,14 +330,18 @@ const OptimizerUI = {
                             </div>
                         </div>
                         <div style="font-size:10px;color:#9ca3af;padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;">
-                            ⚡ Fast API mode • ±₹5-10 variation possible
+                            ⚡ Fast API mode • logged-in Meesho session
                         </div>
                     </div>
 
-                    <!-- Custom Text (Optional) -->
                     <div class="opt-section" style="padding:10px;">
                         <div class="opt-section-title">✏️ Text (Optional)</div>
-                        <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING, 50% OFF" style="font-size:12px;">
+                        <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING" style="font-size:12px;">
+                    </div>
+                    </div>
+
+                    <div id="test-tab-panel" class="opt-tab-panel" data-optimizer-panel="test">
+                        ${this.getTestLabPanelHTML({ extension: true })}
                     </div>
 
                     <div class="opt-upload-box" id="upload-area">
@@ -266,12 +356,18 @@ const OptimizerUI = {
                         </div>
                     </div>
 
+                    <div class="generate-sticky" id="generate-sticky">
+                        <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
+                        <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
+                    </div>
+
                     <div id="processing-area" style="display:none;"></div>
                     <div id="results-area" style="display:none;"></div>
                 </div>
             </div>
         `;
   },
+
 
   // Processing HTML
   getProcessingHTML: function (current, total, imgUrl) {
