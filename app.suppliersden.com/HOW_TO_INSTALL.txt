@@ -1,5 +1,15 @@
 ***** HOW TO INSTALL THE EXTENSION *****
 
+QUICK: WHICH FOLDER TO ZIP?
+----------------------------
+Zip the folder:  app.suppliersden.com
+That folder CONTAINS manifest.json at its root.
+
+Or run:  bash scripts/build-extension-zip.sh
+That creates:  release/Meesho_Shipping_Cost_Optimizer_AI_-_Unlimited.zip
+
+See also:  app.suppliersden.com/START_HERE_KIWI.txt
+
 DESKTOP (Chrome / Edge / Brave)
 --------------------------------
 1. Unpack ZIP archive, remember location of "Meesho_Shipping_Cost_Optimizer_AI_-_Unlimited"
