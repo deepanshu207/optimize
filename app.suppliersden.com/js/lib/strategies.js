@@ -3,7 +3,7 @@
  * Runs in browser; ranks variants by estimated shipping ₹.
  */
 
-import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=24";
+import { compressStudioToKb, compressFramedToKb } from "./encoder.js?v=32";
 import {
   imageToWhiteCanvas,
   trimMargins,
@@ -18,16 +18,21 @@ import {
   measureWhiteRatio,
   MEESHO_COMPACT_COVERAGE,
   MEESHO_SQUARE_SIDE,
-} from "./canvas-utils.js?v=24";
-import { estimateImageShipping } from "./shipping.js?v=24";
-import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=24";
+} from "./canvas-utils.js?v=32";
+import { estimateImageShipping } from "./shipping.js?v=32";
+import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=32";
 
 const STUDIO_ULTRA = [14, 16, 18, 20, 22];
+const STUDIO_ULTRA_LOW_HUNT = [12, 13, 14, 15, 16, 18, 20, 22, 24];
 const STUDIO_BALANCED = [20, 24, 28, 32, 36, 40];
+const STUDIO_BALANCED_LOW_HUNT = [18, 20, 22, 24, 28, 32, 36];
 const FRAMED_SLABS = [91, 92, 93];
 const FRAMED_LOW = [64, 66, 68, 71];
+const FRAMED_LOW_HUNT = [58, 60, 62, 64, 66, 68, 71];
 const TALL_SLABS = [44, 46, 48, 50, 52];
+const TALL_SLABS_LOW_HUNT = [40, 42, 44, 46, 48, 50, 52];
 const FLATLAY_SLABS = [38, 40, 42, 44];
+const FLATLAY_SLABS_LOW_HUNT = [34, 36, 38, 40, 42, 44, 46];
 
 function yieldMain() {
   return new Promise((r) => setTimeout(r, 0));
@@ -54,7 +59,7 @@ async function studioVariants(img, tiers, path, modeName, onProgress, opts = {})
   const side = opts.side ?? MEESHO_SQUARE_SIDE;
   const coverage = opts.coverage ?? MEESHO_COMPACT_COVERAGE;
   const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
-  let canvas = fitSquare(trimmed, side, coverage);
+  const canvas = fitSquare(trimmed, side, coverage);
   const wr = Math.max(measureNearWhiteRatio(canvas), measureWhiteRatio(canvas));
   const out = [];
   for (let i = 0; i < tiers.length; i++) {
@@ -101,10 +106,10 @@ async function framedVariants(img, tiers, path, modeName, frameOpts, onProgress)
   return out;
 }
 
-async function tallVariants(img, onProgress) {
+async function tallVariants(img, onProgress, tiers = TALL_SLABS) {
   const out = [];
   const framed = tallFrame(img);
-  for (const kb of TALL_SLABS) {
+  for (const kb of tiers) {
     if (onProgress) onProgress(`Tall ₹50 · ${kb}KB`);
     const blob = await compressFramedToKb(framed, kb);
     out.push(
@@ -113,7 +118,7 @@ async function tallVariants(img, onProgress) {
         mode: "Tall ₹50",
         label: `Tall ₹50 · ${kb}KB · 703×1024`,
         recommended: kb === 48 || kb === 50,
-        lowest: kb === TALL_SLABS[0],
+        lowest: kb === tiers[0],
         width: 703,
         height: 1024,
       })
@@ -123,7 +128,7 @@ async function tallVariants(img, onProgress) {
   return out;
 }
 
-async function flatlayVariants(img, onProgress) {
+async function flatlayVariants(img, onProgress, tiers = FLATLAY_SLABS) {
   const out = [];
   const sq = fitSquare(
     trimMargins(imageToWhiteCanvas(img), 0.02),
@@ -131,7 +136,7 @@ async function flatlayVariants(img, onProgress) {
     MEESHO_COMPACT_COVERAGE
   );
   const wr = Math.max(measureNearWhiteRatio(sq), measureWhiteRatio(sq));
-  for (const kb of FLATLAY_SLABS) {
+  for (const kb of tiers) {
     if (onProgress) onProgress(`Flat-Lay · ${kb}KB`);
     const blob = await compressStudioToKb(sq, kb, wr);
     out.push(
@@ -140,7 +145,7 @@ async function flatlayVariants(img, onProgress) {
         mode: "Flat-Lay",
         label: `Flat-Lay · ${kb}KB · 1024×1024`,
         recommended: kb === 40,
-        lowest: kb === FLATLAY_SLABS[0],
+        lowest: kb === tiers[0],
         width: 1024,
         height: 1024,
       })
@@ -235,6 +240,7 @@ export async function optimizeImage(img, options = {}) {
     category = "general",
     borderColor = "#ff7900",
     targetInr = null,
+    lowHunt = false,
     onProgress = () => {},
   } = options;
 
@@ -247,45 +253,88 @@ export async function optimizeImage(img, options = {}) {
   const strategies = strategiesForImage(img, mode, category, analysis);
   const all = [];
   const frameOpts = { borderColor, stickers: true };
+  const ultraTiers = lowHunt ? STUDIO_ULTRA_LOW_HUNT : STUDIO_ULTRA;
+  const studioTiers = lowHunt ? STUDIO_BALANCED_LOW_HUNT : STUDIO_BALANCED;
+  const tallTiers = lowHunt ? TALL_SLABS_LOW_HUNT : TALL_SLABS;
+  const flatlayTiers = lowHunt ? FLATLAY_SLABS_LOW_HUNT : FLATLAY_SLABS;
+  const framedLowTiers = lowHunt ? FRAMED_LOW_HUNT : FRAMED_LOW;
 
   for (const s of strategies) {
     onProgress(`Running ${strategyLabel(s)}…`);
     if (s === "studio_ultra") {
       all.push(
-        ...(await studioVariants(img, STUDIO_ULTRA, "studio_ultra", "Studio Ultra", onProgress, {
+        ...(await studioVariants(img, ultraTiers, "studio_ultra", "Studio Ultra", onProgress, {
           side: 1024,
-          coverage: 0.65,
+          coverage: lowHunt ? 0.62 : 0.65,
         }))
       );
     } else if (s === "studio") {
       all.push(
-        ...(await studioVariants(img, STUDIO_BALANCED, "studio", "Studio White", onProgress, {
+        ...(await studioVariants(img, studioTiers, "studio", "Studio White", onProgress, {
           side: MEESHO_SQUARE_SIDE,
-          coverage: MEESHO_COMPACT_COVERAGE,
+          coverage: lowHunt ? 0.66 : MEESHO_COMPACT_COVERAGE,
         }))
       );
     } else if (s === "tall") {
-      all.push(...(await tallVariants(img, onProgress)));
+      all.push(...(await tallVariants(img, onProgress, tallTiers)));
     } else if (s === "flatlay") {
-      all.push(...(await flatlayVariants(img, onProgress)));
+      all.push(...(await flatlayVariants(img, onProgress, flatlayTiers)));
     } else if (s === "framed") {
       all.push(...(await framedVariants(img, FRAMED_SLABS, "framed", "Framed", frameOpts, onProgress)));
     } else if (s === "framed_low") {
       all.push(
-        ...(await framedVariants(img, FRAMED_LOW, "framed_low", "Framed Low", frameOpts, onProgress))
+        ...(await framedVariants(img, framedLowTiers, "framed_low", "Framed Low", frameOpts, onProgress))
       );
     } else if (s === "collage") {
       all.push(...(await collageVariants(img, onProgress)));
     }
   }
 
-  const cap = mode === "smart" ? 30 : 24;
+  const cap = lowHunt ? 48 : mode === "smart" ? 30 : 24;
   let ranked = dedupeAndRank(all, cap);
   if (targetInr) {
     const filtered = ranked.filter((v) => v.estInr <= targetInr);
     if (filtered.length) ranked = filtered;
   }
   return ranked;
+}
+
+/** Generate KB neighbors around a live winner path (Phase 3 refinement). */
+export async function generatePathRefinements(img, path, centerKb, options = {}) {
+  const { borderColor = "#ff7900", onProgress = () => {} } = options;
+  const kb = parseInt(centerKb, 10);
+  if (!path || !Number.isFinite(kb)) return [];
+
+  const neighbors = [...new Set([kb - 3, kb - 2, kb - 1, kb + 1, kb + 2, kb + 3])]
+    .filter((n) => n >= 12 && n <= 96)
+    .sort((a, b) => a - b);
+  if (!neighbors.length) return [];
+
+  const frameOpts = { borderColor, stickers: true };
+  onProgress(`Refine ${path} near ${kb}KB…`);
+
+  if (path === "studio_ultra") {
+    return studioVariants(img, neighbors, "studio_ultra", "Studio Ultra+", onProgress, {
+      side: 1024,
+      coverage: 0.62,
+    });
+  }
+  if (path === "studio") {
+    return studioVariants(img, neighbors, "studio", "Studio White+", onProgress, {
+      side: MEESHO_SQUARE_SIDE,
+      coverage: 0.66,
+    });
+  }
+  if (path === "tall") {
+    return tallVariants(img, onProgress, neighbors);
+  }
+  if (path === "flatlay") {
+    return flatlayVariants(img, onProgress, neighbors);
+  }
+  if (path === "framed_low") {
+    return framedVariants(img, neighbors, "framed_low", "Framed Low+", frameOpts, onProgress);
+  }
+  return [];
 }
 
 export function analyzeImage(img) {

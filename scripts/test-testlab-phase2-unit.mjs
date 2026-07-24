@@ -7,24 +7,32 @@ const phase1 = [
   { variantId: "p1-1", estShipping: 24, meta: { path: "studio_ultra" } },
   { variantId: "p1-2", estShipping: 28, meta: { path: "studio" } },
   { variantId: "p1-3", estShipping: 50, meta: { path: "tall" } },
+  { variantId: "p1-4", estShipping: 42, meta: { path: "flatlay" } },
 ];
-const phase2 = [
-  { variantId: "f1", phase2: true, meta: { path: "framed_live" }, estShipping: 49 },
-  { variantId: "f2", phase2: true, meta: { path: "framed_live" }, estShipping: 49 },
-];
+const phase2 = Array.from({ length: 8 }, (_, i) => ({
+  variantId: `f${i + 1}`,
+  phase2: true,
+  meta: { path: "framed_live" },
+  estShipping: 49 + i,
+}));
 
-const picked = pickLiveVerifyCandidates([...phase1, ...phase2], 8);
+const picked = pickLiveVerifyCandidates([...phase1, ...phase2], 12);
 const ids = picked.map((r) => r.variantId);
 
-if (!ids.includes("f1") || !ids.includes("f2")) {
-  console.error("FAIL: phase2 framed should be prioritized", ids);
+if (!ids.includes("p1-1") || !ids.includes("p1-3")) {
+  console.error("FAIL: phase1 paths should be represented", ids);
   process.exit(1);
 }
-if (ids.indexOf("f1") > ids.indexOf("p1-1")) {
-  console.error("FAIL: framed should come before phase1", ids);
+const framedPicked = picked.filter((r) => r.meta?.path === "framed_live");
+if (framedPicked.length > 5) {
+  console.error("FAIL: should cap framed_live picks at 5", framedPicked.length);
   process.exit(1);
 }
-if (picked.length > 8) {
+if (framedPicked.length < 1) {
+  console.error("FAIL: should include some framed_live", ids);
+  process.exit(1);
+}
+if (picked.length > 12) {
   console.error("FAIL: should cap at maxCount");
   process.exit(1);
 }

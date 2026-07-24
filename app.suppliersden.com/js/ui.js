@@ -647,7 +647,9 @@ const OptimizerUI = {
     const phase2 = options.phase2 || {};
     const phase2Note =
       phase2.verifiedCount > 0
-        ? ` · Phase 2: ${phase2.verifiedCount} live checked`
+        ? ` · ${phase2.verifiedCount} live checked${
+            phase2.refineCount > 0 ? ` · ${phase2.refineCount} refined` : ""
+          }`
         : phase2.framedCount > 0
         ? ` · Phase 2: ${phase2.framedCount} ₹49 frames added`
         : liveCount

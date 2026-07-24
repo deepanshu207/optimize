@@ -32,12 +32,12 @@ class MeeshoShippingOptimizer {
 
   getTestLabModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/testLabBridge.mjs?v=31";
+      return "/js/testLabBridge.mjs?v=32";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/testLabBridge.mjs?v=31");
+      return chrome.runtime.getURL("js/testLabBridge.mjs?v=32");
     }
-    return "/js/testLabBridge.mjs?v=31";
+    return "/js/testLabBridge.mjs?v=32";
   }
 
   init() {
@@ -1288,7 +1288,7 @@ Please share payment details and license key.`;
       borderColor,
       liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
       phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      maxLiveVerify: window.WEB_OPTIMIZER_MODE ? 16 : 32,
+      maxLiveVerify: window.WEB_OPTIMIZER_MODE ? 24 : 40,
     };
   }
 
@@ -1401,7 +1401,8 @@ Please share payment details and license key.`;
               {
                 sscatId: opts.sscatId,
                 targetInr: opts.targetInr,
-                maxVerify: opts.maxLiveVerify || 16,
+                maxVerify: opts.maxLiveVerify || 24,
+                borderColor: opts.borderColor,
                 onProgress: (msg) => {
                   if (!this.shouldStop) setProgress(msg);
                 },
@@ -1410,6 +1411,7 @@ Please share payment details and license key.`;
             rawResults = phase2.results || rawResults;
             this.testLabPhase2Meta = {
               framedCount: phase2.framedCount || 0,
+              refineCount: phase2.refineCount || 0,
               verifiedCount: phase2.verifiedCount || 0,
               bestLive: phase2.bestLive,
               errors: phase2.errors || [],
