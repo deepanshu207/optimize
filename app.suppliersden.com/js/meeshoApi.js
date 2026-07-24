@@ -1370,6 +1370,40 @@ const MeeshoAPI = {
     });
   },
 
+  getLayerCapabilities: function (layers) {
+    const empty = {
+      hasStickers: false,
+      hasBorder: false,
+      canRemoveStickers: false,
+      canRemoveBorder: false,
+      canRemoveBoth: false,
+      canAddStickers: false,
+      canAddBorder: false,
+      canAddBoth: false,
+    };
+    if (!layers) return empty;
+
+    const diff = (a, b) => !!(a && b && a !== b);
+    const hasStickers =
+      diff(layers.full, layers.noStickers) ||
+      diff(layers.noBorder, layers.productOnly);
+    const hasBorder =
+      diff(layers.noStickers, layers.productOnly) ||
+      diff(layers.full, layers.noBorder);
+
+    return {
+      hasStickers,
+      hasBorder,
+      canRemoveStickers: hasStickers,
+      canRemoveBorder: hasBorder && !!layers.noBorder,
+      canRemoveBoth: (hasStickers || hasBorder) && !!layers.productOnly,
+      canAddStickers: !hasStickers && !!(layers.full || layers.noBorder),
+      canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
+      canAddBoth:
+        (!hasStickers || !hasBorder) && !!layers.full,
+    };
+  },
+
   resolveDisplayUrl: function (result) {
     if (!result) return "";
     const layers = result.layers;
@@ -1384,16 +1418,38 @@ const MeeshoAPI = {
       );
     }
 
+    const caps = this.getLayerCapabilities(layers);
     const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
-    const borderOnlyRemoved = !!flags.borderOnlyRemoved;
-    const stickersRemoved = !!flags.stickersRemoved;
+    const fullDecorations = !!(
+      flags.fullDecorationsAdded ||
+      flags.decorationsAdded
+    );
 
-    if (cleanProduct || (borderOnlyRemoved && stickersRemoved)) {
+    if (cleanProduct) {
       return layers.productOnly || layers.full || result.pricingImageUrl || "";
     }
-    if (borderOnlyRemoved && layers.noBorder) return layers.noBorder;
-    if (stickersRemoved && layers.noStickers) return layers.noStickers;
-    return layers.full || result.pricingImageUrl || result.imageUrl || "";
+    if (fullDecorations || (flags.stickersAdded && flags.borderAdded)) {
+      return layers.full || result.pricingImageUrl || "";
+    }
+
+    let wantStickers = caps.hasStickers;
+    let wantBorder = caps.hasBorder;
+
+    if (flags.stickersRemoved) wantStickers = false;
+    if (flags.stickersAdded) wantStickers = true;
+    if (flags.borderOnlyRemoved) wantBorder = false;
+    if (flags.borderAdded) wantBorder = true;
+
+    if (wantBorder && wantStickers) {
+      return layers.full || layers.noStickers || layers.noBorder || "";
+    }
+    if (wantBorder && !wantStickers) {
+      return layers.noStickers || layers.full || "";
+    }
+    if (!wantBorder && wantStickers) {
+      return layers.noBorder || layers.full || "";
+    }
+    return layers.productOnly || layers.noBorder || layers.noStickers || "";
   },
 
   // Add badges 50-200px; pass placements to replay the same badges on another canvas
