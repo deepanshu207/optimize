@@ -240,68 +240,53 @@ class MeeshoShippingOptimizer {
   }
 
   detectShipping() {
+    const parseCost = (txt) => {
+      const m = String(txt || "").match(/₹\s*(\d+)/);
+      if (!m) return null;
+      const cost = parseInt(m[1], 10);
+      if (cost >= 25 && cost <= 150) return cost;
+      return null;
+    };
+
+    const labelPatterns = [
+      /shipping\s*charge[s]?/i,
+      /delivery\s*charge[s]?/i,
+      /logistics\s*charge[s]?/i,
+    ];
+
+    const tryElement = (el) => {
+      const txt = el?.textContent || "";
+      if (!txt.includes("₹")) return null;
+      const self = parseCost(txt);
+      if (self) return self;
+      const parentText = el.parentElement?.textContent || "";
+      if (labelPatterns.some((re) => re.test(parentText))) {
+        return parseCost(txt) || parseCost(parentText);
+      }
+      return null;
+    };
+
     const selectors = [
       "p.MuiTypography-root.MuiTypography-body1.css-v40lxd",
       '[class*="css-v40lxd"]',
-      '[class*="shipping"] span',
-      '[class*="Shipping"] span',
-      'div[class*="shipping"]',
-      'p[class*="shipping"]',
-      'span[class*="shipping"]',
+      '[class*="shipping"]',
+      '[class*="Shipping"]',
       ".MuiTypography-body1",
       ".MuiTypography-root",
     ];
 
     for (const sel of selectors) {
       try {
-        const els = document.querySelectorAll(sel);
-        for (const el of els) {
-          const txt = el.textContent || "";
-          if (
-            (txt.toLowerCase().includes("shipping") ||
-              txt.toLowerCase().includes("delivery") ||
-              txt.toLowerCase().includes("charge")) &&
-            txt.includes("₹")
-          ) {
-            const m = txt.match(/₹\s*(\d+)/);
-            if (m) {
-              const cost = parseInt(m[1]);
-              if (cost > 0 && cost < 2000) {
-                console.log("Shipping found:", cost);
-                this.currentShippingCost = cost;
-                return cost;
-              }
-            }
+        for (const el of document.querySelectorAll(sel)) {
+          const cost = tryElement(el);
+          if (cost) {
+            console.log("Shipping found:", cost, "via", sel);
+            this.currentShippingCost = cost;
+            return cost;
           }
         }
       } catch (e) {}
     }
-
-    // Fallback search
-    try {
-      const allElements = document.querySelectorAll("p, span, div");
-      for (const el of allElements) {
-        const txt = el.textContent || "";
-        if (txt.length < 100 && txt.includes("₹")) {
-          const parent = el.parentElement;
-          const parentText = parent ? parent.textContent.toLowerCase() : "";
-
-          if (
-            parentText.includes("shipping") ||
-            parentText.includes("delivery")
-          ) {
-            const m = txt.match(/₹\s*(\d+)/);
-            if (m) {
-              const cost = parseInt(m[1]);
-              if (cost > 0 && cost < 500) {
-                this.currentShippingCost = cost;
-                return cost;
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {}
 
     return this.currentShippingCost;
   }
@@ -1854,7 +1839,7 @@ Please share payment details and license key.`;
                         ${
                           bestSoFar <= target
                             ? '<div style="font-size:11px;color:#10b981;margin-top:3px;font-weight:300;">✅ Target Reached!</div>'
-                            : '<div style="font-size:10px;color:#10b981;margin-top:3px;font-weight:300;">✅ Accurate Price</div>'
+                            : '<div style="font-size:10px;color:#10b981;margin-top:3px;font-weight:300;">✓ Live Meesho API</div>'
                         }
                     </div>
                 `
@@ -2191,6 +2176,8 @@ Please share payment details and license key.`;
       uploadedUrl: r.uploadedUrl,
       savings: r.savings,
       isRealPrice: r.isRealPrice,
+      liveVerified: r.liveVerified,
+      liveTotalPrice: r.liveTotalPrice,
       testLab: !!r.testLab,
     };
     row.imageUrl =

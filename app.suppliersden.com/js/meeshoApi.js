@@ -495,14 +495,50 @@ const MeeshoAPI = {
       });
       if (!resp.ok) return null;
       const result = await resp.json();
-      console.log("🔍 Duplicate PID:", result.data?.duplicate_pid);
-      return result.data?.duplicate_pid || null;
+      const pid =
+        result.data?.duplicate_pid ??
+        result.duplicate_pid ??
+        result.data?.duplicatePid ??
+        null;
+      console.log("🔍 Duplicate PID:", pid);
+      return pid || null;
     } catch (e) {
       return null;
     }
   },
 
+  /** Normalize getTransferPrice JSON — shipping_charges is authoritative live ₹ */
+  parseTransferPriceResponse: function (raw, duplicatePidFromFetch) {
+    const payload =
+      raw?.data &&
+      typeof raw.data === "object" &&
+      (raw.data.shipping_charges != null || raw.data.shippingCharges != null)
+        ? raw.data
+        : raw;
+    const shippingRaw =
+      payload?.shipping_charges ?? payload?.shippingCharges ?? null;
+    const shippingNum = Number(shippingRaw);
+    const duplicatePid =
+      duplicatePidFromFetch ??
+      payload?.duplicate_pid ??
+      payload?.duplicatePid ??
+      raw?.data?.duplicate_pid ??
+      null;
+    return {
+      shippingCharges: Number.isFinite(shippingNum)
+        ? Math.round(shippingNum)
+        : null,
+      duplicatePid: duplicatePid || null,
+      price: payload?.price != null ? Number(payload.price) : null,
+      totalPrice:
+        payload?.total_price != null ? Number(payload.total_price) : null,
+      transferPrice:
+        payload?.transfer_price != null ? Number(payload.transfer_price) : null,
+    };
+  },
+
   getShippingCharges: async function (imageUrl) {
+    this.detectAllValues();
     const sscatId = this.cache.categoryId || 18044;
     const supplierId = this.cache.supplierId;
     const price = this.cache.price || 100;
@@ -523,8 +559,10 @@ const MeeshoAPI = {
       if (duplicatePid) body.duplicate_pid = duplicatePid;
 
       console.log(
-        "� g etTransferPrice:",
+        "getTransferPrice:",
         duplicatePid ? `pid=${duplicatePid}` : "no pid",
+        `sscat=${sscatId}`,
+        `price=${price}`,
       );
 
       const resp = await fetch(
@@ -537,15 +575,41 @@ const MeeshoAPI = {
       });
       if (!resp.ok) return null;
       const result = await resp.json();
+      const parsed = this.parseTransferPriceResponse(result, duplicatePid);
       console.log(
-        "🚚 Shipping:",
-        result.shipping_charges,
+        "Live shipping_charges:",
+        parsed.shippingCharges,
         duplicatePid ? `(pid: ${duplicatePid})` : "(no pid)",
+        parsed.totalPrice != null ? `total=${parsed.totalPrice}` : "",
       );
-      return { shippingCharges: result.shipping_charges, duplicatePid };
+      return parsed;
     } catch (e) {
+      console.warn("getShippingCharges failed:", e);
       return null;
     }
+  },
+
+  /** Re-fetch getTransferPrice so UI ₹ matches live API */
+  confirmLiveShippingForResults: async function (results, onProgress) {
+    if (!results?.length) return results;
+    for (let i = 0; i < results.length; i++) {
+      const row = results[i];
+      const url = row.uploadedUrl || row.pricingImageUrl;
+      if (!url || String(url).startsWith("data:")) continue;
+      if (onProgress) onProgress(i + 1, results.length, row.name);
+      const priceData = await this.getShippingCharges(url);
+      if (priceData?.shippingCharges == null) continue;
+      row.shippingCost = priceData.shippingCharges;
+      row.duplicatePid = priceData.duplicatePid || row.duplicatePid;
+      row.isVerified = !!row.duplicatePid;
+      row.liveVerified = true;
+      row.liveTotalPrice = priceData.totalPrice;
+      if (i < results.length - 1) {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+    results.sort((a, b) => (a.shippingCost || 999) - (b.shippingCost || 999));
+    return results;
   },
 
   // FAST Smart Search - Only show verified PID results
@@ -598,21 +662,24 @@ const MeeshoAPI = {
         uploadFailures = 0;
 
         const priceData = await this.getShippingCharges(imageUrl);
-        if (!priceData) continue;
+        if (!priceData || priceData.shippingCharges == null) continue;
 
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
 
-        // ONLY accept results WITH PID
+        // ONLY accept results WITH PID (Meesho matched image for live pricing)
         if (pid) {
           const result = {
             name: `Var-${attempt}`,
             dataUrl: variation.dataUrl,
             layers: variation.layers,
-            pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
+            pricingImageUrl: imageUrl,
+            uploadedUrl: imageUrl,
             shippingCost: shipping,
             duplicatePid: pid,
             isVerified: true,
+            liveVerified: true,
+            liveTotalPrice: priceData.totalPrice,
           };
           results.push(result);
           console.log(`✅ [${attempt}] ₹${shipping} PID:${pid}`);
@@ -640,6 +707,11 @@ const MeeshoAPI = {
 
     results.sort((a, b) => a.shippingCost - b.shippingCost);
 
+    // Final live re-check so displayed ₹ matches getTransferPrice API
+    if (results.length) {
+      await this.confirmLiveShippingForResults(results);
+    }
+
     const resultLimit = Math.min(
       Math.max(parseInt(maxAttempts, 10) || this.MAX_RESULT_VARIANTS, 1),
       this.MAX_RESULT_VARIANTS,
@@ -648,8 +720,8 @@ const MeeshoAPI = {
     return {
       success: results.length > 0,
       results: results.slice(0, resultLimit),
-      bestResult,
-      targetReached: bestResult?.shippingCost <= targetShipping,
+      bestResult: results[0] || null,
+      targetReached: results[0]?.shippingCost <= targetShipping,
       attempts: attempt,
       noPidCount,
       verifiedCount: results.length,

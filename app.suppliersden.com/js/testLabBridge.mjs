@@ -322,11 +322,13 @@ export async function verifyTestLabLive(
         continue;
       }
 
-      row.shippingCost = priceData.shippingCharges || 0;
+      row.shippingCost = priceData.shippingCharges;
       row.duplicatePid = priceData.duplicatePid;
       row.isVerified = !!priceData.duplicatePid;
       row.uploadedUrl = uploaded;
       row.liveChecked = true;
+      row.liveVerified = true;
+      row.liveTotalPrice = priceData.totalPrice;
       if (!row.dataUrl && row.pricingImageUrl) row.dataUrl = row.pricingImageUrl;
       verified.push(row);
 
