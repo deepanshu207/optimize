@@ -272,13 +272,72 @@ const MeeshoAPI = {
   },
 
   /** Meesho selling price from catalog form — required for accurate live shipping. */
+  findMeeshoPriceFromForm: function () {
+    const parseVal = (raw) => {
+      const v = parseInt(String(raw || "").replace(/,/g, ""), 10);
+      return Number.isFinite(v) && v > 0 && v < 30000 ? v : null;
+    };
+    for (const el of document.querySelectorAll("label, p, span, div, h6, td, th")) {
+      const t = (el.textContent || "").replace(/\s+/g, " ").trim();
+      const low = t.toLowerCase();
+      if (!low.includes("meesho price") || t.length > 50) continue;
+      const row = el.closest("tr, li, form, section, article, div") || el.parentElement;
+      if (row) {
+        const inp = row.querySelector(
+          'input[type="number"], input[type="text"], input[inputmode="numeric"]'
+        );
+        const fromInp = parseVal(inp?.value);
+        if (fromInp) return fromInp;
+      }
+      const sib = el.nextElementSibling;
+      const m = (sib?.textContent || "").match(/₹\s*([\d,]+)/);
+      if (m) {
+        const v = parseVal(m[1]);
+        if (v) return v;
+      }
+    }
+    const inputs = document.querySelectorAll("input");
+    for (const inp of inputs) {
+      const aria = (inp.getAttribute("aria-label") || "").toLowerCase();
+      const ph = (inp.getAttribute("placeholder") || "").toLowerCase();
+      if (
+        (aria.includes("meesho") && aria.includes("price")) ||
+        ph.includes("meesho price") ||
+        ph.includes("transfer")
+      ) {
+        const v = parseVal(inp.value);
+        if (v) return v;
+      }
+    }
+    return null;
+  },
+
   getCatalogSellingPrice: function () {
     this.syncCatalogPricing();
+    const fromForm = this.findMeeshoPriceFromForm();
+    if (fromForm) {
+      this.cache.catalogPrice = fromForm;
+      this.cache.price = fromForm;
+      return fromForm;
+    }
     const catalog = this.detectCatalogPricing();
     if (catalog.meeshoPrice) return catalog.meeshoPrice;
+    if (this._catalogPriceSnapshot) return this._catalogPriceSnapshot;
     const detected = this.detectPrice();
     if (detected && detected !== 100) return detected;
-    return this.cache.catalogPrice || this.cache.price || null;
+    if (this.cache.catalogPrice && this.cache.catalogPrice !== 100) {
+      return this.cache.catalogPrice;
+    }
+    return null;
+  },
+
+  snapshotCatalogPricing: function () {
+    this.syncCatalogPricing();
+    const price = this.getCatalogSellingPrice();
+    const catalog = this.detectCatalogPricing();
+    if (price) this._catalogPriceSnapshot = price;
+    if (catalog.customerShipping) this._panelShippingSnapshot = catalog.customerShipping;
+    return { price, panelShipping: catalog.customerShipping };
   },
 
   isCatalogUploadPage: function () {
@@ -829,26 +888,27 @@ const MeeshoAPI = {
       };
 
       const quotes = [];
-      const priceForApi = primaryPrice || 100;
-      const first = await runProbe(priceForApi);
-      if (!first) return null;
-      quotes.push(first);
+      const pricesToProbe = [];
+      if (catalogPrice) pricesToProbe.push(catalogPrice);
+      if (primaryPrice && !pricesToProbe.includes(primaryPrice)) {
+        pricesToProbe.push(primaryPrice);
+      }
+      if (!pricesToProbe.length) pricesToProbe.push(100);
 
-      const needsCrossCheck =
-        !options.skipCrossCheck &&
-        catalogPrice &&
-        catalogPrice !== priceForApi;
-
-      if (needsCrossCheck) {
-        await new Promise((r) => setTimeout(r, 30));
-        const q = await runProbe(catalogPrice);
+      for (const probePrice of pricesToProbe.slice(0, 2)) {
+        if (quotes.length) await new Promise((r) => setTimeout(r, 30));
+        const q = await runProbe(probePrice);
         if (q) quotes.push(q);
-      } else if (
+        if (catalogPrice && q?.price === catalogPrice && q.customer != null) break;
+      }
+
+      if (
         !options.skipCrossCheck &&
-        (first.customer == null || !first.hasTotal)
+        quotes.length === 1 &&
+        (quotes[0].customer == null || !quotes[0].hasTotal)
       ) {
-        const alternates = this.buildShippingProbePrices(priceForApi).filter(
-          (p) => p !== priceForApi,
+        const alternates = this.buildShippingProbePrices(pricesToProbe[0]).filter(
+          (p) => !pricesToProbe.includes(p),
         );
         for (const alt of alternates.slice(0, 1)) {
           await new Promise((r) => setTimeout(r, 30));
@@ -857,11 +917,13 @@ const MeeshoAPI = {
         }
       }
 
+      if (!quotes.length) return null;
+
       const customer = this.consensusCustomerShipping(quotes, catalogPrice);
       const anchor =
         quotes.find((q) => q.price === catalogPrice && q.customer === customer) ||
         quotes.find((q) => q.customer === customer) ||
-        first;
+        quotes[0];
       const parsed = { ...anchor.parsed };
       parsed.priceUsed = catalogPrice || anchor.price;
       parsed.customerShipping = customer;
@@ -969,45 +1031,51 @@ const MeeshoAPI = {
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
 
-        // ONLY accept results WITH PID (Meesho matched image for live pricing)
+        const result = {
+          name: `Var-${attempt}`,
+          dataUrl: variation.dataUrl,
+          layers: variation.layers,
+          pricingImageUrl: imageUrl,
+          uploadedUrl: imageUrl,
+          shippingCost: shipping,
+          duplicatePid: pid || null,
+          isVerified: !!pid,
+          liveVerified: true,
+          liveTotalPrice: priceData.totalPrice,
+          meeshoPriceUsed: priceData.priceUsed,
+          noPid: !pid,
+        };
+        results.push(result);
+
         if (pid) {
-          const result = {
-            name: `Var-${attempt}`,
-            dataUrl: variation.dataUrl,
-            layers: variation.layers,
-            pricingImageUrl: imageUrl,
-            uploadedUrl: imageUrl,
-            shippingCost: shipping,
-            duplicatePid: pid,
-            isVerified: true,
-            liveVerified: true,
-            liveTotalPrice: priceData.totalPrice,
-            meeshoPriceUsed: priceData.priceUsed,
-          };
-          results.push(result);
           console.log(`✅ [${attempt}] ₹${shipping} PID:${pid}`);
-
-          if (!bestResult || shipping < bestResult.shippingCost) {
-            bestResult = result;
-            console.log(`⭐ Best: ₹${shipping}`);
-          }
-
-          if (shipping <= targetShipping) {
-            console.log(`🎉 TARGET! ₹${shipping}`);
-            if (onFound) onFound(result);
-          }
         } else {
           noPidCount++;
-          console.log(`⚠️ [${attempt}] No PID - skipped`);
+          console.log(`⚠️ [${attempt}] ₹${shipping} (no PID — still counted)`);
         }
 
-        await new Promise((r) => setTimeout(r, 20)); // Fast!
+        if (!bestResult || shipping < bestResult.shippingCost) {
+          bestResult = result;
+          console.log(`⭐ Best: ₹${shipping}`);
+        }
+
+        if (shipping <= targetShipping) {
+          console.log(`🎉 TARGET! ₹${shipping}`);
+          if (onFound) onFound(result);
+        }
+
+        await new Promise((r) => setTimeout(r, 20));
       } catch (e) {
         console.error(`[${attempt}]`, e.message);
       }
     }
 
-    results.sort((a, b) => a.shippingCost - b.shippingCost);
+    results.sort((a, b) => {
+      const av = a.isVerified ? 0 : 1;
+      const bv = b.isVerified ? 0 : 1;
+      if (av !== bv) return av - bv;
+      return (a.shippingCost || 999) - (b.shippingCost || 999);
+    });
 
     // Final live re-check so displayed ₹ matches getTransferPrice API
     if (results.length) {

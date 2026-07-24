@@ -240,68 +240,41 @@ class MeeshoShippingOptimizer {
   }
 
   detectShipping() {
-    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.syncCatalogPricing) {
-      MeeshoAPI.syncCatalogPricing();
+    const inRange = (n) => Number.isFinite(n) && n >= 20 && n <= 120;
+
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.syncCatalogPricing?.();
       const catalog = MeeshoAPI.detectCatalogPricing?.();
-      if (
-        catalog?.customerShipping >= 25 &&
-        catalog.customerShipping <= 150
-      ) {
+      if (inRange(catalog?.customerShipping)) {
         console.log("Shipping from Meesho panel:", catalog.customerShipping);
         this.currentShippingCost = catalog.customerShipping;
         return catalog.customerShipping;
       }
-    }
-
-    const parseCost = (txt) => {
-      const m = String(txt || "").match(/₹\s*(\d+)/);
-      if (!m) return null;
-      const cost = parseInt(m[1], 10);
-      if (cost >= 25 && cost <= 150) return cost;
-      return null;
-    };
-
-    const labelPatterns = [
-      /shipping\s*charge[s]?/i,
-      /delivery\s*charge[s]?/i,
-      /logistics\s*charge[s]?/i,
-    ];
-
-    const tryElement = (el) => {
-      const txt = el?.textContent || "";
-      if (!txt.includes("₹")) return null;
-      const self = parseCost(txt);
-      if (self) return self;
-      const parentText = el.parentElement?.textContent || "";
-      if (labelPatterns.some((re) => re.test(parentText))) {
-        return parseCost(txt) || parseCost(parentText);
-      }
-      return null;
-    };
-
-    const selectors = [
-      "p.MuiTypography-root.MuiTypography-body1.css-v40lxd",
-      '[class*="css-v40lxd"]',
-      '[class*="shipping"]',
-      '[class*="Shipping"]',
-      ".MuiTypography-body1",
-      ".MuiTypography-root",
-    ];
-
-    for (const sel of selectors) {
-      try {
-        for (const el of document.querySelectorAll(sel)) {
-          const cost = tryElement(el);
-          if (cost) {
-            console.log("Shipping found:", cost, "via", sel);
-            this.currentShippingCost = cost;
-            return cost;
-          }
+      if (inRange(catalog?.meeshoPrice) && inRange(catalog?.customerPrice)) {
+        const derived = catalog.customerPrice - catalog.meeshoPrice;
+        if (inRange(derived)) {
+          this.currentShippingCost = derived;
+          return derived;
         }
-      } catch (e) {}
+      }
+      if (inRange(MeeshoAPI._panelShippingSnapshot)) {
+        this.currentShippingCost = MeeshoAPI._panelShippingSnapshot;
+        return MeeshoAPI._panelShippingSnapshot;
+      }
     }
 
-    return this.currentShippingCost;
+    return inRange(this.currentShippingCost) ? this.currentShippingCost : null;
+  }
+
+  refreshCurrentShippingDisplay() {
+    const cost = this.detectShipping();
+    const el = document.getElementById("current-shipping");
+    if (!el) return;
+    if (cost) {
+      el.textContent = "₹" + cost;
+    } else if (!el.dataset.waiting) {
+      el.textContent = "Fill Meesho Price on form";
+    }
   }
 
   mountEmbedded(root) {
@@ -417,15 +390,27 @@ class MeeshoShippingOptimizer {
     };
 
     setTimeout(() => {
-      this.detectShipping();
-      const el = document.getElementById("current-shipping");
-      if (el && this.currentShippingCost) {
-        el.textContent = "₹" + this.currentShippingCost;
+      if (typeof MeeshoAPI !== "undefined") {
+        MeeshoAPI.snapshotCatalogPricing?.();
       }
+      this.refreshCurrentShippingDisplay();
+      if (this._shippingRefreshTimer) clearInterval(this._shippingRefreshTimer);
+      this._shippingRefreshTimer = setInterval(() => {
+        if (!this.modal) {
+          clearInterval(this._shippingRefreshTimer);
+          this._shippingRefreshTimer = null;
+          return;
+        }
+        this.refreshCurrentShippingDisplay();
+      }, 2500);
     }, 100);
   }
 
   closeModal() {
+    if (this._shippingRefreshTimer) {
+      clearInterval(this._shippingRefreshTimer);
+      this._shippingRefreshTimer = null;
+    }
     if (window.WEB_OPTIMIZER_MODE && this.embeddedRoot) {
       this.mountEmbedded(this.embeddedRoot);
       return;
@@ -1636,6 +1621,18 @@ Please share payment details and license key.`;
       });
 
       this.gatherSettings();
+      if (typeof MeeshoAPI !== "undefined") {
+        const snap = MeeshoAPI.snapshotCatalogPricing?.();
+        if (snap?.price) {
+          console.log("📋 Live hunt at Meesho Price ₹" + snap.price);
+        } else {
+          OptimizerUtils.showNotification(
+            "Fill Meesho Price on catalog form for accurate live ₹",
+            "info"
+          );
+        }
+      }
+      this.refreshCurrentShippingDisplay();
 
       let result = { success: false, results: [] };
 
@@ -1731,6 +1728,13 @@ Please share payment details and license key.`;
       }
 
       if (result.success && result.results.length > 0) {
+        this.huntStats = {
+          attempts: result.attempts || maxAttempts,
+          priced: result.results.length,
+          noPidCount: result.noPidCount || 0,
+          verifiedCount: result.verifiedCount || 0,
+          catalogPrice: MeeshoAPI?.getCatalogSellingPrice?.() || null,
+        };
         this.currentResults = result.results.map((r, i) =>
           this.mapResultFromApi(r, i)
         );
@@ -1843,7 +1847,7 @@ Please share payment details and license key.`;
                 <h3 style="margin:0 0 5px 0;color:#10b981;font-size:18px;">AI Is Finding Best Shipping</h3>
                 <p style="color:##0f0f10;font-size:14px;margin-bottom:3px;">Target: ≤ ₹${target}</p>
                 <p style="color:#9ca3af;font-size:11px;margin-bottom:5px;">${attempt} / ${maxAttempts}${
-      noPidCount > 0 ? ` • ${noPidCount} skipped` : ""
+      noPidCount > 0 ? ` • ${noPidCount} no-match` : ""
     }</p>
                 <p style="color:#667eea;font-size:12px;margin-bottom:12px;">⏱️ ${timeStr}${
       estRemaining ? ` • ${estRemaining}` : ""
@@ -2165,6 +2169,7 @@ Please share payment details and license key.`;
       baselineShipping: this.getBaselineShipping(),
       framedExtras: this.framedExtraResults,
       showFramedExtras: this.showFramedExtras,
+      huntStats: this.huntStats || null,
     };
   }
 
@@ -2652,6 +2657,8 @@ Please share payment details and license key.`;
         applyBestBtn.textContent = price ? `Download Best ₹${price}` : "Download Best";
         applyBestBtn.onclick = () => this.downloadImage(best);
       } else {
+        const price = best?.shippingCost || "";
+        applyBestBtn.textContent = price ? `Upload Best ₹${price}` : "Upload Best";
         applyBestBtn.onclick = () => this.applyImage(best);
       }
     }

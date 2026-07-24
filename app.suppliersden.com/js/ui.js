@@ -276,7 +276,7 @@ const OptimizerUI = {
                     <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
                     <div class="opt-shipping">
                         <div style="font-size:11px;color:#9ca3af;">Current Shipping</div>
-                        <div class="opt-shipping-value" id="current-shipping">Detecting...</div>
+                        <div class="opt-shipping-value" id="current-shipping">—</div>
                     </div>
 
                     <div class="opt-section" style="padding:12px;">
@@ -408,7 +408,8 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     const testLabMode = !!options.testLabMode;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
-    const applyLabel = isWeb ? "Save" : "Apply";
+    const applyLabel = isWeb ? "Download" : "Upload";
+    const saveLabel = isWeb ? "Save file" : "Download";
     const isBest = !!options.isBest;
     const estInr = r.meta?.estInr || r.estShipping || 0;
     const priceLabel = testLabMode
@@ -488,8 +489,10 @@ const OptimizerUI = {
                         : ""
                     }
                     <div style="display:flex;gap:4px;margin-top:4px;">
-                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
+                        <button class="dl-btn" data-variant-id="${vid}" title="Download image to your device" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${saveLabel}</button>
+                        <button class="apply-btn" data-variant-id="${vid}" title="${
+      isWeb ? "Download variant" : "Upload this image to Meesho catalog (updates panel shipping)"
+    }" style="flex:1;background:${
       isBest ? "#10b981" : "rgba(255,255,255,0.1)"
     };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
                     </div>
@@ -518,8 +521,15 @@ const OptimizerUI = {
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const manualMode = !!options.manualMode;
     const testedCount = results.filter((r) => r.shippingCost > 0).length;
-    const applyLabel = isWeb ? "Save" : "Apply";
+    const applyLabel = isWeb ? "Download" : "Upload";
+    const saveLabel = isWeb ? "Save file" : "Download";
     const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
+    const huntStats = options.huntStats || null;
+    const huntNote = huntStats
+      ? `${huntStats.attempts || "?"} tried · ${huntStats.priced || totalResults} priced${
+          huntStats.noPidCount ? ` · ${huntStats.noPidCount} no-match` : ""
+        }${huntStats.catalogPrice ? ` · @ Meesho ₹${huntStats.catalogPrice}` : ""}`
+      : `${totalResults} variants`;
 
     let html = `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
@@ -551,7 +561,7 @@ const OptimizerUI = {
                     ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
                     : ""
                 }
-                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants</div>
+                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${huntNote}</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
         `;
