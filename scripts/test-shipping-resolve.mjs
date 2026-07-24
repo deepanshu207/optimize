@@ -10,24 +10,25 @@ const api = {
     if (Number.isFinite(n) && n > 0 && n < 500) return n;
     return null;
   },
-  resolveLiveShippingCost(parsed, priceUsed, catalogPrice) {
+  resolveLiveShippingCost(parsed, priceUsed) {
     if (!parsed) return null;
-    const sellPrice = catalogPrice || priceUsed;
-    const derived = this.deriveCustomerShipping(parsed.totalPrice, sellPrice);
+    const derived = this.deriveCustomerShipping(parsed.totalPrice, priceUsed);
     if (derived != null) return derived;
     const apiShip = parsed.shippingCharges;
     return apiShip != null && apiShip > 0 ? apiShip : null;
   },
-  consensusCustomerShipping(quotes, catalogPrice) {
+  consensusCustomerShipping(quotes) {
     if (!quotes?.length) return null;
-    if (catalogPrice) {
-      const atCatalog = quotes.find((q) => q.price === catalogPrice && q.customer != null);
-      if (atCatalog) return atCatalog.customer;
-    }
     const withTotal = quotes.filter((q) => q.hasTotal && q.customer != null);
-    if (withTotal.length) return Math.min(...withTotal.map((q) => q.customer));
+    if (withTotal.length) {
+      const vals = withTotal.map((q) => q.customer);
+      const max = Math.max(...vals);
+      const min = Math.min(...vals);
+      if (max - min <= 2) return Math.round((max + min) / 2);
+      return max;
+    }
     const fallback = quotes.map((q) => q.customer).filter((v) => v != null);
-    return fallback.length ? Math.min(...fallback) : null;
+    return fallback.length ? Math.max(...fallback) : null;
   },
 };
 
@@ -70,24 +71,14 @@ assertEq(
   "consensus when both probes agree",
 );
 
-// API probed at ₹100 but catalog Meesho Price is ₹200 — use catalog for derive
+// Mismatch — prefer higher (panel-aligned)
 assertEq(
-  api.resolveLiveShippingCost({ totalPrice: 247, shippingCharges: 57 }, 100, 200),
-  47,
-  "catalog ₹200: total 247 → customer shipping 47 (not api 57 at ₹100)",
-);
-
-// Consensus prefers catalog price quote
-assertEq(
-  api.consensusCustomerShipping(
-    [
-      { price: 100, customer: 57, hasTotal: true },
-      { price: 200, customer: 47, hasTotal: true },
-    ],
-    200
-  ),
-  47,
-  "consensus uses catalog price probe",
+  api.consensusCustomerShipping([
+    { price: 100, customer: 64, hasTotal: false },
+    { price: 200, customer: 79, hasTotal: true },
+  ]),
+  79,
+  "consensus prefers total_price-derived quote",
 );
 
 console.log("PASS: all shipping resolve tests");

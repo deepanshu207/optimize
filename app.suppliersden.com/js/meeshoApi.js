@@ -211,54 +211,27 @@ const MeeshoAPI = {
       return Number.isFinite(n) && n > 0 ? n : null;
     };
 
-    const parseFromEl = (el) => {
-      if (!el) return null;
-      const direct = parseRupee(el.textContent);
-      if (direct) return direct;
-      const child = el.querySelector?.("span, p, div, strong");
-      return parseRupee(child?.textContent || "");
-    };
-
     const nodes = document.querySelectorAll("p, span, div, td, th, label, h6");
     for (const el of nodes) {
       const t = (el.textContent || "").replace(/\s+/g, " ").trim();
       if (!t || t.length > 120) continue;
       const low = t.toLowerCase();
       const val = parseRupee(t);
+      if (!val) continue;
       if (low.includes("meesho price") && out.meeshoPrice == null) {
-        out.meeshoPrice =
-          val ||
-          parseFromEl(el.nextElementSibling) ||
-          parseFromEl(el.parentElement?.querySelector("[class*='price'], [class*='Price']"));
+        out.meeshoPrice = val;
       } else if (
         (low.includes("shipping") && low.includes("customer")) ||
         low.includes("shipping (paid")
       ) {
-        const ship =
-          val ||
-          parseFromEl(el.nextElementSibling) ||
-          parseFromEl(el.parentElement?.lastElementChild);
-        if (ship) out.customerShipping = ship;
+        out.customerShipping = val;
       } else if (low.includes("customer price") && out.customerPrice == null) {
-        out.customerPrice =
-          val ||
-          parseFromEl(el.nextElementSibling) ||
-          parseFromEl(el.parentElement?.querySelector("[class*='price']"));
+        out.customerPrice = val;
       } else if (
         (low.includes("settlement") || low.includes("bank settlement")) &&
         out.settlement == null
       ) {
-        out.settlement = val || parseFromEl(el.nextElementSibling);
-      }
-    }
-
-    if (!out.meeshoPrice) {
-      const transferInp = document.querySelector(
-        'input[name*="transfer" i], input[name*="supplier_price" i], input[name*="selling" i], input[aria-label*="meesho" i]'
-      );
-      if (transferInp?.value) {
-        const v = parseInt(String(transferInp.value).replace(/,/g, ""), 10);
-        if (v > 0 && v < 30000) out.meeshoPrice = v;
+        out.settlement = val;
       }
     }
 
@@ -269,20 +242,6 @@ const MeeshoAPI = {
       out.customerPrice = out.meeshoPrice + out.customerShipping;
     }
     return out;
-  },
-
-  /** Meesho selling price from catalog form — required for accurate live shipping. */
-  getCatalogSellingPrice: function () {
-    this.syncCatalogPricing();
-    const catalog = this.detectCatalogPricing();
-    if (catalog.meeshoPrice) return catalog.meeshoPrice;
-    const detected = this.detectPrice();
-    if (detected && detected !== 100) return detected;
-    return this.cache.catalogPrice || this.cache.price || null;
-  },
-
-  isCatalogUploadPage: function () {
-    return /supplier\.meesho\.com.*catalog/i.test(location.href || "");
   },
 
   /** Sync selling price + category from the open Meesho catalog form. */
@@ -686,20 +645,6 @@ const MeeshoAPI = {
           : null,
       transferPrice:
         payload?.transfer_price != null ? Number(payload.transfer_price) : null,
-      gstPrice:
-        payload?.gst_price != null
-          ? Number(payload.gst_price)
-          : payload?.gstPrice != null
-          ? Number(payload.gstPrice)
-          : null,
-      tds:
-        payload?.tds != null ? Number(payload.tds) : null,
-      tcs:
-        payload?.tcs != null ? Number(payload.tcs) : null,
-      commissionFees:
-        payload?.commission_fees != null
-          ? Number(payload.commission_fees)
-          : null,
       customerShipping: null,
     };
   },
@@ -713,40 +658,38 @@ const MeeshoAPI = {
   },
 
   /**
-   * Customer shipping = Customer Price − Meesho Price (panel row).
-   * Must use catalog selling price — API at ₹100 returns ₹57 while panel at ₹200 shows ₹47.
+   * Customer shipping from getTransferPrice.
+   * Prefer total_price − selling_price (matches panel at any Meesho Price).
+   * shipping_charges alone often under-reports (e.g. ₹64 vs panel ₹79).
    */
-  resolveLiveShippingCost: function (parsed, priceUsed, catalogPrice) {
+  resolveLiveShippingCost: function (parsed, priceUsed) {
     if (!parsed) return null;
-    const sellPrice = catalogPrice || priceUsed;
-    const derived = this.deriveCustomerShipping(parsed.totalPrice, sellPrice);
+    const derived = this.deriveCustomerShipping(parsed.totalPrice, priceUsed);
     if (derived != null) return derived;
     const apiShip = parsed.shippingCharges;
     return apiShip != null && apiShip > 0 ? apiShip : null;
   },
 
-  /** Only probe at catalog Meesho Price — shipping varies by selling price in API. */
+  /** Selling prices to cross-check when API fields disagree (shipping is image-based, not price-tier). */
   buildShippingProbePrices: function (primaryPrice) {
-    const catalog = this.getCatalogSellingPrice();
-    const nums = [catalog, primaryPrice, this.cache.catalogPrice, this.cache.price]
+    const nums = [primaryPrice, this.cache.catalogPrice, this.cache.price, 100, 200]
       .map((n) => parseInt(n, 10))
       .filter((n) => Number.isFinite(n) && n > 0 && n < 30000);
-    return [...new Set(nums)].slice(0, 2);
+    return [...new Set(nums)].slice(0, 3);
   },
 
-  consensusCustomerShipping: function (quotes, catalogPrice) {
+  consensusCustomerShipping: function (quotes) {
     if (!quotes?.length) return null;
-    if (catalogPrice) {
-      const atCatalog = quotes.find((q) => q.price === catalogPrice && q.customer != null);
-      if (atCatalog) return atCatalog.customer;
-    }
     const withTotal = quotes.filter((q) => q.hasTotal && q.customer != null);
     if (withTotal.length) {
       const vals = withTotal.map((q) => q.customer);
-      return Math.min(...vals);
+      const max = Math.max(...vals);
+      const min = Math.min(...vals);
+      if (max - min <= 2) return Math.round((max + min) / 2);
+      return max;
     }
     const fallback = quotes.map((q) => q.customer).filter((v) => v != null);
-    return fallback.length ? Math.min(...fallback) : null;
+    return fallback.length ? Math.max(...fallback) : null;
   },
 
   _requestTransferPrice: async function ({
@@ -792,15 +735,13 @@ const MeeshoAPI = {
     this.syncCatalogPricing();
     const sscatId = options.sscatId || this.cache.categoryId || 18044;
     const supplierId = this.cache.supplierId;
-    const catalogPrice = this.getCatalogSellingPrice();
-    const primaryPrice = options.price || catalogPrice;
+    const primaryPrice =
+      options.price ||
+      this.detectPrice() ||
+      this.cache.catalogPrice ||
+      this.cache.price ||
+      100;
     const gstPct = options.gstPercentage ?? 0;
-
-    if (!primaryPrice && this.isCatalogUploadPage()) {
-      console.warn(
-        "⚠️ Fill Meesho Price on catalog form — API defaults to ₹100 and shipping will be wrong",
-      );
-    }
 
     let duplicatePid = null;
     if (imageUrl)
@@ -818,7 +759,7 @@ const MeeshoAPI = {
         });
         if (!parsed) return null;
         if (!duplicatePid && parsed.duplicatePid) duplicatePid = parsed.duplicatePid;
-        const customer = this.resolveLiveShippingCost(parsed, price, catalogPrice);
+        const customer = this.resolveLiveShippingCost(parsed, price);
         return {
           price,
           parsed,
@@ -829,59 +770,51 @@ const MeeshoAPI = {
       };
 
       const quotes = [];
-      const priceForApi = primaryPrice || 100;
-      const first = await runProbe(priceForApi);
+      const first = await runProbe(primaryPrice);
       if (!first) return null;
       quotes.push(first);
 
       const needsCrossCheck =
         !options.skipCrossCheck &&
-        catalogPrice &&
-        catalogPrice !== priceForApi;
+        (first.customer == null ||
+          !first.hasTotal ||
+          (first.apiRaw != null &&
+            first.customer != null &&
+            Math.abs(first.apiRaw - first.customer) > 3));
 
       if (needsCrossCheck) {
-        await new Promise((r) => setTimeout(r, 30));
-        const q = await runProbe(catalogPrice);
-        if (q) quotes.push(q);
-      } else if (
-        !options.skipCrossCheck &&
-        (first.customer == null || !first.hasTotal)
-      ) {
-        const alternates = this.buildShippingProbePrices(priceForApi).filter(
-          (p) => p !== priceForApi,
+        const alternates = this.buildShippingProbePrices(primaryPrice).filter(
+          (p) => p !== primaryPrice,
         );
-        for (const alt of alternates.slice(0, 1)) {
+        for (const alt of alternates.slice(0, 2)) {
           await new Promise((r) => setTimeout(r, 30));
           const q = await runProbe(alt);
           if (q) quotes.push(q);
+          const derived = quotes.filter((x) => x.hasTotal && x.customer != null);
+          if (derived.length >= 2) {
+            const vals = derived.map((x) => x.customer);
+            if (Math.max(...vals) - Math.min(...vals) <= 2) break;
+          }
         }
       }
 
-      const customer = this.consensusCustomerShipping(quotes, catalogPrice);
-      const anchor =
-        quotes.find((q) => q.price === catalogPrice && q.customer === customer) ||
-        quotes.find((q) => q.customer === customer) ||
-        first;
+      const customer = this.consensusCustomerShipping(quotes);
+      const anchor = quotes.find((q) => q.customer === customer) || first;
       const parsed = { ...anchor.parsed };
-      parsed.priceUsed = catalogPrice || anchor.price;
+      parsed.priceUsed = anchor.price;
       parsed.customerShipping = customer;
       parsed.shippingCharges = customer;
-      parsed.apiShippingRaw = anchor.apiRaw;
-      parsed.catalogPriceUsed = catalogPrice;
       parsed.probePrices = quotes.map((q) => q.price);
-      parsed.panelShipping = this.cache.panelShipping || null;
 
       console.log(
         "Live customer shipping:",
         parsed.shippingCharges,
-        `@ catalog Meesho Price ₹${parsed.priceUsed}`,
         `(probed ₹${quotes.map((q) => q.price).join(", ₹")})`,
         duplicatePid ? `(pid: ${duplicatePid})` : "(no pid)",
         parsed.totalPrice != null ? `total=${parsed.totalPrice}` : "",
         anchor.apiRaw != null && anchor.apiRaw !== customer
           ? `api shipping_charges=${anchor.apiRaw}`
           : "",
-        parsed.transferPrice != null ? `settlement=${parsed.transferPrice}` : "",
       );
       return parsed;
     } catch (e) {
