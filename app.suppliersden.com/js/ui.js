@@ -99,10 +99,9 @@ const OptimizerUI = {
                             <div>
                                 <label class="opt-label">Max Variants</label>
                                 <select id="max-attempts" class="opt-select">
-                                    <option value="10">10</option>
-                                    <option value="20">20</option>
-                                    <option value="50" selected>50</option>
+                                    <option value="50">50</option>
                                     <option value="100">100</option>
+                                    <option value="200" selected>200</option>
                                 </select>
                             </div>
                         </div>
@@ -206,7 +205,7 @@ const OptimizerUI = {
     return `
                     <div class="opt-section" style="padding:12px;">
                         <div class="opt-section-title">🧪 Test Lab</div>
-                        <p class="test-lab-note">Compact product (~65–70% of square), white background, ≥1200×1200 px. Phase 2 live-checks real Meesho ₹.</p>
+                        <p class="test-lab-note">Uses your catalog <strong>Meesho Price</strong> for live API (not ₹100 default). Settlement is separate from customer shipping. Up to <strong>200</strong> live checks.</p>
                         ${sessionNote}
                         <div class="opt-row" style="margin-top:10px;">
                             <div>
@@ -320,8 +319,8 @@ const OptimizerUI = {
                                 <label class="opt-label">Max Tries</label>
                                 <select id="max-attempts" class="opt-select">
                                     <option value="50" style="color:black">50</option>
-                                    <option value="100" selected style="color:black">100</option>
-                                    <option value="200" style="color:black">200</option>
+                                    <option value="100" style="color:black">100</option>
+                                    <option value="200" selected style="color:black">200</option>
                                 </select>
                             </div>
                         </div>
@@ -543,7 +542,7 @@ const OptimizerUI = {
                     ? "Download → upload on Meesho → type ₹ below"
                     : bestPrice
                     ? best.liveVerified
-                      ? "✓ Live customer shipping"
+                      ? "✓ Live customer shipping (at your Meesho Price)"
                       : "✓ Meesho price"
                     : "Tap Save to download"
                 }</div>
@@ -657,7 +656,7 @@ const OptimizerUI = {
         : "";
 
     const livePriceNote = bestLive
-      ? "✅ Live customer shipping (same at any Meesho Price)"
+      ? "✅ Live customer shipping at your catalog Meesho Price"
       : "Download → upload on Meesho → compare ₹";
     const panelGap =
       baseline > 0 && bestLive && baseline !== bestLive

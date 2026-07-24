@@ -290,7 +290,7 @@ export async function optimizeImage(img, options = {}) {
     }
   }
 
-  const cap = lowHunt ? 48 : mode === "smart" ? 30 : 24;
+  const cap = lowHunt ? 80 : mode === "smart" ? 30 : 24;
   let ranked = dedupeAndRank(all, cap);
   if (targetInr) {
     const filtered = ranked.filter((v) => v.estInr <= targetInr);
