@@ -145,6 +145,11 @@ const MeeshoAPI = {
       const detectedPrice = this.detectPrice();
       if (detectedPrice) this.cache.price = detectedPrice;
     }
+    if (!window.WEB_OPTIMIZER_MODE) {
+      const catalog = this.detectCatalogPricing();
+      if (catalog.meeshoPrice) this.cache.price = catalog.meeshoPrice;
+      if (catalog.customerShipping) this.cache.panelShipping = catalog.customerShipping;
+    }
 
     if (!this.cache.categoryId) {
       this.cache.categoryId = this.detectCategoryId();
@@ -181,22 +186,120 @@ const MeeshoAPI = {
   },
 
   detectCategoryId: function () {
+    const sel = document.querySelector(
+      'select[name*="sscat"], select[name*="category"], input[name*="sscat"]'
+    );
+    if (sel?.value) {
+      const id = parseInt(sel.value, 10);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
     return this.cache.categoryId;
   },
 
+  /** Parse ₹ from Meesho catalog pricing card (supplier panel). */
+  detectCatalogPricing: function () {
+    const out = {
+      meeshoPrice: null,
+      customerShipping: null,
+      customerPrice: null,
+      settlement: null,
+    };
+    const parseRupee = (text) => {
+      const m = String(text || "").match(/₹\s*([\d,]+(?:\.\d+)?)/);
+      if (!m) return null;
+      const n = parseInt(String(m[1]).replace(/,/g, ""), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    const nodes = document.querySelectorAll("p, span, div, td, th, label, h6");
+    for (const el of nodes) {
+      const t = (el.textContent || "").replace(/\s+/g, " ").trim();
+      if (!t || t.length > 120) continue;
+      const low = t.toLowerCase();
+      const val = parseRupee(t);
+      if (!val) continue;
+      if (low.includes("meesho price") && out.meeshoPrice == null) {
+        out.meeshoPrice = val;
+      } else if (
+        (low.includes("shipping") && low.includes("customer")) ||
+        low.includes("shipping (paid")
+      ) {
+        out.customerShipping = val;
+      } else if (low.includes("customer price") && out.customerPrice == null) {
+        out.customerPrice = val;
+      } else if (
+        (low.includes("settlement") || low.includes("bank settlement")) &&
+        out.settlement == null
+      ) {
+        out.settlement = val;
+      }
+    }
+
+    if (out.meeshoPrice && out.customerPrice && !out.customerShipping) {
+      out.customerShipping = out.customerPrice - out.meeshoPrice;
+    }
+    if (out.meeshoPrice && out.customerShipping && !out.customerPrice) {
+      out.customerPrice = out.meeshoPrice + out.customerShipping;
+    }
+    return out;
+  },
+
+  /** Sync selling price + category from the open Meesho catalog form. */
+  syncCatalogPricing: function () {
+    this.detectAllValues();
+    const catalog = this.detectCatalogPricing();
+    if (catalog.meeshoPrice) {
+      this.cache.price = catalog.meeshoPrice;
+      this.cache.catalogPrice = catalog.meeshoPrice;
+    }
+    if (catalog.customerShipping) {
+      this.cache.panelShipping = catalog.customerShipping;
+    }
+    const formPrice = this.detectPrice();
+    if (formPrice && !catalog.meeshoPrice) {
+      this.cache.price = formPrice;
+    }
+    return { ...catalog, priceUsed: this.cache.price || 100 };
+  },
+
   detectPrice: function () {
+    const catalog = this.detectCatalogPricing();
+    if (catalog.meeshoPrice) return catalog.meeshoPrice;
+
+    const preferNames = [
+      "transfer_price",
+      "supplier_price",
+      "selling_price",
+      "meesho_price",
+      "price",
+    ];
     const inputs = document.querySelectorAll("input");
+    for (const key of preferNames) {
+      for (const inp of inputs) {
+        const name = (inp.name || "").toLowerCase();
+        const id = (inp.id || "").toLowerCase();
+        const aria = (inp.getAttribute("aria-label") || "").toLowerCase();
+        if (
+          (name.includes(key) || id.includes(key) || aria.includes("meesho")) &&
+          inp.value
+        ) {
+          const v = parseInt(String(inp.value).replace(/,/g, ""), 10);
+          if (v > 0 && v < 30000) return v;
+        }
+      }
+    }
     for (const inp of inputs) {
       const name = (inp.name || "").toLowerCase();
       if (
         (name.includes("price") || name === "mrp") &&
         inp.value &&
-        parseInt(inp.value) > 0
+        !name.includes("mrp")
       ) {
-        return parseInt(inp.value);
+        const v = parseInt(String(inp.value).replace(/,/g, ""), 10);
+        if (v > 0 && v < 30000) return v;
       }
     }
-    return 100;
+    return this.cache.price || 100;
   },
 
   setCategory: function (id) {
@@ -534,14 +637,35 @@ const MeeshoAPI = {
         payload?.total_price != null ? Number(payload.total_price) : null,
       transferPrice:
         payload?.transfer_price != null ? Number(payload.transfer_price) : null,
+      customerShipping: null,
     };
   },
 
-  getShippingCharges: async function (imageUrl) {
-    this.detectAllValues();
-    const sscatId = this.cache.categoryId || 18044;
+  /** Best live shipping ₹ from getTransferPrice (at the given Meesho selling price). */
+  resolveLiveShippingCost: function (parsed, priceUsed) {
+    if (!parsed) return null;
+    const apiShip = parsed.shippingCharges;
+    let customer = apiShip != null && apiShip > 0 ? apiShip : null;
+    if (
+      parsed.totalPrice != null &&
+      priceUsed != null &&
+      parsed.totalPrice > priceUsed
+    ) {
+      const derived = Math.round(parsed.totalPrice - priceUsed);
+      if (derived > 0 && derived < 500) {
+        customer = customer != null ? Math.max(customer, derived) : derived;
+      }
+    }
+    return customer;
+  },
+
+  getShippingCharges: async function (imageUrl, options = {}) {
+    this.syncCatalogPricing();
+    const sscatId = options.sscatId || this.cache.categoryId || 18044;
     const supplierId = this.cache.supplierId;
-    const price = this.cache.price || 100;
+    const price =
+      options.price || this.cache.catalogPrice || this.cache.price || 100;
+    const gstPct = options.gstPercentage ?? 0;
 
     let duplicatePid = null;
     if (imageUrl)
@@ -550,7 +674,7 @@ const MeeshoAPI = {
     try {
       const body = {
         sscat_id: sscatId,
-        gst_percentage: 0,
+        gst_percentage: gstPct,
         price: price,
         supplier_id: supplierId,
         gst_type: "GSTIN",
@@ -576,9 +700,13 @@ const MeeshoAPI = {
       if (!resp.ok) return null;
       const result = await resp.json();
       const parsed = this.parseTransferPriceResponse(result, duplicatePid);
+      parsed.priceUsed = price;
+      parsed.customerShipping = this.resolveLiveShippingCost(parsed, price);
+      parsed.shippingCharges = parsed.customerShipping;
       console.log(
-        "Live shipping_charges:",
+        "Live shipping:",
         parsed.shippingCharges,
+        `@ Meesho Price ₹${price}`,
         duplicatePid ? `(pid: ${duplicatePid})` : "(no pid)",
         parsed.totalPrice != null ? `total=${parsed.totalPrice}` : "",
       );
@@ -604,6 +732,7 @@ const MeeshoAPI = {
       row.isVerified = !!row.duplicatePid;
       row.liveVerified = true;
       row.liveTotalPrice = priceData.totalPrice;
+      row.meeshoPriceUsed = priceData.priceUsed;
       if (i < results.length - 1) {
         await new Promise((r) => setTimeout(r, 40));
       }
@@ -624,7 +753,7 @@ const MeeshoAPI = {
     console.log(
       `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
-    this.detectAllValues();
+    this.syncCatalogPricing();
 
     const results = [];
     let bestResult = null;
@@ -680,6 +809,7 @@ const MeeshoAPI = {
             isVerified: true,
             liveVerified: true,
             liveTotalPrice: priceData.totalPrice,
+            meeshoPriceUsed: priceData.priceUsed,
           };
           results.push(result);
           console.log(`✅ [${attempt}] ₹${shipping} PID:${pid}`);
@@ -692,7 +822,6 @@ const MeeshoAPI = {
           if (shipping <= targetShipping) {
             console.log(`🎉 TARGET! ₹${shipping}`);
             if (onFound) onFound(result);
-            break;
           }
         } else {
           noPidCount++;

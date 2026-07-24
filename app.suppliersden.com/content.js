@@ -32,12 +32,12 @@ class MeeshoShippingOptimizer {
 
   getTestLabModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/testLabBridge.mjs?v=30";
+      return "/js/testLabBridge.mjs?v=31";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/testLabBridge.mjs?v=30");
+      return chrome.runtime.getURL("js/testLabBridge.mjs?v=31");
     }
-    return "/js/testLabBridge.mjs?v=30";
+    return "/js/testLabBridge.mjs?v=31";
   }
 
   init() {
@@ -240,6 +240,19 @@ class MeeshoShippingOptimizer {
   }
 
   detectShipping() {
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.syncCatalogPricing) {
+      MeeshoAPI.syncCatalogPricing();
+      const catalog = MeeshoAPI.detectCatalogPricing?.();
+      if (
+        catalog?.customerShipping >= 25 &&
+        catalog.customerShipping <= 150
+      ) {
+        console.log("Shipping from Meesho panel:", catalog.customerShipping);
+        this.currentShippingCost = catalog.customerShipping;
+        return catalog.customerShipping;
+      }
+    }
+
     const parseCost = (txt) => {
       const m = String(txt || "").match(/₹\s*(\d+)/);
       if (!m) return null;
@@ -987,6 +1000,12 @@ Please share payment details and license key.`;
     ) {
       MeeshoAPI.setCategory(parseInt(categorySelect.value));
     }
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.syncCatalogPricing) {
+      const pricing = MeeshoAPI.syncCatalogPricing();
+      if (pricing.priceUsed) {
+        console.log("📋 Catalog Meesho Price for live checks: ₹" + pricing.priceUsed);
+      }
+    }
   }
 
   // ─── Optimizer tabs (web + extension) ───────────────────────────────────
@@ -1269,7 +1288,7 @@ Please share payment details and license key.`;
       borderColor,
       liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
       phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      maxLiveVerify: 16,
+      maxLiveVerify: window.WEB_OPTIMIZER_MODE ? 16 : 32,
     };
   }
 
@@ -2120,7 +2139,14 @@ Please share payment details and license key.`;
 
   getBaselineShipping() {
     const el = document.getElementById("current-shipping-baseline");
-    return parseInt(el?.value, 10) || 0;
+    const fromInput = parseInt(el?.value, 10);
+    if (fromInput > 0) return fromInput;
+    if (this.currentShippingCost > 0) return this.currentShippingCost;
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.detectCatalogPricing) {
+      const catalog = MeeshoAPI.detectCatalogPricing();
+      if (catalog?.customerShipping > 0) return catalog.customerShipping;
+    }
+    return 0;
   }
 
   getResultsViewOptions() {
@@ -2178,6 +2204,7 @@ Please share payment details and license key.`;
       isRealPrice: r.isRealPrice,
       liveVerified: r.liveVerified,
       liveTotalPrice: r.liveTotalPrice,
+      meeshoPriceUsed: r.meeshoPriceUsed,
       testLab: !!r.testLab,
     };
     row.imageUrl =

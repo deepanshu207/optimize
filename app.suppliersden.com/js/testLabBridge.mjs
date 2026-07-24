@@ -3,17 +3,17 @@
  * Phase 1: local strategies ranked by est ₹.
  * Phase 2: ₹49 framed candidates + live Meesho verify when session is ready.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=30";
-import { loadImage } from "./lib/canvas-utils.js?v=30";
-import { blobToDataUrl } from "./lib/encoder.js?v=30";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=31";
+import { loadImage } from "./lib/canvas-utils.js?v=31";
+import { blobToDataUrl } from "./lib/encoder.js?v=31";
 import {
   CATEGORIES,
   MODES,
   TARGET_SHIPPING,
   formatInr,
   estimateImageShipping,
-} from "./lib/shipping.js?v=30";
-import { getSessionGuidance } from "./lib/smart-plan.js?v=30";
+} from "./lib/shipping.js?v=31";
+import { getSessionGuidance } from "./lib/smart-plan.js?v=31";
 
 const APPAREL_RE =
   /kurti|saree|dress|suit|gown|babydoll|jumpsuit|western gown/i;
@@ -29,7 +29,7 @@ const ELECTRONICS_RE =
 
 const PHASE2_PROFILE_LIMIT = 16;
 const LIVE_VERIFY_DELAY_MS = 150;
-const DEFAULT_MAX_VERIFY = 16;
+const DEFAULT_MAX_VERIFY = 24;
 
 /** Map Meesho sscat id/name → strategy category id used by strategies.js */
 export function categoryGroupFromSelection(sscatId, categoryName) {
@@ -93,6 +93,7 @@ function sortByBestPrice(results) {
 function syncMeeshoSession(sscatId) {
   if (typeof MeeshoAPI === "undefined") return false;
   MeeshoAPI.syncFromSession?.();
+  MeeshoAPI.syncCatalogPricing?.();
   MeeshoAPI.detectAllValues?.();
   if (sscatId) MeeshoAPI.setCategory(sscatId);
   return !!MeeshoAPI.isReady?.();
@@ -316,7 +317,9 @@ export async function verifyTestLabLive(
         continue;
       }
 
-      const priceData = await MeeshoAPI.getShippingCharges(uploaded);
+      const priceData = await MeeshoAPI.getShippingCharges(uploaded, {
+        sscatId: options.sscatId,
+      });
       if (!priceData || priceData.shippingCharges == null) {
         errors.push(`${label}: price API failed`);
         continue;
@@ -329,6 +332,7 @@ export async function verifyTestLabLive(
       row.liveChecked = true;
       row.liveVerified = true;
       row.liveTotalPrice = priceData.totalPrice;
+      row.meeshoPriceUsed = priceData.priceUsed;
       if (!row.dataUrl && row.pricingImageUrl) row.dataUrl = row.pricingImageUrl;
       verified.push(row);
 
