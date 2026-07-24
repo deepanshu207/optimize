@@ -12,6 +12,10 @@ Before you zip, confirm you see these files in THIS folder:
   ✓ Badge/   (folder)
   ✓ js/      (folder)
 
+IMPORTANT: There must be NO file named _headers in this folder.
+Chrome/Kiwi will refuse to load the extension if _headers exists.
+(Use scripts/build-extension-zip.sh — it removes web-only files automatically.)
+
 --- ZIP ON COMPUTER ---
 
 1. Select THIS ENTIRE FOLDER:

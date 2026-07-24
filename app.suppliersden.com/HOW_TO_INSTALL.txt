@@ -5,6 +5,9 @@ QUICK: WHICH FOLDER TO ZIP?
 Zip the folder:  app.suppliersden.com
 That folder CONTAINS manifest.json at its root.
 
+IMPORTANT: Delete _headers if present (Chrome/Kiwi block files starting with _).
+The build script removes it automatically.
+
 Or run:  bash scripts/build-extension-zip.sh
 That creates:  release/Meesho_Shipping_Cost_Optimizer_AI_-_Unlimited.zip
 
