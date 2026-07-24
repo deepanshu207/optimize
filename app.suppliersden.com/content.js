@@ -2245,13 +2245,35 @@ Please share payment details and license key.`;
 
   resolveDownloadUrl(result) {
     if (!result) return "";
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+      const resolved = MeeshoAPI.resolveDisplayUrl(result);
+      if (resolved) return resolved;
+    }
     return (
-      result.pricingImageUrl ||
       result.dataUrl ||
       result.imageUrl ||
+      result.pricingImageUrl ||
       result.uploadedUrl ||
       ""
     );
+  }
+
+  async urlToBlob(url) {
+    if (!url) throw new Error("No image URL");
+    if (url.startsWith("data:")) {
+      const match = url.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?(;base64)?,(.*)$/s);
+      if (!match) throw new Error("Invalid data URL");
+      const mime = match[1] || "image/jpeg";
+      const isBase64 = !!match[2];
+      const data = match[3];
+      const binary = isBase64 ? atob(data) : decodeURIComponent(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Fetch failed");
+    return resp.blob();
   }
 
   resolveResultImageSrc(result) {
@@ -2342,7 +2364,9 @@ Please share payment details and license key.`;
     row.editFlags = this.normalizeEditFlags(editFlags);
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      if (row.imageUrl?.startsWith("data:")) row.dataUrl = row.imageUrl;
     }
+    row.blob = null;
 
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
@@ -2434,7 +2458,7 @@ Please share payment details and license key.`;
           <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
           Remove border and stickers (clean product)
         </label>
-        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. These options only change the image you download — your entered ₹ stays the same.</p>
+        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Edits update the preview. Tap Save on the card to download the edited image — shipping ₹ stays the same.</p>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -2613,19 +2637,6 @@ Please share payment details and license key.`;
       };
     });
 
-    document.querySelectorAll(".apply-btn").forEach((btn) => {
-      if (window.WEB_OPTIMIZER_MODE) btn.textContent = "Save";
-      btn.onclick = () => {
-        const row = this.findResultRow(btn.dataset.variantId);
-        if (!row) return;
-        if (window.WEB_OPTIMIZER_MODE) {
-          this.downloadImage(row);
-        } else {
-          this.applyImage(row);
-        }
-      };
-    });
-
     const toggleFramed = document.getElementById("toggle-framed-extras");
     if (toggleFramed) {
       toggleFramed.onclick = () => {
@@ -2647,13 +2658,16 @@ Please share payment details and license key.`;
     const applyBestBtn = document.getElementById("apply-best-btn");
     if (applyBestBtn) {
       const best = this.getBestActiveResult();
-      if (window.WEB_OPTIMIZER_MODE) {
-        const price = best?.shippingCost || best?.estShipping || "";
-        applyBestBtn.textContent = price ? `Download Best ₹${price}` : "Download Best";
-        applyBestBtn.onclick = () => this.downloadImage(best);
+      const livePrice = best?.shippingCost || 0;
+      const estPrice = best?.estShipping || best?.meta?.estInr || 0;
+      if (livePrice > 0) {
+        applyBestBtn.textContent = `Save Best ₹${livePrice}`;
+      } else if (estPrice > 0) {
+        applyBestBtn.textContent = `Save Best est ₹${estPrice}`;
       } else {
-        applyBestBtn.onclick = () => this.applyImage(best);
+        applyBestBtn.textContent = "Save Best Variant";
       }
+      applyBestBtn.onclick = () => this.downloadImage(best);
     }
 
     const restartBtn = document.getElementById("restart-btn");
@@ -2683,6 +2697,7 @@ Please share payment details and license key.`;
     const name = (result.name || "variant").replace(/\s+/g, "-");
     const filename = "meesho-" + name + "-" + Date.now() + ".jpg";
     const url = this.resolveDownloadUrl(result);
+    const edited = this.isVariantEdited(result.editFlags);
 
     if (!url) {
       OptimizerUtils.showNotification(
@@ -2693,11 +2708,10 @@ Please share payment details and license key.`;
     }
 
     try {
-      let blob = result.blob instanceof Blob ? result.blob : null;
+      let blob =
+        !edited && result.blob instanceof Blob ? result.blob : null;
       if (!blob) {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("Fetch failed");
-        blob = await resp.blob();
+        blob = await this.urlToBlob(url);
       }
 
       const objUrl = URL.createObjectURL(blob);
@@ -2711,7 +2725,7 @@ Please share payment details and license key.`;
         document.body.removeChild(link);
         URL.revokeObjectURL(objUrl);
       }, 250);
-      OptimizerUtils.showNotification("Downloaded: " + (result.name || "image"), "success");
+      OptimizerUtils.showNotification("Saved: " + (result.name || "image"), "success");
     } catch (e) {
       console.error("Download failed:", e);
       try {
