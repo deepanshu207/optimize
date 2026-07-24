@@ -1279,6 +1279,14 @@ Please share payment details and license key.`;
       typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
     const liveCheckbox = document.getElementById("test-lab-live-verify");
 
+    const maxAttemptsRaw = parseInt(
+      document.getElementById("max-attempts")?.value,
+      10
+    );
+    const maxAttempts = Number.isFinite(maxAttemptsRaw) && maxAttemptsRaw > 0
+      ? Math.min(maxAttemptsRaw, 200)
+      : 200;
+
     return {
       mode,
       category,
@@ -1288,7 +1296,7 @@ Please share payment details and license key.`;
       borderColor,
       liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
       phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      maxLiveVerify: window.WEB_OPTIMIZER_MODE ? 24 : 40,
+      maxLiveVerify: maxAttempts,
     };
   }
 
@@ -1589,7 +1597,7 @@ Please share payment details and license key.`;
     const targetShipping =
       parseInt(document.getElementById("target-shipping")?.value) || 80;
     const maxAttempts =
-      parseInt(document.getElementById("max-attempts")?.value, 10) || 20;
+      parseInt(document.getElementById("max-attempts")?.value, 10) || 200;
 
     console.log(`🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`);
 
@@ -2762,6 +2770,8 @@ Please share payment details and license key.`;
       // Show the tested price and actual page price
       const testedPrice = result.shippingCost;
       if (finalShipping) {
+        result.shippingCost = finalShipping;
+        result.panelConfirmed = true;
         if (finalShipping === testedPrice) {
           OptimizerUtils.showNotification(
             `✅ Shipping: ₹${finalShipping}`,
