@@ -542,7 +542,9 @@ const OptimizerUI = {
                   manualMode
                     ? "Download → upload on Meesho → type ₹ below"
                     : bestPrice
-                    ? "✅ Accurate Price"
+                    ? (best.liveVerified
+                        ? "✓ Live Meesho API"
+                        : "✓ Meesho price")
                     : "Tap Save to download"
                 }</div>
                 ${
