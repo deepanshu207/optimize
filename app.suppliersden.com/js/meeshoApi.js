@@ -847,7 +847,7 @@ const MeeshoAPI = {
     return results;
   },
 
-  // FAST Smart Search - Only show verified PID results
+  // Smart Search — keep every generated image; rank verified PID first
   smartSearch: async function (
     originalBlob,
     targetShipping,
@@ -860,6 +860,10 @@ const MeeshoAPI = {
       `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
     this.syncCatalogPricing();
+
+    if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
+      await ImageGenerator.preloadBadges();
+    }
 
     const results = [];
     let bestResult = null;
@@ -880,12 +884,19 @@ const MeeshoAPI = {
 
       try {
         const variation = await this.generateVariation(originalBlob, attempt);
+        if (!variation?.blob) continue;
+
         const imageUrl = await this.uploadImage(
           variation.blob,
           `v${attempt}.jpg`,
         );
         if (!imageUrl) {
           uploadFailures++;
+          const localResult = this.buildLocalSearchResult(variation, attempt, {
+            uploadFailed: true,
+          });
+          results.push(localResult);
+          console.log(`📷 [${attempt}] saved locally (upload failed)`);
           if (!liveReady && uploadFailures >= noSessionFailLimit) {
             console.log(
               `⚠️ No Meesho session — stopping live API after ${noSessionFailLimit} failed uploads`,
@@ -897,50 +908,68 @@ const MeeshoAPI = {
         uploadFailures = 0;
 
         const priceData = await this.getShippingCharges(imageUrl);
-        if (!priceData || priceData.shippingCharges == null) continue;
+        if (!priceData || priceData.shippingCharges == null) {
+          const localResult = this.buildLocalSearchResult(variation, attempt, {
+            pricingImageUrl: imageUrl,
+            uploadedUrl: imageUrl,
+            priceFailed: true,
+          });
+          results.push(localResult);
+          noPidCount++;
+          console.log(`📷 [${attempt}] saved (no API price)`);
+          continue;
+        }
 
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
 
-        // ONLY accept results WITH PID (Meesho matched image for live pricing)
+        const result = {
+          name: `Var-${attempt}`,
+          dataUrl: variation.dataUrl,
+          layers: variation.layers,
+          pricingImageUrl: imageUrl,
+          uploadedUrl: imageUrl,
+          shippingCost: shipping,
+          duplicatePid: pid || null,
+          isVerified: !!pid,
+          liveVerified: true,
+          liveTotalPrice: priceData.totalPrice,
+          meeshoPriceUsed: priceData.priceUsed,
+          noPid: !pid,
+        };
+        results.push(result);
+
         if (pid) {
-          const result = {
-            name: `Var-${attempt}`,
-            dataUrl: variation.dataUrl,
-            layers: variation.layers,
-            pricingImageUrl: imageUrl,
-            uploadedUrl: imageUrl,
-            shippingCost: shipping,
-            duplicatePid: pid,
-            isVerified: true,
-            liveVerified: true,
-            liveTotalPrice: priceData.totalPrice,
-            meeshoPriceUsed: priceData.priceUsed,
-          };
-          results.push(result);
           console.log(`✅ [${attempt}] ₹${shipping} PID:${pid}`);
-
-          if (!bestResult || shipping < bestResult.shippingCost) {
-            bestResult = result;
-            console.log(`⭐ Best: ₹${shipping}`);
-          }
-
-          if (shipping <= targetShipping) {
-            console.log(`🎉 TARGET! ₹${shipping}`);
-            if (onFound) onFound(result);
-          }
         } else {
           noPidCount++;
-          console.log(`⚠️ [${attempt}] No PID - skipped`);
+          console.log(`⚠️ [${attempt}] ₹${shipping} (no PID — still kept)`);
         }
 
-        await new Promise((r) => setTimeout(r, 20)); // Fast!
+        if (!bestResult || shipping < (bestResult.shippingCost || 999)) {
+          bestResult = result;
+          console.log(`⭐ Best: ₹${shipping}`);
+        }
+
+        if (shipping <= targetShipping) {
+          console.log(`🎉 TARGET! ₹${shipping}`);
+          if (onFound) onFound(result);
+        }
+
+        await new Promise((r) => setTimeout(r, 20));
       } catch (e) {
         console.error(`[${attempt}]`, e.message);
       }
     }
 
-    results.sort((a, b) => a.shippingCost - b.shippingCost);
+    results.sort((a, b) => {
+      const av = a.isVerified ? 0 : a.shippingCost > 0 ? 1 : 2;
+      const bv = b.isVerified ? 0 : b.shippingCost > 0 ? 1 : 2;
+      if (av !== bv) return av - bv;
+      const aPrice = a.shippingCost > 0 ? a.shippingCost : a.estShipping || 999;
+      const bPrice = b.shippingCost > 0 ? b.shippingCost : b.estShipping || 999;
+      return aPrice - bPrice;
+    });
 
     // Final live re-check so displayed ₹ matches getTransferPrice API
     if (results.length) {
@@ -956,10 +985,10 @@ const MeeshoAPI = {
       success: results.length > 0,
       results: results.slice(0, resultLimit),
       bestResult: results[0] || null,
-      targetReached: results[0]?.shippingCost <= targetShipping,
+      targetReached: results[0]?.shippingCost > 0 && results[0]?.shippingCost <= targetShipping,
       attempts: attempt,
       noPidCount,
-      verifiedCount: results.length,
+      verifiedCount: results.filter((r) => r.isVerified).length,
     };
   },
 
@@ -1384,16 +1413,98 @@ const MeeshoAPI = {
       );
     }
 
+    const caps = this.getLayerCapabilities(layers);
     const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
-    const borderOnlyRemoved = !!flags.borderOnlyRemoved;
-    const stickersRemoved = !!flags.stickersRemoved;
+    const fullDecorations = !!(
+      flags.fullDecorationsAdded || flags.decorationsAdded
+    );
 
-    if (cleanProduct || (borderOnlyRemoved && stickersRemoved)) {
+    if (cleanProduct) {
       return layers.productOnly || layers.full || result.pricingImageUrl || "";
     }
-    if (borderOnlyRemoved && layers.noBorder) return layers.noBorder;
-    if (stickersRemoved && layers.noStickers) return layers.noStickers;
-    return layers.full || result.pricingImageUrl || result.imageUrl || "";
+    if (fullDecorations || (flags.stickersAdded && flags.borderAdded)) {
+      return layers.full || result.pricingImageUrl || "";
+    }
+
+    let wantStickers = caps.hasStickers;
+    let wantBorder = caps.hasBorder;
+
+    if (flags.stickersRemoved) wantStickers = false;
+    if (flags.stickersAdded) wantStickers = true;
+    if (flags.borderOnlyRemoved) wantBorder = false;
+    if (flags.borderAdded) wantBorder = true;
+
+    if (wantBorder && wantStickers) {
+      return layers.full || layers.noStickers || layers.noBorder || "";
+    }
+    if (wantBorder && !wantStickers) {
+      return layers.noStickers || layers.full || "";
+    }
+    if (!wantBorder && wantStickers) {
+      return layers.noBorder || layers.full || "";
+    }
+    return layers.productOnly || layers.noBorder || layers.noStickers || "";
+  },
+
+  getLayerCapabilities: function (layers) {
+    const empty = {
+      hasStickers: false,
+      hasBorder: false,
+      canRemoveStickers: false,
+      canRemoveBorder: false,
+      canRemoveBoth: false,
+      canAddStickers: false,
+      canAddBorder: false,
+      canAddBoth: false,
+    };
+    if (!layers) return empty;
+
+    const diff = (a, b) => !!(a && b && a !== b);
+    const hasStickers =
+      diff(layers.full, layers.noStickers) ||
+      diff(layers.noBorder, layers.productOnly);
+    const hasBorder =
+      diff(layers.noStickers, layers.productOnly) ||
+      diff(layers.full, layers.noBorder);
+
+    return {
+      hasStickers,
+      hasBorder,
+      canRemoveStickers: hasStickers,
+      canRemoveBorder: hasBorder && !!layers.noBorder,
+      canRemoveBoth: (hasStickers || hasBorder) && !!layers.productOnly,
+      canAddStickers: !hasStickers && !!(layers.full || layers.noBorder),
+      canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
+      canAddBoth: (!hasStickers || !hasBorder) && !!layers.full,
+    };
+  },
+
+  roughEstShippingFromBlob: function (blob) {
+    if (!blob?.size) return 0;
+    const kb = Math.max(1, Math.ceil(blob.size / 1024));
+    return Math.min(93, Math.max(30, kb));
+  },
+
+  buildLocalSearchResult: function (variation, attempt, extra = {}) {
+    const kb = variation?.blob?.size
+      ? Math.max(1, Math.ceil(variation.blob.size / 1024))
+      : 0;
+    return {
+      name: `Var-${attempt}`,
+      dataUrl: variation.dataUrl,
+      layers: variation.layers,
+      pricingImageUrl: variation.dataUrl,
+      blob: variation.blob,
+      shippingCost: 0,
+      estShipping: this.roughEstShippingFromBlob(variation.blob),
+      meta: { kb, estInr: this.roughEstShippingFromBlob(variation.blob) },
+      duplicatePid: null,
+      isVerified: false,
+      liveVerified: false,
+      noPid: true,
+      localGenerated: true,
+      ...extra,
+    };
   },
 
   // Add badges 50-200px; pass placements to replay the same badges on another canvas
