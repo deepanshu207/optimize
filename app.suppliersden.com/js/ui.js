@@ -424,6 +424,8 @@ const OptimizerUI = {
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>`
       : r.variantStyle === "framed"
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.actualKb || r.meta?.targetKb || "?"}KB</div>`
+      : r.variantStyle === "product_only"
+      ? `<div style="font-size:8px;color:#047857;margin-bottom:2px;">product only · ${r.meta?.kb || "?"}KB</div>`
       : r.variantStyle === "analysis" || r.analysisMode
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "analysis"} · ${r.meta?.kb || "?"}KB</div>`
       : r.noPid

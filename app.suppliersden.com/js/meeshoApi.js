@@ -23,6 +23,21 @@ const MeeshoAPI = {
     { id: "low_44_tall", layout: "tall", bluePct: 0.2, whitePct: 0.045, targetKb: 44, maxSide: 1024 },
     { id: "low_42_tall", layout: "tall", bluePct: 0.17, whitePct: 0.04, targetKb: 42, maxSide: 1024 },
   ],
+  // Test Lab adaptive hunt — try lowest-KB framed profiles first
+  ADAPTIVE_FRAMED_PRIORITY: [
+    "low_38_thick",
+    "low_40_thick",
+    "low_42_thick",
+    "low_44_thick",
+    "low_46_med",
+    "low_44_med",
+    "low_48_tall",
+    "low_46_tall",
+    "low_44_tall",
+    "low_42_tall",
+    "framed_46a",
+    "framed_48a",
+  ],
   _initialized: false,
   endpoints: {
     // Meesho routes are in flux: prefer /api/cataloging/* and fallback to older /catalogingapi/api/*
@@ -993,9 +1008,139 @@ const MeeshoAPI = {
   },
 
   /**
-   * Test Lab only — same pipeline as smartSearch but skips higher ₹ once a best is known
-   * and biases later generations toward smaller borders / lower KB.
+   * Test Lab only — phased hunt: probe low strategies first, recovery if baseline very high,
+   * then refine. Skips higher ₹ only when baseline is reasonable.
    */
+  pickAdaptiveStrategy: function (state) {
+    const phase = state.phase || "probe";
+    const attempt = state.attempt || 1;
+    const framedIdx = state.framedIdx || 0;
+    const framed = (i) => ({ mode: "framed", profileIdx: i });
+
+    if (phase === "probe") {
+      const probeSeq = [
+        framed(0),
+        { mode: "productOnly" },
+        framed(1),
+        { mode: "ultraLow" },
+        framed(2),
+        { mode: "productOnly" },
+        { mode: "lowBias" },
+        framed(3),
+      ];
+      return probeSeq[(attempt - 1) % probeSeq.length];
+    }
+
+    if (phase === "recovery") {
+      const cycle = [
+        framed(framedIdx % 10),
+        { mode: "productOnly" },
+        framed((framedIdx + 1) % 10),
+        { mode: "ultraLow" },
+        framed((framedIdx + 2) % 10),
+        { mode: "productOnly" },
+        { mode: "ultraLow" },
+        framed((framedIdx + 3) % 10),
+      ];
+      return cycle[(attempt - 1) % cycle.length];
+    }
+
+    const tight = [
+      { mode: "ultraLow" },
+      { mode: "productOnly" },
+      framed(framedIdx % 6),
+      { mode: "lowBias" },
+    ];
+    return tight[(attempt - 1) % tight.length];
+  },
+
+  generateProductOnlyVariation: async function (originalBlob, seed, options = {}) {
+    const maxSide = options.maxSide || 1024;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(originalBlob);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        try {
+          const sized = this.normalizeProductSize(img, maxSide);
+          const w = sized.w;
+          const h = sized.h;
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, w, h);
+          const scale = 0.66 + (seed % 5) * 0.01;
+          const dw = Math.round(w * scale);
+          const dh = Math.round(h * scale);
+          const px = Math.round((w - dw) / 2);
+          const py = Math.round((h - dh) / 2);
+          ctx.drawImage(img, px, py, dw, dh);
+          const q = 0.5 + (seed % 8) * 0.015;
+          const dataUrl = canvas.toDataURL("image/jpeg", q);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error("Encode failed"));
+                return;
+              }
+              resolve({
+                blob,
+                dataUrl,
+                pricingImageUrl: dataUrl,
+                variantStyle: "product_only",
+                meta: {
+                  style: "product_only",
+                  maxSide,
+                  kb: Math.ceil(blob.size / 1024),
+                },
+                layers: {
+                  full: dataUrl,
+                  productOnly: dataUrl,
+                  noStickers: dataUrl,
+                  noBorder: dataUrl,
+                },
+              });
+            },
+            "image/jpeg",
+            q,
+          );
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Load failed"));
+      };
+      img.src = objectUrl;
+    });
+  },
+
+  generateAdaptiveVariation: async function (originalBlob, seed, spec) {
+    const mode = spec?.mode || "lowBias";
+    if (mode === "framed") {
+      const priority = this.ADAPTIVE_FRAMED_PRIORITY || [];
+      const profiles = this.LOW_SHIPPING_FRAMED_PROFILES;
+      const pickId = priority[spec.profileIdx % priority.length];
+      const profile =
+        profiles.find((p) => p.id === pickId) ||
+        profiles[spec.profileIdx % profiles.length];
+      return this.generateFramedVariation(originalBlob, seed, profile);
+    }
+    if (mode === "productOnly") {
+      return this.generateProductOnlyVariation(originalBlob, seed, spec);
+    }
+    if (mode === "ultraLow") {
+      return this.generateVariationFull(originalBlob, seed, { ultraLow: true });
+    }
+    if (mode === "lowBias") {
+      return this.generateVariationFull(originalBlob, seed, { lowBias: true });
+    }
+    return this.generateVariationFull(originalBlob, seed, null);
+  },
+
   smartSearchAdaptive: async function (
     originalBlob,
     targetShipping,
@@ -1013,25 +1158,73 @@ const MeeshoAPI = {
       await ImageGenerator.preloadBadges();
     }
 
+    const highLine = Math.max(targetShipping + 25, 80);
+    const EXPLORE_PRICED_MIN = 4;
+
     const results = [];
     let bestResult = null;
-    let bestShipping = null;
+    let minPriced = null;
     let attempt = 0;
+    let pricedCount = 0;
     let noPidCount = 0;
     let skipHigherCount = 0;
     let uploadFailures = 0;
+    let framedIdx = 0;
+    let phase = "probe";
+    let recoveryTriggered = false;
     let lowBiasMode = false;
     const liveReady = this.isReady();
     const noSessionFailLimit = 5;
+
+    const phaseLabel = () => {
+      if (phase === "probe") return "Probe — trying low-KB strategies first";
+      if (phase === "recovery") {
+        return `Recovery — baseline high, hunting below ₹${highLine}`;
+      }
+      return "Refine — keeping only ≤ best ₹";
+    };
+
+    const updatePhase = () => {
+      if (phase !== "probe" || pricedCount < EXPLORE_PRICED_MIN) return;
+      if (minPriced != null && minPriced > highLine) {
+        phase = "recovery";
+        recoveryTriggered = true;
+        console.log(
+          `🔻 Recovery: baseline ₹${minPriced} is above ₹${highLine} — aggressive low hunt`,
+        );
+      } else {
+        phase = "refine";
+        lowBiasMode = true;
+        console.log(`✅ Probe done — refine from ₹${minPriced}`);
+      }
+    };
+
+    const shouldSkipRoughEst = (roughEst) => {
+      if (phase === "probe" || phase === "recovery" || minPriced == null) {
+        return false;
+      }
+      if (minPriced > highLine) return false;
+      return roughEst > minPriced + 6;
+    };
+
+    const shouldSkipLivePrice = (shipping) => {
+      if (minPriced == null || phase === "probe") return false;
+      if (phase === "recovery") {
+        if (minPriced > highLine) return shipping > minPriced + 20;
+        return shipping > minPriced + 8;
+      }
+      return shipping > minPriced;
+    };
 
     const reportProgress = () => {
       if (onProgress) {
         onProgress(
           attempt,
           maxAttempts,
-          bestShipping,
+          minPriced,
           noPidCount,
           skipHigherCount,
+          phaseLabel(),
         );
       }
     };
@@ -1045,19 +1238,26 @@ const MeeshoAPI = {
       reportProgress();
 
       try {
-        const variation = await this.generateVariation(
+        const spec = this.pickAdaptiveStrategy({
+          phase,
+          attempt,
+          framedIdx,
+          targetShipping,
+          minPriced,
+          lowBiasMode,
+        });
+        const variation = await this.generateAdaptiveVariation(
           originalBlob,
           attempt,
-          null,
-          lowBiasMode ? { lowBias: true } : null,
+          spec,
         );
         if (!variation?.blob) continue;
 
         const roughEst = this.roughEstShippingFromBlob(variation.blob);
-        if (bestShipping != null && roughEst > bestShipping + 4) {
+        if (shouldSkipRoughEst(roughEst)) {
           skipHigherCount++;
           console.log(
-            `⏭️ [${attempt}] est ₹${roughEst} > best ₹${bestShipping} — skip gen`,
+            `⏭️ [${attempt}] est ₹${roughEst} > best ₹${minPriced} — skip gen`,
           );
           continue;
         }
@@ -1092,10 +1292,10 @@ const MeeshoAPI = {
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
 
-        if (bestShipping != null && shipping > bestShipping) {
+        if (shouldSkipLivePrice(shipping)) {
           skipHigherCount++;
           console.log(
-            `⏭️ [${attempt}] ₹${shipping} > best ₹${bestShipping} — skipped higher`,
+            `⏭️ [${attempt}] ₹${shipping} > best ₹${minPriced} (${phase}) — skipped`,
           );
           continue;
         }
@@ -1113,17 +1313,33 @@ const MeeshoAPI = {
           liveTotalPrice: priceData.totalPrice,
           meeshoPriceUsed: priceData.priceUsed,
           noPid: !pid,
+          variantStyle: variation.variantStyle || "standard",
+          meta: variation.meta || null,
         };
         results.push(result);
-
+        pricedCount++;
         if (!pid) noPidCount++;
 
-        if (bestShipping == null || shipping < bestShipping) {
-          bestShipping = shipping;
+        if (spec.mode === "framed") framedIdx++;
+
+        if (minPriced == null || shipping < minPriced) {
+          const improved = minPriced != null && shipping < minPriced;
+          minPriced = shipping;
           bestResult = result;
           lowBiasMode = true;
-          console.log(`⭐ Adaptive best: ₹${shipping}`);
+          console.log(
+            `${improved ? "⭐" : "📍"} Adaptive best: ₹${shipping} (${spec.mode || "std"})`,
+          );
+          if (
+            phase === "recovery" &&
+            minPriced <= highLine
+          ) {
+            phase = "refine";
+            console.log(`✅ Broke below ₹${highLine} — switching to refine`);
+          }
         }
+
+        updatePhase();
 
         if (shipping <= targetShipping && onFound) onFound(result);
 
@@ -1161,6 +1377,7 @@ const MeeshoAPI = {
       attempts: attempt,
       noPidCount,
       skipHigherCount,
+      recoveryTriggered,
       verifiedCount: results.filter((r) => r.isVerified).length,
     };
   },
@@ -1168,7 +1385,8 @@ const MeeshoAPI = {
   // Generate variation with random border 20-80px and badges 50-200px
   generateVariationFull: async function (originalBlob, seed, options) {
     const opts = options && typeof options === "object" ? options : {};
-    const lowBias = !!opts.lowBias;
+    const ultraLow = !!opts.ultraLow;
+    const lowBias = !!opts.lowBias && !ultraLow;
     return new Promise((resolve, reject) => {
       const img = new Image();
       const objectUrl = URL.createObjectURL(originalBlob);
@@ -1177,7 +1395,9 @@ const MeeshoAPI = {
         try {
           const w = img.width;
           const h = img.height;
-          const quality = lowBias
+          const quality = ultraLow
+            ? 0.48 + Math.random() * 0.1
+            : lowBias
             ? 0.6 + Math.random() * 0.12
             : 0.75 + Math.random() * 0.15;
 
@@ -1188,7 +1408,9 @@ const MeeshoAPI = {
           productCtx.drawImage(img, 0, 0);
           const productOnly = productCanvas.toDataURL("image/jpeg", quality);
 
-          const border = lowBias
+          const border = ultraLow
+            ? 8 + Math.floor(Math.random() * 12)
+            : lowBias
             ? 16 + Math.floor(Math.random() * 20)
             : 20 + Math.floor(Math.random() * 60);
           const finalW = w + border * 2;
@@ -1248,7 +1470,9 @@ const MeeshoAPI = {
           this.addNoise(noStickersCtx, finalW, finalH, seed);
           const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
-          const badgeCount = lowBias
+          const badgeCount = ultraLow
+            ? 0
+            : lowBias
             ? Math.floor(Math.random() * 2)
             : 2 + Math.floor(Math.random() * 2);
           const badgePlacements = await this.addBadges(
