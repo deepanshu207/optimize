@@ -879,6 +879,9 @@ const MeeshoAPI = {
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
       await ImageGenerator.preloadBadges();
     }
+    if (this.preloadBadges) {
+      await this.preloadBadges();
+    }
 
     const results = [];
     let bestResult = null;
@@ -1156,6 +1159,9 @@ const MeeshoAPI = {
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
       await ImageGenerator.preloadBadges();
+    }
+    if (this.preloadBadges) {
+      await this.preloadBadges();
     }
 
     const highLine = Math.max(targetShipping + 25, 80);
@@ -1473,8 +1479,11 @@ const MeeshoAPI = {
           const badgeCount = ultraLow
             ? 0
             : lowBias
-            ? Math.floor(Math.random() * 2)
+            ? 1 + Math.floor(Math.random() * 2)
             : 2 + Math.floor(Math.random() * 2);
+          if (badgeCount > 0 && this.preloadBadges) {
+            await this.preloadBadges();
+          }
           const badgePlacements = await this.addBadges(
             ctx,
             finalW,
@@ -1508,6 +1517,7 @@ const MeeshoAPI = {
           }
           this.addNoise(noBorderCtx, w, h, seed + 1);
           const noBorder = noBorderCanvas.toDataURL("image/jpeg", quality);
+          const stickersRendered = badgePlacements.some((p) => p.drawn);
 
           canvas.toBlob(
             (blob) =>
@@ -1516,12 +1526,19 @@ const MeeshoAPI = {
                 dataUrl: full,
                 pricingImageUrl: full,
                 variantStyle: "standard",
-                meta: { borderPx: border, badgeCount, style: "standard" },
+                meta: {
+                  borderPx: border,
+                  badgeCount,
+                  stickersRendered,
+                  style: "standard",
+                },
                 layers: {
                   full,
                   noStickers,
                   noBorder,
                   productOnly,
+                  _stickersRendered: stickersRendered,
+                  _badgePlacements: badgePlacements,
                 },
               }),
             "image/jpeg",
@@ -1818,7 +1835,7 @@ const MeeshoAPI = {
       );
     }
 
-    const caps = this.getLayerCapabilities(layers);
+    const caps = this.getEffectiveLayerCapabilities(layers, flags);
     const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
     const fullDecorations = !!(
       flags.fullDecorationsAdded || flags.decorationsAdded
@@ -1833,11 +1850,6 @@ const MeeshoAPI = {
 
     let wantStickers = caps.hasStickers;
     let wantBorder = caps.hasBorder;
-
-    if (flags.stickersRemoved) wantStickers = false;
-    if (flags.stickersAdded) wantStickers = true;
-    if (flags.borderOnlyRemoved) wantBorder = false;
-    if (flags.borderAdded) wantBorder = true;
 
     if (wantBorder && wantStickers) {
       return layers.full || layers.noStickers || layers.noBorder || "";
@@ -1866,8 +1878,12 @@ const MeeshoAPI = {
 
     const diff = (a, b) => !!(a && b && a !== b);
     const hasStickers =
-      diff(layers.full, layers.noStickers) ||
-      diff(layers.noBorder, layers.productOnly);
+      layers._stickersRendered === true
+        ? true
+        : layers._stickersRendered === false
+        ? false
+        : diff(layers.full, layers.noStickers) ||
+          diff(layers.noBorder, layers.productOnly);
     const hasBorder =
       diff(layers.noStickers, layers.productOnly) ||
       diff(layers.full, layers.noBorder);
@@ -1880,8 +1896,138 @@ const MeeshoAPI = {
       canRemoveBoth: (hasStickers || hasBorder) && !!layers.productOnly,
       canAddStickers: !hasStickers && !!(layers.full || layers.noBorder),
       canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
-      canAddBoth: (!hasStickers || !hasBorder) && !!layers.full,
+      canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
     };
+  },
+
+  getEffectiveLayerCapabilities: function (layers, editFlags) {
+    const base = this.getLayerCapabilities(layers);
+    const flags = editFlags || {};
+    if (!layers) return base;
+
+    let hasStickers = base.hasStickers;
+    let hasBorder = base.hasBorder;
+
+    if (flags.cleanProduct) {
+      hasStickers = false;
+      hasBorder = false;
+    } else {
+      if (flags.stickersRemoved) hasStickers = false;
+      if (flags.borderOnlyRemoved) hasBorder = false;
+      if (flags.stickersAdded) hasStickers = true;
+      if (flags.borderAdded) hasBorder = true;
+      if (flags.fullDecorationsAdded) {
+        hasStickers = true;
+        hasBorder = true;
+      }
+    }
+
+    return {
+      hasStickers,
+      hasBorder,
+      canRemoveStickers:
+        base.hasStickers && !flags.stickersRemoved && !flags.cleanProduct,
+      canRemoveBorder:
+        base.hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
+      canRemoveBoth: base.canRemoveBoth && !flags.cleanProduct,
+      canAddStickers:
+        !hasStickers && !!(layers.full || layers.noBorder),
+      canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
+      canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
+    };
+  },
+
+  preloadBadges: async function () {
+    const promises = [];
+    for (let i = 1; i <= 25; i++) promises.push(this.loadBadge(i));
+    await Promise.all(promises);
+    const loaded = Object.keys(this.badgeCache).filter(
+      (k) => this.badgeCache[k],
+    ).length;
+    console.log(`📦 Badges pre-loaded (${loaded}/25)`);
+    return loaded;
+  },
+
+  resolveDisplayUrlAsync: async function (result) {
+    if (!result?.layers) return this.resolveDisplayUrl(result);
+    const flags = result.editFlags || {};
+    const syncUrl = this.resolveDisplayUrl(result);
+    const needsCompose =
+      (flags.stickersAdded ||
+        flags.fullDecorationsAdded ||
+        flags.borderAdded) &&
+      result.layers._stickersRendered === false;
+
+    if (!needsCompose) return syncUrl;
+
+    await this.preloadBadges();
+    const caps = this.getEffectiveLayerCapabilities(result.layers, flags);
+    let base =
+      flags.fullDecorationsAdded || (caps.hasBorder && caps.hasStickers)
+        ? result.layers.noStickers || result.layers.productOnly
+        : flags.stickersAdded
+        ? result.layers.noStickers || result.layers.productOnly
+        : result.layers.noStickers || result.layers.productOnly;
+
+    if (flags.borderAdded && !flags.stickersAdded) {
+      base = result.layers.noStickers || result.layers.productOnly;
+    }
+
+    const placements = (result.layers._badgePlacements || []).filter(
+      (p) => p.drawn,
+    );
+    let usePlacements = placements;
+    if (
+      !usePlacements.length &&
+      (flags.stickersAdded || flags.fullDecorationsAdded)
+    ) {
+      const imgProbe = await new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => resolve(null);
+        im.src = base || syncUrl;
+      });
+      if (imgProbe) {
+        const scratch = document.createElement("canvas");
+        scratch.width = imgProbe.width;
+        scratch.height = imgProbe.height;
+        usePlacements = await this.addBadges(
+          scratch.getContext("2d"),
+          imgProbe.width,
+          imgProbe.height,
+          result.meta?.borderPx || 24,
+          2 + (String(result.variantId || "").length % 2),
+        );
+      }
+    }
+
+    if (!usePlacements.length) return syncUrl;
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          await this.addBadges(
+            ctx,
+            img.width,
+            img.height,
+            result.meta?.borderPx || 20,
+            0,
+            usePlacements,
+          );
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        } catch (e) {
+          resolve(syncUrl);
+        }
+      };
+      img.onerror = () => resolve(syncUrl);
+      img.src = base || syncUrl;
+    });
   },
 
   roughEstShippingFromBlob: function (blob) {
@@ -1918,7 +2064,10 @@ const MeeshoAPI = {
       for (const p of placements) {
         try {
           const badge = await this.loadBadge(p.num);
-          if (badge) ctx.drawImage(badge, p.x, p.y, p.size, p.size);
+          if (badge) {
+            ctx.drawImage(badge, p.x, p.y, p.size, p.size);
+            if (p.drawn !== false) p.drawn = true;
+          }
         } catch (e) {}
       }
       return placements;
@@ -1943,10 +2092,14 @@ const MeeshoAPI = {
       const size = 50 + Math.floor(Math.random() * 150);
       const x = positions[i].x;
       const y = positions[i].y;
-      drawn.push({ num, size, x, y });
+      const placement = { num, size, x, y, drawn: false };
+      drawn.push(placement);
       try {
         const badge = await this.loadBadge(num);
-        if (badge) ctx.drawImage(badge, x, y, size, size);
+        if (badge) {
+          ctx.drawImage(badge, x, y, size, size);
+          placement.drawn = true;
+        }
       } catch (e) {}
     }
     return drawn;
@@ -1969,16 +2122,21 @@ const MeeshoAPI = {
 
   loadBadge: async function (num) {
     if (this.badgeCache[num]) return this.badgeCache[num];
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        this.badgeCache[num] = img;
-        resolve(img);
-      };
-      img.onerror = () => resolve(null);
-      img.src = this.assetUrl("Badge/badge" + num + ".png");
-    });
+    const src = this.assetUrl("Badge/badge" + num + ".png");
+    const tryLoad = (crossOrigin) =>
+      new Promise((resolve) => {
+        const img = new Image();
+        if (crossOrigin) img.crossOrigin = "anonymous";
+        img.onload = () => {
+          this.badgeCache[num] = img;
+          resolve(img);
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    let img = await tryLoad(false);
+    if (!img) img = await tryLoad(true);
+    return img;
   },
 
   isReady: function () {
@@ -2000,6 +2158,9 @@ const MeeshoAPI = {
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
       await ImageGenerator.preloadBadges();
+    }
+    if (this.preloadBadges) {
+      await this.preloadBadges();
     }
 
     const results = [];
