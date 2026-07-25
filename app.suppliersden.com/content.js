@@ -9,6 +9,10 @@ class MeeshoShippingOptimizer {
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
+    this.liveAnalysis = null;
+    this.analysisPrimaryResults = [];
+    this.analysisExtraResults = [];
+    this.showAnalysisExtras = false;
     // Test Lab state — isolated from Live mode (currentResults / framedExtraResults)
     this.testLabResults = [];
     this.testLabAnalysis = null;
@@ -32,12 +36,46 @@ class MeeshoShippingOptimizer {
 
   getTestLabModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/testLabBridge.mjs?v=32";
+      return "/js/testLabBridge.mjs?v=33";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/testLabBridge.mjs?v=32");
+      return chrome.runtime.getURL("js/testLabBridge.mjs?v=33");
     }
-    return "/js/testLabBridge.mjs?v=32";
+    return "/js/testLabBridge.mjs?v=33";
+  }
+
+  getLiveAnalysisModuleUrl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/js/liveAnalysisBridge.mjs?v=33";
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=33");
+    }
+    return "/js/liveAnalysisBridge.mjs?v=33";
+  }
+
+  async preloadLiveAnalysisModule() {
+    if (window.LiveAnalysis?.runLiveAnalysis) return true;
+    if (!window.__liveAnalysisModulePromise) {
+      window.__liveAnalysisModulePromise = (async () => {
+        try {
+          await import(this.getLiveAnalysisModuleUrl());
+          return !!window.LiveAnalysis?.runLiveAnalysis;
+        } catch (e) {
+          console.warn("Live analysis preload:", e);
+          return false;
+        }
+      })();
+    }
+    return window.__liveAnalysisModulePromise;
+  }
+
+  async runLiveStaticAnalysis(file) {
+    const ready = await this.preloadLiveAnalysisModule();
+    if (!ready || !window.LiveAnalysis?.runLiveAnalysis) return null;
+    return window.LiveAnalysis.runLiveAnalysis(file, {
+      onProgress: (msg) => console.log("Analysis:", msg),
+    });
   }
 
   init() {
@@ -1226,6 +1264,10 @@ Please share payment details and license key.`;
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
+    this.liveAnalysis = null;
+    this.analysisPrimaryResults = [];
+    this.analysisExtraResults = [];
+    this.showAnalysisExtras = false;
     this.testLabResults = [];
     this.testLabAnalysis = null;
     this.testLabPhase2Meta = null;
@@ -1614,6 +1656,10 @@ Please share payment details and license key.`;
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
+    this.liveAnalysis = null;
+    this.analysisPrimaryResults = [];
+    this.analysisExtraResults = [];
+    this.showAnalysisExtras = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -1670,6 +1716,11 @@ Please share payment details and license key.`;
       });
 
       this.gatherSettings();
+
+      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
+        console.warn("Static analysis failed:", e);
+        return null;
+      });
 
       let result = { success: false, results: [] };
 
@@ -1764,41 +1815,66 @@ Please share payment details and license key.`;
         );
       }
 
-      if (result.success && result.results.length > 0) {
-        this.currentResults = result.results.map((r, i) =>
-          this.mapResultFromApi(r, i)
+      const analysisOut = await analysisPromise;
+      if (analysisOut?.success) {
+        this.liveAnalysis = analysisOut.analysis;
+        this.analysisPrimaryResults = (analysisOut.primary || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 20000)
         );
-        this.framedExtraResults = (result.framedExtras || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 10000)
+        this.analysisExtraResults = (analysisOut.seeMore || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 30000)
         );
-        this.showFramedExtras = false;
+        this.analysisPrimaryResults.sort(
+          (a, b) => (a.estShipping || 999) - (b.estShipping || 999)
+        );
+        this.showAnalysisExtras = false;
+      }
 
-        if (result.localOnly) {
+      if (
+        (result.success && result.results.length > 0) ||
+        this.analysisPrimaryResults.length > 0
+      ) {
+        if (result.success && result.results.length > 0) {
+          this.currentResults = result.results.map((r, i) =>
+            this.mapResultFromApi(r, i)
+          );
+          this.framedExtraResults = (result.framedExtras || []).map((r, i) =>
+            this.mapResultFromApi(r, i + 10000)
+          );
+          this.showFramedExtras = false;
+
+          if (result.localOnly) {
+            OptimizerUtils.showNotification(
+              manualMode
+                ? `✅ ${result.results.length} variants — download, test on Meesho, type ₹ below`
+                : `✅ ${result.results.length} variants ready — download & test on Meesho`,
+              "success"
+            );
+          } else if (result.targetReached) {
+            OptimizerUtils.showNotification(
+              `🎯 Target! ₹${result.bestResult.shippingCost}`,
+              "success"
+            );
+          } else if (this.shouldStop) {
+            OptimizerUtils.showNotification(
+              `Stopped. Best: ₹${result.bestResult?.shippingCost || "—"}`,
+              "info"
+            );
+          } else if (result.bestResult?.shippingCost) {
+            OptimizerUtils.showNotification(
+              `✅ Best: ₹${result.bestResult.shippingCost} (${result.verifiedCount || 0} verified, ${result.noPidCount || 0} no PID)`,
+              "info"
+            );
+          }
+        } else if (this.analysisPrimaryResults.length > 0) {
           OptimizerUtils.showNotification(
-            manualMode
-              ? `✅ ${result.results.length} variants — download, test on Meesho, type ₹ below`
-              : `✅ ${result.results.length} variants ready — download & test on Meesho`,
+            `📊 ${this.analysisPrimaryResults.length} analysis options ready (est ₹, no Meesho needed)`,
             "success"
-          );
-        } else if (result.targetReached) {
-          OptimizerUtils.showNotification(
-            `🎯 Target! ₹${result.bestResult.shippingCost}`,
-            "success"
-          );
-        } else if (this.shouldStop) {
-          OptimizerUtils.showNotification(
-            `Stopped. Best: ₹${result.bestResult.shippingCost}`,
-            "info"
-          );
-        } else {
-          OptimizerUtils.showNotification(
-            `✅ Best: ₹${result.bestResult.shippingCost} (${result.verifiedCount} verified)`,
-            "info"
           );
         }
       } else if (!window.WEB_OPTIMIZER_MODE) {
         OptimizerUtils.showNotification(
-          `⚠️ No verified prices found. Try different image.`,
+          `⚠️ No results yet. Try different image or check Meesho session.`,
           "error"
         );
       }
@@ -1811,7 +1887,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -1877,7 +1953,7 @@ Please share payment details and license key.`;
                 <h3 style="margin:0 0 5px 0;color:#10b981;font-size:18px;">AI Is Finding Best Shipping</h3>
                 <p style="color:##0f0f10;font-size:14px;margin-bottom:3px;">Target: ≤ ₹${target}</p>
                 <p style="color:#9ca3af;font-size:11px;margin-bottom:5px;">${attempt} / ${maxAttempts}${
-      noPidCount > 0 ? ` • ${noPidCount} skipped` : ""
+      noPidCount > 0 ? ` • ${noPidCount} no PID (kept)` : ""
     }</p>
                 <p style="color:#667eea;font-size:12px;margin-bottom:12px;">⏱️ ${timeStr}${
       estRemaining ? ` • ${estRemaining}` : ""
@@ -2199,16 +2275,51 @@ Please share payment details and license key.`;
       baselineShipping: this.getBaselineShipping(),
       framedExtras: this.framedExtraResults,
       showFramedExtras: this.showFramedExtras,
+      liveAnalysis: this.liveAnalysis,
+      analysisPrimary: this.analysisPrimaryResults,
+      analysisExtras: this.analysisExtraResults,
+      showAnalysisExtras: this.showAnalysisExtras,
     };
   }
 
-  isVariantEdited(editFlags) {
+  getVariantLayerCaps(row) {
+    if (
+      typeof MeeshoAPI !== "undefined" &&
+      MeeshoAPI.getLayerCapabilities &&
+      row?.layers
+    ) {
+      return MeeshoAPI.getLayerCapabilities(row.layers);
+    }
+    return {
+      hasStickers: false,
+      hasBorder: false,
+      canRemoveStickers: false,
+      canRemoveBorder: false,
+      canRemoveBoth: false,
+      canAddStickers: false,
+      canAddBorder: false,
+      canAddBoth: false,
+    };
+  }
+
+  isVariantEdited(editFlags, layers) {
     if (!editFlags) return false;
+    const caps =
+      layers && typeof MeeshoAPI !== "undefined" && MeeshoAPI.getLayerCapabilities
+        ? MeeshoAPI.getLayerCapabilities(layers)
+        : null;
     return !!(
       editFlags.stickersRemoved ||
       editFlags.borderOnlyRemoved ||
       editFlags.cleanProduct ||
-      editFlags.borderRemoved
+      editFlags.borderRemoved ||
+      editFlags.stickersAdded ||
+      editFlags.borderAdded ||
+      editFlags.fullDecorationsAdded ||
+      (caps &&
+        ((editFlags.stickersAdded && caps.canAddStickers) ||
+          (editFlags.borderAdded && caps.canAddBorder) ||
+          (editFlags.fullDecorationsAdded && caps.canAddBoth)))
     );
   }
 
@@ -2219,6 +2330,11 @@ Please share payment details and license key.`;
       stickersRemoved: cleanProduct ? false : !!flags.stickersRemoved,
       borderOnlyRemoved: cleanProduct ? false : !!flags.borderOnlyRemoved,
       cleanProduct,
+      stickersAdded: cleanProduct ? false : !!flags.stickersAdded,
+      borderAdded: cleanProduct ? false : !!flags.borderAdded,
+      fullDecorationsAdded: cleanProduct
+        ? false
+        : !!(flags.fullDecorationsAdded || flags.decorationsAdded),
     };
   }
 
@@ -2250,6 +2366,8 @@ Please share payment details and license key.`;
       liveTotalPrice: r.liveTotalPrice,
       meeshoPriceUsed: r.meeshoPriceUsed,
       testLab: !!r.testLab,
+      noPid: !!r.noPid,
+      analysisMode: !!r.analysisMode,
     };
     row.imageUrl =
       typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl
@@ -2274,7 +2392,9 @@ Please share payment details and license key.`;
 
   getBestActiveResult() {
     const list = this.getActiveResultList();
-    return list[0] || null;
+    if (list.length) return list[0];
+    if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
+    return null;
   }
 
   resolveDownloadUrl(result) {
@@ -2364,6 +2484,8 @@ Please share payment details and license key.`;
     return (
       this.currentResults.find((r) => r.variantId === variantId) ||
       this.framedExtraResults.find((r) => r.variantId === variantId) ||
+      this.analysisPrimaryResults.find((r) => r.variantId === variantId) ||
+      this.analysisExtraResults.find((r) => r.variantId === variantId) ||
       this.testLabResults.find((r) => r.variantId === variantId) ||
       null
     );
@@ -2394,7 +2516,7 @@ Please share payment details and license key.`;
       `.result-edit-badge[data-variant-id="${row.variantId}"]`
     );
     if (badge) {
-      const edited = this.isVariantEdited(row.editFlags);
+      const edited = this.isVariantEdited(row.editFlags, row.layers);
       badge.style.display = edited ? "block" : "none";
     }
   }
@@ -2413,34 +2535,54 @@ Please share payment details and license key.`;
     const stickerCb = panel.querySelector("#variant-edit-no-stickers");
     const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
     const cleanCb = panel.querySelector("#variant-edit-clean-product");
-    const borderOnlyNote = panel.querySelector("#variant-edit-border-only-note");
+    const addStickersCb = panel.querySelector("#variant-edit-add-stickers");
+    const addBorderCb = panel.querySelector("#variant-edit-add-border");
+    const addBothCb = panel.querySelector("#variant-edit-add-both");
     const priceNote = panel.querySelector("#variant-edit-price-note");
     const title = panel.querySelector("#variant-edit-title");
 
     const flags = this.normalizeEditFlags(row.editFlags);
-    const hasNoBorder = !!row.layers?.noBorder;
+    const caps = this.getVariantLayerCaps(row);
+
+    const setRow = (wrapId, cb, can) => {
+      const wrap = panel.querySelector(wrapId);
+      if (wrap) {
+        wrap.style.display = "flex";
+        wrap.style.opacity = can ? "1" : "0.45";
+      }
+      if (cb) cb.disabled = !can;
+    };
+    setRow("#variant-edit-remove-stickers-wrap", stickerCb, caps.canRemoveStickers);
+    setRow("#variant-edit-remove-border-wrap", borderOnlyCb, caps.canRemoveBorder);
+    setRow("#variant-edit-remove-both-wrap", cleanCb, caps.canRemoveBoth);
+    setRow("#variant-edit-add-stickers-wrap", addStickersCb, caps.canAddStickers);
+    setRow("#variant-edit-add-border-wrap", addBorderCb, caps.canAddBorder);
+    setRow("#variant-edit-add-both-wrap", addBothCb, caps.canAddBoth);
 
     if (preview) preview.src = row.imageUrl;
     if (stickerCb) stickerCb.checked = !!flags.stickersRemoved;
-    if (borderOnlyCb) {
-      borderOnlyCb.checked = !!flags.borderOnlyRemoved;
-      borderOnlyCb.disabled = !hasNoBorder;
-    }
+    if (borderOnlyCb) borderOnlyCb.checked = !!flags.borderOnlyRemoved;
     if (cleanCb) cleanCb.checked = !!flags.cleanProduct;
-    if (borderOnlyNote) {
-      borderOnlyNote.style.display = hasNoBorder ? "none" : "block";
-    }
+    if (addStickersCb) addStickersCb.checked = !!flags.stickersAdded;
+    if (addBorderCb) addBorderCb.checked = !!flags.borderAdded;
+    if (addBothCb) addBothCb.checked = !!flags.fullDecorationsAdded;
     if (title) title.textContent = row.name || "Variant";
     if (priceNote) {
       priceNote.textContent =
         row.shippingCost > 0
-          ? `Shipping ₹${row.shippingCost} is unchanged — you tested the bordered version on Meesho.`
-          : "Shipping price is unchanged — this only affects the image you download.";
+          ? `Shipping ₹${row.shippingCost} is unchanged — preview/save only.`
+          : row.estShipping > 0
+          ? `Est. ₹${row.estShipping} is unchanged — preview/save only.`
+          : "Shipping price is unchanged — this only affects the image you save.";
     }
   }
 
   ensureVariantEditorPanel() {
     let panel = document.getElementById("variant-edit-panel");
+    if (panel && !panel.querySelector("#variant-edit-add-stickers")) {
+      panel.remove();
+      panel = null;
+    }
     if (panel) return panel;
 
     panel = document.createElement("div");
@@ -2455,20 +2597,37 @@ Please share payment details and license key.`;
         </div>
         <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
         <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-          <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
-          Remove stickers / badges only
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
-          <input type="checkbox" id="variant-edit-border-only" style="width:18px;height:18px;">
-          Remove border only (keep stickers)
-        </label>
-        <p id="variant-edit-border-only-note" style="display:none;font-size:10px;color:#b45309;background:#fffbeb;padding:6px 8px;border-radius:6px;margin-bottom:8px;">Regenerate variants to use border-only removal.</p>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;">
-          <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
-          Remove border and stickers (clean product)
-        </label>
-        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">Tip: Test shipping on Meesho using the original bordered image. These options only change the image you download — your entered ₹ stays the same.</p>
+        <div id="variant-edit-remove-section" style="margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
+          <label id="variant-edit-remove-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
+            Remove stickers / badges only
+          </label>
+          <label id="variant-edit-remove-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-border-only" style="width:18px;height:18px;">
+            Remove border only (keep stickers)
+          </label>
+          <label id="variant-edit-remove-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
+            Remove border and stickers (clean product)
+          </label>
+        </div>
+        <div id="variant-edit-add-section" style="margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Add</div>
+          <label id="variant-edit-add-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-add-stickers" style="width:18px;height:18px;">
+            Add stickers / badges only
+          </label>
+          <label id="variant-edit-add-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-add-border" style="width:18px;height:18px;">
+            Add border only (keep product)
+          </label>
+          <label id="variant-edit-add-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="variant-edit-add-both" style="width:18px;height:18px;">
+            Add border and stickers
+          </label>
+        </div>
+        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -2486,14 +2645,28 @@ Please share payment details and license key.`;
       const id = this._editingVariantId;
       if (!id) return;
 
+      const row = this.findResultRow(id);
+      const caps = this.getVariantLayerCaps(row);
       const stickerCb = panel.querySelector("#variant-edit-no-stickers");
       const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
       const cleanCb = panel.querySelector("#variant-edit-clean-product");
+      const addStickersCb = panel.querySelector("#variant-edit-add-stickers");
+      const addBorderCb = panel.querySelector("#variant-edit-add-border");
+      const addBothCb = panel.querySelector("#variant-edit-add-both");
       const target = ev?.target;
 
       if (target === cleanCb && cleanCb.checked) {
         stickerCb.checked = false;
         borderOnlyCb.checked = false;
+        addStickersCb.checked = false;
+        addBorderCb.checked = false;
+        addBothCb.checked = false;
+      } else if (target === addBothCb && addBothCb.checked) {
+        cleanCb.checked = false;
+        stickerCb.checked = false;
+        borderOnlyCb.checked = false;
+        addStickersCb.checked = false;
+        addBorderCb.checked = false;
       } else if (
         (target === stickerCb || target === borderOnlyCb) &&
         stickerCb.checked &&
@@ -2502,22 +2675,71 @@ Please share payment details and license key.`;
         cleanCb.checked = true;
         stickerCb.checked = false;
         borderOnlyCb.checked = false;
+        addStickersCb.checked = false;
+        addBorderCb.checked = false;
+        addBothCb.checked = false;
+      } else if (
+        (target === addStickersCb || target === addBorderCb) &&
+        addStickersCb.checked &&
+        addBorderCb.checked
+      ) {
+        addBothCb.checked = true;
+        addStickersCb.checked = false;
+        addBorderCb.checked = false;
+        cleanCb.checked = false;
+        stickerCb.checked = false;
+        borderOnlyCb.checked = false;
       } else if (
         cleanCb.checked &&
         (target === stickerCb || target === borderOnlyCb)
       ) {
         cleanCb.checked = false;
+      } else if (
+        addBothCb.checked &&
+        (target === addStickersCb || target === addBorderCb)
+      ) {
+        addBothCb.checked = false;
+      }
+
+      if (target === stickerCb && stickerCb.checked) {
+        addStickersCb.checked = false;
+        addBothCb.checked = false;
+      }
+      if (target === borderOnlyCb && borderOnlyCb.checked) {
+        addBorderCb.checked = false;
+        addBothCb.checked = false;
+      }
+      if (target === addStickersCb && addStickersCb.checked) {
+        stickerCb.checked = false;
+        cleanCb.checked = false;
+        addBothCb.checked = false;
+      }
+      if (target === addBorderCb && addBorderCb.checked) {
+        borderOnlyCb.checked = false;
+        cleanCb.checked = false;
+        addBothCb.checked = false;
       }
 
       this.setVariantEdits(id, {
-        stickersRemoved: stickerCb.checked,
-        borderOnlyRemoved: borderOnlyCb.checked,
-        cleanProduct: cleanCb.checked,
+        stickersRemoved: caps.canRemoveStickers && stickerCb.checked,
+        borderOnlyRemoved: caps.canRemoveBorder && borderOnlyCb.checked,
+        cleanProduct: caps.canRemoveBoth && cleanCb.checked,
+        stickersAdded: caps.canAddStickers && addStickersCb.checked,
+        borderAdded: caps.canAddBorder && addBorderCb.checked,
+        fullDecorationsAdded: caps.canAddBoth && addBothCb.checked,
       });
     };
-    panel.querySelector("#variant-edit-no-stickers").onchange = onEditChange;
-    panel.querySelector("#variant-edit-border-only").onchange = onEditChange;
-    panel.querySelector("#variant-edit-clean-product").onchange = onEditChange;
+    [
+      "#variant-edit-no-stickers",
+      "#variant-edit-border-only",
+      "#variant-edit-clean-product",
+      "#variant-edit-add-stickers",
+      "#variant-edit-add-border",
+      "#variant-edit-add-both",
+    ].forEach((sel) => {
+      const el = panel.querySelector(sel);
+      if (el) el.onchange = onEditChange;
+    });
 
     return panel;
   }
@@ -2539,7 +2761,12 @@ Please share payment details and license key.`;
 
   refreshResultsView() {
     const resultsArea = document.getElementById("results-area");
-    if (!resultsArea || !this.currentResults.length) return;
+    if (
+      !resultsArea ||
+      (!this.currentResults.length && !this.analysisPrimaryResults.length)
+    ) {
+      return;
+    }
     resultsArea.innerHTML = OptimizerUI.getResultsHTML(
       this.currentResults,
       this.getResultsViewOptions()
@@ -2664,6 +2891,14 @@ Please share payment details and license key.`;
     if (toggleFramed) {
       toggleFramed.onclick = () => {
         this.showFramedExtras = !this.showFramedExtras;
+        this.refreshResultsView();
+      };
+    }
+
+    const toggleAnalysis = document.getElementById("toggle-analysis-extras");
+    if (toggleAnalysis) {
+      toggleAnalysis.onclick = () => {
+        this.showAnalysisExtras = !this.showAnalysisExtras;
         this.refreshResultsView();
       };
     }

@@ -408,17 +408,21 @@ const OptimizerUI = {
     const baseline = options.baselineShipping || 0;
     const manualMode = !!options.manualMode;
     const testLabMode = !!options.testLabMode;
+    const analysisMode = !!options.analysisMode || !!r.analysisMode;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
-    const showPerCardApply = !isWeb && !isBest;
+    const showPerCardApply = !isWeb && !isBest && !analysisMode;
     const estInr = r.meta?.estInr || r.estShipping || 0;
-    const priceLabel = testLabMode
+    const priceLabel =
+      testLabMode || analysisMode
       ? r.shippingCost > 0
         ? "₹" + r.shippingCost
         : "est ₹" + estInr
       : r.shippingCost > 0
       ? "₹" + r.shippingCost
+      : estInr > 0
+      ? "est ₹" + estInr
       : manualMode
       ? "—"
       : "Ready";
@@ -429,13 +433,21 @@ const OptimizerUI = {
       r.editFlags?.stickersRemoved ||
       r.editFlags?.borderOnlyRemoved ||
       r.editFlags?.cleanProduct ||
-      r.editFlags?.borderRemoved;
+      r.editFlags?.borderRemoved ||
+      r.editFlags?.stickersAdded ||
+      r.editFlags?.borderAdded ||
+      r.editFlags?.fullDecorationsAdded;
     const vid = r.variantId || "var-" + i;
-    const imgSrc = testLabMode ? this.pickResultImageSrc(r) : r.imageUrl;
+    const imgSrc =
+      testLabMode || analysisMode ? this.pickResultImageSrc(r) : r.imageUrl;
     const styleTag = testLabMode
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>`
       : r.variantStyle === "framed"
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.productW || "?"}×${r.meta?.productH || "?"}px · ${r.meta?.actualKb || r.meta?.targetKb || "?"}KB</div>`
+      : r.variantStyle === "analysis" || r.analysisMode
+      ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "analysis"} · ${r.meta?.kb || "?"}KB</div>`
+      : r.noPid
+      ? `<div style="font-size:8px;color:#b45309;margin-bottom:2px;">no PID · kept</div>`
       : "";
 
     return `
@@ -471,7 +483,9 @@ const OptimizerUI = {
                       isBest ? "#10b981" : "black"
                     };">${priceLabel}</div>
                     ${
-                      testLabMode && r.shippingCost > 0
+                      analysisMode
+                        ? '<div style="font-size:8px;color:#2563eb;font-weight:600;">static est</div>'
+                        : testLabMode && r.shippingCost > 0
                         ? '<div style="font-size:8px;color:#047857;font-weight:600;">✓ live Meesho</div>'
                         : testLabMode && r.liveChecked
                         ? '<div style="font-size:8px;color:#b45309;">checked</div>'
@@ -503,11 +517,125 @@ const OptimizerUI = {
             `;
   },
 
+
+  formatAnalysisTypeLabel: function (analysis) {
+    if (!analysis) return "Product image";
+    const parts = [];
+    if (analysis.tall) parts.push("Tall portrait");
+    else if (analysis.collage) parts.push("Wide collage");
+    else if (analysis.studioBg) parts.push("Studio background");
+    else parts.push("Standard product");
+    if (analysis.resolvedCategory) parts.push(analysis.resolvedCategory);
+    if (analysis.width && analysis.height) {
+      parts.push(`${analysis.width}×${analysis.height}px`);
+    }
+    if (analysis.aspect) parts.push(`aspect ${analysis.aspect}`);
+    return parts.join(" · ");
+  },
+
+  renderAnalysisSection: function (options, sectionOptions) {
+    sectionOptions = sectionOptions || {};
+    const primary = options.analysisPrimary || [];
+    const extras = options.analysisExtras || [];
+    if (!primary.length) return "";
+
+    const analysis = options.liveAnalysis || {};
+    const showExtras = !!options.showAnalysisExtras;
+    const baseline = options.baselineShipping || 0;
+    const standalone = !!sectionOptions.standalone;
+    const sorted = [...primary].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+    const bestEst =
+      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+    const typeLabel = this.formatAnalysisTypeLabel(analysis);
+    const tips = Array.isArray(analysis.smartTips)
+      ? analysis.smartTips.join(" · ")
+      : analysis.smartTips || analysis.suggested || "";
+    const variantNote = analysis.variantCount
+      ? `${analysis.variantCount} strategies ranked locally`
+      : `${primary.length} preview options`;
+
+    let html = `
+            <div style="margin-bottom:15px;${
+              standalone ? "" : "border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;"
+            }">
+                <div style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                    <div style="font-size:11px;color:#2563eb;">📊 Static Analysis (no Meesho session)</div>
+                    <div style="font-size:24px;font-weight:700;color:#1d4ed8;">est ₹${bestEst}</div>
+                    <div style="font-size:10px;color:#2563eb;margin-top:2px;">${typeLabel}</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">${variantNote} · estimated ₹ only</div>
+                    ${
+                      tips
+                        ? `<div style="font-size:10px;color:#6b7280;margin-top:6px;">${tips}</div>`
+                        : ""
+                    }
+                    ${
+                      baseline > 0
+                        ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
+                        : ""
+                    }
+                </div>
+                <div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:8px;text-align:center;">6 analysis previews — tap image for 6 edit options (remove + add)</div>
+                <div class="analysis-primary-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;max-height:480px;overflow-y:auto;">
+        `;
+
+    sorted.forEach((r, i) => {
+      html += this.renderResultCard(r, i, {
+        baselineShipping: baseline,
+        manualMode: false,
+        analysisMode: true,
+        isBest: i === 0,
+      });
+    });
+
+    html += `</div>`;
+
+    if (extras.length > 0) {
+      const extrasSorted = [...extras].sort(
+        (a, b) =>
+          (a.estShipping || a.meta?.estInr || 999) -
+          (b.estShipping || b.meta?.estInr || 999),
+      );
+      const extrasBest =
+        extrasSorted[0]?.estShipping || extrasSorted[0]?.meta?.estInr || 0;
+      html += `
+                <button type="button" id="toggle-analysis-extras" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showExtras ? "▼" : "▶"} See more analysis variants (${extras.length}) — best est ₹${extrasBest}
+                </button>
+                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">More image types from analysis — static est ₹, no live Meesho hit. Final picks after your observations.</p>
+                <div id="analysis-extras-panel" style="display:${showExtras ? "block" : "none"};">
+                    <div class="analysis-extras-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:480px;overflow-y:auto;">
+        `;
+      extrasSorted.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode: false,
+          analysisMode: true,
+          isBest: false,
+        });
+      });
+      html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
   // Results HTML - Only accurate results
   getResultsHTML: function (results, options) {
     options = options || {};
     const baseline = options.baselineShipping || 0;
-    if (results.length === 0) {
+    const analysisPrimary = options.analysisPrimary || [];
+    const hasLive = results.length > 0;
+    const hasAnalysis = analysisPrimary.length > 0;
+
+    if (!hasLive && !hasAnalysis) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -519,15 +647,17 @@ const OptimizerUI = {
             `;
     }
 
-    const best = results[0];
-    const totalResults = results.length;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const manualMode = !!options.manualMode;
-    const testedCount = results.filter((r) => r.shippingCost > 0).length;
-    const applyLabel = isWeb ? "Save" : "Apply";
-    const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
+    let html = "";
 
-    let html = `
+    if (hasLive) {
+      const best = results[0];
+      const totalResults = results.length;
+      const testedCount = results.filter((r) => r.shippingCost > 0).length;
+      const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
+
+      html += `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
                 <div style="font-size:11px;color:#9ca3af;">${
                   manualMode && !bestPrice
@@ -557,20 +687,25 @@ const OptimizerUI = {
                     ? `<div style="font-size:10px;color:#666;margin-top:4px;">Your current shipping: ₹${baseline}</div>`
                     : ""
                 }
-                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} variants</div>
+                <div style="font-size:10px;color:#0f0f10;margin-top:4px;">${totalResults} live variants${
+        results.filter((r) => r.noPid).length
+          ? ` · ${results.filter((r) => r.noPid).length} kept without PID`
+          : ""
+      }</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
         `;
 
-    results.forEach((r, i) => {
-      html += this.renderResultCard(r, i, {
-        baselineShipping: baseline,
-        manualMode,
-        isBest: i === 0 && r.shippingCost > 0,
+      results.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode,
+          isBest: i === 0 && r.shippingCost > 0,
+        });
       });
-    });
 
-    html += `</div>`;
+      html += `</div>`;
+    }
 
     const framedExtras = options.framedExtras || [];
     if (framedExtras.length > 0) {
@@ -609,11 +744,30 @@ const OptimizerUI = {
             </div>
         `;
     }
+
+    if (hasAnalysis) {
+      html += this.renderAnalysisSection(options, { standalone: !hasLive });
+    }
+
+    const bestLive = hasLive && results[0]?.shippingCost > 0 ? results[0].shippingCost : null;
+    const analysisSorted = hasAnalysis
+      ? [...analysisPrimary].sort(
+          (a, b) =>
+            (a.estShipping || a.meta?.estInr || 999) -
+            (b.estShipping || b.meta?.estInr || 999),
+        )
+      : [];
+    const bestEst = analysisSorted[0]
+      ? analysisSorted[0].estShipping || analysisSorted[0].meta?.estInr || 0
+      : 0;
+
     html += `
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  bestPrice
-                    ? "Download Best ₹" + bestPrice
+                  bestLive
+                    ? "Download Best ₹" + bestLive
+                    : bestEst
+                    ? "Download Best est ₹" + bestEst
                     : "Download Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
