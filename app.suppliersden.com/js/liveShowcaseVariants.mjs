@@ -1,29 +1,33 @@
 /**
- * Live tab "See more" — static showcase presets (no Meesho API).
- * Replicates the promo frame: yellow top + lime right border, 3 corner badges.
+ * Live tab — static showcase promo frames (no Meesho API).
+ * Portrait 3:4 canvas, uniform orange→green gradient border, 3 corner badges.
  */
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=34";
-import { compressFramedToKb } from "./lib/encoder.js?v=34";
-import { estimateImageShipping } from "./lib/shipping.js?v=34";
+} from "./lib/canvas-utils.js?v=35";
+import { compressFramedToKb } from "./lib/encoder.js?v=35";
+import { estimateImageShipping } from "./lib/shipping.js?v=35";
 
-/** Fixed badge assets matching the reference layout. */
+/** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {
   topLeft: 4, // 100% QUALITY gold seal
   topRight: 5, // orange star ribbon
   bottomLeft: 18, // 100% SATISFACTION GUARANTEED
 };
 
-const SHOWCASE_KB_TIERS = [64, 68, 71];
+/** Portrait outer canvas — 3:4 like the reference. */
+export const SHOWCASE_OUTER_W = 900;
+export const SHOWCASE_OUTER_H = 1200;
 
-const SHOWCASE_FRAME = {
-  top: { color: "#FFC107", scale: 0.13 },
-  right: { color: "#8BC34A", scale: 0.13 },
-  left: { color: "#E53935", scale: 0.09 },
-  bottom: { color: "#1E88E5", scale: 0.09 },
-};
+/** Uniform border ~6% of width (screenshot: 5–7%). */
+export const SHOWCASE_BORDER_RATIO = 0.06;
+
+/** Default variant count for independent generate. */
+export const SHOWCASE_VARIANT_COUNT = 25;
+
+const GRADIENT_TOP = "#FF9800";
+const GRADIENT_BOTTOM = "#4CAF50";
 
 const badgeCache = {};
 
@@ -64,67 +68,60 @@ async function preloadShowcaseBadges() {
   );
 }
 
-function normalizeProduct(img, maxSide = 1024) {
-  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
-  let w = trimmed.width;
-  let h = trimmed.height;
-  const max = Math.max(w, h);
-  if (max > maxSide) {
-    const s = maxSide / max;
-    w = Math.round(w * s);
-    h = Math.round(h * s);
+function showcaseKbTiers(count = SHOWCASE_VARIANT_COUNT) {
+  const n = Math.max(20, Math.min(30, count));
+  const start = 50;
+  const end = 74;
+  const tiers = [];
+  for (let i = 0; i < n; i++) {
+    tiers.push(Math.round(start + ((end - start) * i) / Math.max(1, n - 1)));
   }
-  return { trimmed, w, h };
-}
-
-function borderPx(minDim, scale) {
-  return Math.max(18, Math.round(minDim * scale));
+  return tiers;
 }
 
 /**
- * Draw asymmetric colored frame + product on white.
- * Returns canvas and inner product rect.
+ * Draw portrait showcase frame: gradient border + centered product on white.
  */
-function buildShowcaseFrameCanvas(img, frame = SHOWCASE_FRAME) {
-  const { trimmed, w, h } = normalizeProduct(img);
-  const minDim = Math.min(w, h);
-  const topB = borderPx(minDim, frame.top.scale);
-  const rightB = borderPx(minDim, frame.right.scale);
-  const leftB = borderPx(minDim, frame.left.scale);
-  const bottomB = borderPx(minDim, frame.bottom.scale);
+function buildShowcaseFrameCanvas(img, outerW = SHOWCASE_OUTER_W, outerH = SHOWCASE_OUTER_H) {
+  const border = Math.max(
+    24,
+    Math.round(outerW * SHOWCASE_BORDER_RATIO),
+  );
+  const innerW = outerW - border * 2;
+  const innerH = outerH - border * 2;
 
-  const finalW = leftB + w + rightB;
-  const finalH = topB + h + bottomB;
+  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
+  const scale = Math.min(innerW / trimmed.width, innerH / trimmed.height);
+  const dw = Math.round(trimmed.width * scale);
+  const dh = Math.round(trimmed.height * scale);
+  const px = border + Math.round((innerW - dw) / 2);
+  const py = border + Math.round((innerH - dh) / 2);
+
   const canvas = document.createElement("canvas");
-  canvas.width = finalW;
-  canvas.height = finalH;
+  canvas.width = outerW;
+  canvas.height = outerH;
   const ctx = canvas.getContext("2d");
 
+  const grad = ctx.createLinearGradient(0, 0, 0, outerH);
+  grad.addColorStop(0, GRADIENT_TOP);
+  grad.addColorStop(1, GRADIENT_BOTTOM);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, outerW, outerH);
+
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, finalW, finalH);
+  ctx.fillRect(border, border, innerW, innerH);
 
-  ctx.fillStyle = frame.top.color;
-  ctx.fillRect(0, 0, finalW, topB);
-  ctx.fillStyle = frame.right.color;
-  ctx.fillRect(finalW - rightB, 0, rightB, finalH);
-  ctx.fillStyle = frame.left.color;
-  ctx.fillRect(0, 0, leftB, finalH);
-  ctx.fillStyle = frame.bottom.color;
-  ctx.fillRect(0, finalH - bottomB, finalW, bottomB);
-
-  const px = leftB;
-  const py = topB;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(trimmed, 0, 0, trimmed.width, trimmed.height, px, py, w, h);
+  ctx.drawImage(trimmed, 0, 0, trimmed.width, trimmed.height, px, py, dw, dh);
 
-  return { canvas, px, py, dw: w, dh: h, borders: { topB, rightB, leftB, bottomB } };
+  return { canvas, px, py, dw, dh, border, trimmed, outerW, outerH };
 }
 
 function showcasePlacements(px, py, dw, dh, canvasW) {
-  const largeSize = Math.max(48, Math.round(canvasW / 6));
-  const smallSize = Math.max(28, Math.round(largeSize * 0.52));
-  const inset = Math.max(4, Math.round(largeSize * 0.04));
+  const largeSize = Math.max(56, Math.round(canvasW / 6));
+  const smallSize = Math.max(30, Math.round(largeSize * 0.5));
+  const inset = Math.max(2, Math.round(largeSize * 0.03));
   return [
     {
       num: SHOWCASE_BADGES.topLeft,
@@ -170,11 +167,9 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-/**
- * Build full layer set for one showcase frame (editor-compatible).
- */
 async function buildShowcaseLayers(img) {
-  const { canvas, px, py, dw, dh } = buildShowcaseFrameCanvas(img);
+  const built = buildShowcaseFrameCanvas(img);
+  const { canvas, px, py, dw, dh, border, trimmed, outerW, outerH } = built;
   const placements = showcasePlacements(px, py, dw, dh, canvas.width);
 
   const noStickersCanvas = document.createElement("canvas");
@@ -190,7 +185,6 @@ async function buildShowcaseLayers(img) {
   const productOnlyCanvas = document.createElement("canvas");
   productOnlyCanvas.width = dw;
   productOnlyCanvas.height = dh;
-  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
   const pCtx = productOnlyCanvas.getContext("2d");
   pCtx.drawImage(
     trimmed,
@@ -230,8 +224,6 @@ async function buildShowcaseLayers(img) {
   await drawPlacements(nbCtx, shifted);
   const noBorder = dataUrlFromCanvas(noBorderCanvas);
 
-  const stickersRendered = badgePlacements.some((p) => p.drawn);
-
   return {
     canvas,
     layers: {
@@ -239,45 +231,52 @@ async function buildShowcaseLayers(img) {
       noStickers,
       noBorder,
       productOnly,
-      _stickersRendered: stickersRendered,
+      _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
     },
     meta: {
       style: "showcase",
-      showcasePreset: "quality-seal-frame",
-      canvasW: canvas.width,
-      canvasH: canvas.height,
+      showcasePreset: "promo-gradient-frame",
+      canvasW: outerW,
+      canvasH: outerH,
       productW: dw,
       productH: dh,
+      borderPx: border,
+      outerW,
+      outerH,
     },
   };
 }
 
 /**
- * Generate static showcase variants for Live analysis "See more".
+ * Generate static showcase variants (20–30 KB-compressed copies of same layout).
  */
 export async function buildShowcaseVariants(img, options = {}) {
-  const { onProgress = () => {} } = options;
-  await preloadShowcaseBadges();
+  const {
+    onProgress = () => {},
+    count = SHOWCASE_VARIANT_COUNT,
+  } = options;
 
-  onProgress("Building showcase frame presets…");
-  const built = await buildShowcaseLayers(img);
-  const { canvas, layers, meta } = built;
+  await preloadShowcaseBadges();
+  onProgress("Building showcase promo frames…");
+
+  const { canvas, layers, meta } = await buildShowcaseLayers(img);
+  const kbTiers = showcaseKbTiers(count);
   const variants = [];
 
-  for (let i = 0; i < SHOWCASE_KB_TIERS.length; i++) {
-    const kb = SHOWCASE_KB_TIERS[i];
-    onProgress(`Showcase preset · ${kb}KB`);
+  for (let i = 0; i < kbTiers.length; i++) {
+    const kb = kbTiers[i];
+    onProgress(`Showcase frame · ${kb}KB (${i + 1}/${kbTiers.length})`);
     const blob = await compressFramedToKb(canvas, kb);
     const v = {
       blob,
       bytes: blob.size,
-      width: canvas.width,
-      height: canvas.height,
+      width: meta.outerW,
+      height: meta.outerH,
       path: "showcase",
       mode: "Showcase",
-      label: `Showcase · Quality seal · ${kb}KB · ${canvas.width}×${canvas.height}`,
-      recommended: kb === 68,
+      label: `Showcase · ${meta.outerW}×${meta.outerH} · ${kb}KB`,
+      recommended: kb === kbTiers[Math.floor(kbTiers.length / 2)],
       lowest: i === 0,
       layers,
       meta: { ...meta, targetKb: kb },

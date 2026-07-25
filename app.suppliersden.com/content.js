@@ -13,6 +13,10 @@ class MeeshoShippingOptimizer {
     this.analysisPrimaryResults = [];
     this.analysisExtraResults = [];
     this.showAnalysisExtras = false;
+    this.showcaseResults = [];
+    this.showShowcaseResults = false;
+    this.isGeneratingShowcase = false;
+    this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
     this.testLabFramedExtraResults = [];
@@ -50,12 +54,12 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=34";
+      return "/js/liveAnalysisBridge.mjs?v=35";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=34");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=35");
     }
-    return "/js/liveAnalysisBridge.mjs?v=34";
+    return "/js/liveAnalysisBridge.mjs?v=35";
   }
 
   async preloadLiveAnalysisModule() {
@@ -80,6 +84,64 @@ class MeeshoShippingOptimizer {
     return window.LiveAnalysis.runLiveAnalysis(file, {
       onProgress: (msg) => console.log("Analysis:", msg),
     });
+  }
+
+  async runShowcaseGeneration(file) {
+    const ready = await this.preloadLiveAnalysisModule();
+    if (!ready || !window.LiveAnalysis?.runShowcaseGeneration) return null;
+    return window.LiveAnalysis.runShowcaseGeneration(file, {
+      onProgress: (msg) => console.log("Showcase:", msg),
+    });
+  }
+
+  async getImageFileForShowcase() {
+    if (this.lastProcessedFile) return this.lastProcessedFile;
+    const fileInput = document.getElementById("image-input");
+    if (fileInput?.files?.[0]) return fileInput.files[0];
+    if (this._pendingFile) return this._pendingFile;
+    if (window.__webPendingFile) return window.__webPendingFile;
+    return null;
+  }
+
+  async generateShowcaseFrames() {
+    if (this.isGeneratingShowcase) return;
+
+    const file = await this.getImageFileForShowcase();
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+
+    this.isGeneratingShowcase = true;
+    this.refreshResultsView();
+
+    try {
+      const out = await this.runShowcaseGeneration(file);
+      if (!out?.success || !out.results?.length) {
+        OptimizerUtils.showNotification(
+          "Could not generate showcase frames",
+          "error",
+        );
+        return;
+      }
+      this.showcaseResults = out.results.map((r, i) =>
+        this.mapResultFromApi(r, i + 60000),
+      );
+      this.showcaseResults.sort(
+        (a, b) => (a.estShipping || 999) - (b.estShipping || 999),
+      );
+      this.showShowcaseResults = true;
+      OptimizerUtils.showNotification(
+        `✅ ${this.showcaseResults.length} showcase frames ready (static est ₹)`,
+        "success",
+      );
+    } catch (e) {
+      console.error("Showcase generate:", e);
+      OptimizerUtils.showNotification("Showcase generation failed", "error");
+    } finally {
+      this.isGeneratingShowcase = false;
+      this.refreshResultsView();
+    }
   }
 
   init() {
@@ -1267,6 +1329,9 @@ Please share payment details and license key.`;
     this.analysisPrimaryResults = [];
     this.analysisExtraResults = [];
     this.showAnalysisExtras = false;
+    this.showcaseResults = [];
+    this.showShowcaseResults = false;
+    this.isGeneratingShowcase = false;
     this.testLabCurrentResults = [];
     this.testLabFramedExtraResults = [];
     this.testLabShowFramedExtras = false;
@@ -1277,6 +1342,7 @@ Please share payment details and license key.`;
 
     if (!keepImage) {
       this._pendingFile = null;
+      this.lastProcessedFile = null;
       this.originalImageUrl = null;
       if (typeof window !== "undefined") window.__webPendingFile = null;
     }
@@ -1618,6 +1684,7 @@ Please share payment details and license key.`;
 
     this.isProcessing = true;
     this.shouldStop = false;
+    this.lastProcessedFile = file;
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
@@ -1625,6 +1692,9 @@ Please share payment details and license key.`;
     this.analysisPrimaryResults = [];
     this.analysisExtraResults = [];
     this.showAnalysisExtras = false;
+    this.showcaseResults = [];
+    this.showShowcaseResults = false;
+    this.isGeneratingShowcase = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -2253,6 +2323,10 @@ Please share payment details and license key.`;
       analysisPrimary: this.analysisPrimaryResults,
       analysisExtras: this.analysisExtraResults,
       showAnalysisExtras: this.showAnalysisExtras,
+      showcaseResults: this.showcaseResults,
+      showShowcaseResults: this.showShowcaseResults,
+      isGeneratingShowcase: this.isGeneratingShowcase,
+      showcaseVariantCount: 25,
     };
   }
 
@@ -2482,6 +2556,7 @@ Please share payment details and license key.`;
       this.framedExtraResults.find((r) => r.variantId === variantId) ||
       this.analysisPrimaryResults.find((r) => r.variantId === variantId) ||
       this.analysisExtraResults.find((r) => r.variantId === variantId) ||
+      this.showcaseResults.find((r) => r.variantId === variantId) ||
       this.testLabCurrentResults.find((r) => r.variantId === variantId) ||
       this.testLabFramedExtraResults.find((r) => r.variantId === variantId) ||
       this.testLabAnalysisPrimaryResults.find((r) => r.variantId === variantId) ||
@@ -2921,6 +2996,21 @@ Please share payment details and license key.`;
         } else {
           this.showAnalysisExtras = !this.showAnalysisExtras;
         }
+        this.refreshResultsView();
+      };
+    }
+
+    const generateShowcaseBtn = document.getElementById("generate-showcase-btn");
+    if (generateShowcaseBtn) {
+      generateShowcaseBtn.onclick = () => {
+        void this.generateShowcaseFrames();
+      };
+    }
+
+    const toggleShowcase = document.getElementById("toggle-showcase-results");
+    if (toggleShowcase) {
+      toggleShowcase.onclick = () => {
+        this.showShowcaseResults = !this.showShowcaseResults;
         this.refreshResultsView();
       };
     }
