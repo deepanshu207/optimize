@@ -411,6 +411,7 @@ const OptimizerUI = {
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
+    const showPerCardApply = !isWeb && !isBest;
     const estInr = r.meta?.estInr || r.estShipping || 0;
     const priceLabel = testLabMode
       ? r.shippingCost > 0
@@ -489,10 +490,14 @@ const OptimizerUI = {
                         : ""
                     }
                     <div style="display:flex;gap:4px;margin-top:4px;">
-                        <button class="dl-btn" data-variant-id="${vid}" style="flex:1;background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
-                        <button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:${
-      isBest ? "#10b981" : "rgba(255,255,255,0.1)"
-    };color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>
+                        <button class="dl-btn" data-variant-id="${vid}" style="${
+      showPerCardApply ? "flex:1;" : "width:100%;"
+    }background:rgba(102,126,234,0.2);color:#a78bfa;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">Save</button>
+                        ${
+                          showPerCardApply
+                            ? `<button class="apply-btn" data-variant-id="${vid}" style="flex:1;background:rgba(255,255,255,0.1);color:white;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px;">${applyLabel}</button>`
+                            : ""
+                        }
                     </div>
                 </div>
             `;
