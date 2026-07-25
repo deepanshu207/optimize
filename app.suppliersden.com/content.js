@@ -1026,7 +1026,10 @@ Please share payment details and license key.`;
     });
 
     if (typeof ImageGenerator.preloadBadges === "function") {
-      ImageGenerator.preloadBadges();
+      void ImageGenerator.preloadBadges();
+    }
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.preloadBadges) {
+      void MeeshoAPI.preloadBadges();
     }
 
     // Set category in MeeshoAPI
@@ -2269,10 +2272,13 @@ Please share payment details and license key.`;
   getVariantLayerCaps(row) {
     if (
       typeof MeeshoAPI !== "undefined" &&
-      MeeshoAPI.getLayerCapabilities &&
+      MeeshoAPI.getEffectiveLayerCapabilities &&
       row?.layers
     ) {
-      return MeeshoAPI.getLayerCapabilities(row.layers);
+      return MeeshoAPI.getEffectiveLayerCapabilities(
+        row.layers,
+        row.editFlags,
+      );
     }
     return {
       hasStickers: false,
@@ -2289,8 +2295,10 @@ Please share payment details and license key.`;
   isVariantEdited(editFlags, layers) {
     if (!editFlags) return false;
     const caps =
-      layers && typeof MeeshoAPI !== "undefined" && MeeshoAPI.getLayerCapabilities
-        ? MeeshoAPI.getLayerCapabilities(layers)
+      layers &&
+      typeof MeeshoAPI !== "undefined" &&
+      MeeshoAPI.getEffectiveLayerCapabilities
+        ? MeeshoAPI.getEffectiveLayerCapabilities(layers, editFlags)
         : null;
     return !!(
       editFlags.stickersRemoved ||
@@ -2482,12 +2490,18 @@ Please share payment details and license key.`;
     );
   }
 
-  setVariantEdits(variantId, editFlags) {
+  async setVariantEdits(variantId, editFlags) {
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
     row.editFlags = this.normalizeEditFlags(editFlags);
-    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+      try {
+        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
+      } catch (e) {
+        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      }
+    } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
     }
 
@@ -2949,7 +2963,12 @@ Please share payment details and license key.`;
 
     const name = (result.name || "variant").replace(/\s+/g, "-");
     const filename = "meesho-" + name + "-" + Date.now() + ".jpg";
-    const url = this.resolveDownloadUrl(result);
+    const url =
+      result.imageUrl ||
+      result.pricingImageUrl ||
+      result.dataUrl ||
+      result.uploadedUrl ||
+      "";
 
     if (!url) {
       OptimizerUtils.showNotification(

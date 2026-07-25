@@ -20,21 +20,28 @@ const ImageGenerator = {
     },
 
     loadBadge: async function(num) {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.loadBadge) {
+            return MeeshoAPI.loadBadge(num);
+        }
         if (this.badgeCache[num]) return this.badgeCache[num];
         
         return new Promise((resolve) => {
             const img = new Image();
-            img.crossOrigin = 'anonymous';
             img.onload = () => { this.badgeCache[num] = img; resolve(img); };
             img.onerror = () => resolve(null);
       img.src =
         typeof MeeshoAPI !== "undefined" && MeeshoAPI.assetUrl
           ? MeeshoAPI.assetUrl("Badge/badge" + num + ".png")
-          : chrome.runtime.getURL("Badge/badge" + num + ".png");
+          : typeof chrome !== "undefined" && chrome.runtime?.getURL
+          ? chrome.runtime.getURL("Badge/badge" + num + ".png")
+          : "Badge/badge" + num + ".png";
         });
     },
 
     preloadBadges: async function() {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.preloadBadges) {
+            return MeeshoAPI.preloadBadges();
+        }
         const promises = [];
         for (let i = 1; i <= 25; i++) promises.push(this.loadBadge(i));
         await Promise.all(promises);
