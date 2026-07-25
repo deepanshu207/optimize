@@ -661,7 +661,7 @@ const OptimizerUI = {
     }
 
     html += `</div>`;
-    return html.replace(/<\/?motion\.div>/g, (m) => m.replace("motion.", ""));
+    return html;
   },
 
   // Results HTML - Only accurate results
