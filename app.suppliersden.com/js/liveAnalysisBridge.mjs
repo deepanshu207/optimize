@@ -2,9 +2,10 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=33";
-import { loadImage } from "./lib/canvas-utils.js?v=33";
-import { blobToDataUrl } from "./lib/encoder.js?v=33";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=34";
+import { loadImage } from "./lib/canvas-utils.js?v=34";
+import { blobToDataUrl } from "./lib/encoder.js?v=34";
+import { buildShowcaseVariants } from "./liveShowcaseVariants.mjs?v=34";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -26,7 +27,7 @@ function variantToAnalysisResult(v, index, extra = {}) {
     pricingImageUrl: v.dataUrl,
     imageUrl: v.dataUrl,
     layers: v.layers || null,
-    variantStyle: "analysis",
+    variantStyle: extra.variantStyle || "analysis",
     meta: {
       path: v.path,
       mode: v.mode,
@@ -36,6 +37,8 @@ function variantToAnalysisResult(v, index, extra = {}) {
       height: v.height,
       recommended: !!v.recommended,
       lowest: !!v.lowest,
+      showcase: !!(v.meta?.showcasePreset || extra.showcase),
+      showcasePreset: v.meta?.showcasePreset || extra.showcasePreset || null,
     },
     shippingCost: 0,
     estShipping: v.estInr,
@@ -109,6 +112,10 @@ export async function runLiveAnalysis(file, options = {}) {
     .filter((v) => !primarySet.has(v))
     .slice(0, SEE_MORE_CAP);
 
+  onProgress("Building showcase presets…");
+  const showcaseRaw = await buildShowcaseVariants(img, { onProgress });
+  const strategyCap = Math.max(0, SEE_MORE_CAP - showcaseRaw.length);
+
   onProgress("Encoding analysis previews…");
   const primary = [];
   for (let i = 0; i < primaryRaw.length; i++) {
@@ -118,10 +125,24 @@ export async function runLiveAnalysis(file, options = {}) {
   }
 
   const seeMore = [];
-  for (let i = 0; i < seeMoreRaw.length; i++) {
+  let seeMoreIndex = PRIMARY_COUNT;
+
+  for (let i = 0; i < showcaseRaw.length; i++) {
+    const v = showcaseRaw[i];
+    v.dataUrl = await blobToDataUrl(v.blob);
+    seeMore.push(
+      variantToAnalysisResult(v, seeMoreIndex++, {
+        variantStyle: "showcase",
+        showcase: true,
+        showcasePreset: v.meta?.showcasePreset,
+      }),
+    );
+  }
+
+  for (let i = 0; i < seeMoreRaw.length && i < strategyCap; i++) {
     const v = seeMoreRaw[i];
     v.dataUrl = await blobToDataUrl(v.blob);
-    seeMore.push(variantToAnalysisResult(v, i + PRIMARY_COUNT));
+    seeMore.push(variantToAnalysisResult(v, seeMoreIndex++));
   }
 
   return {
