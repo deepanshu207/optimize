@@ -54,12 +54,12 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=35";
+      return "/js/liveAnalysisBridge.mjs?v=36";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=35");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=36");
     }
-    return "/js/liveAnalysisBridge.mjs?v=35";
+    return "/js/liveAnalysisBridge.mjs?v=36";
   }
 
   async preloadLiveAnalysisModule() {

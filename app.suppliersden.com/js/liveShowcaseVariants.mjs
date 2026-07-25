@@ -5,9 +5,9 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=35";
-import { compressFramedToKb } from "./lib/encoder.js?v=35";
-import { estimateImageShipping } from "./lib/shipping.js?v=35";
+} from "./lib/canvas-utils.js?v=36";
+import { compressFramedToKb } from "./lib/encoder.js?v=36";
+import { estimateImageShipping } from "./lib/shipping.js?v=36";
 
 /** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {
@@ -118,33 +118,50 @@ function buildShowcaseFrameCanvas(img, outerW = SHOWCASE_OUTER_W, outerH = SHOWC
   return { canvas, px, py, dw, dh, border, trimmed, outerW, outerH };
 }
 
-function showcasePlacements(px, py, dw, dh, canvasW) {
-  const largeSize = Math.max(56, Math.round(canvasW / 6));
-  const smallSize = Math.max(30, Math.round(largeSize * 0.5));
-  const inset = Math.max(2, Math.round(largeSize * 0.03));
-  return [
+/**
+ * Corner badges sit on the gradient border strip, barely overlapping the
+ * product corners — keeps face/body clear (reference screenshot layout).
+ */
+function showcasePlacements(px, py, dw, dh, border, outerW, outerH) {
+  const largeSize = Math.min(
+    Math.max(42, Math.round(border * 1.08)),
+    Math.round(outerW / 8),
+  );
+  const smallSize = Math.max(24, Math.round(largeSize * 0.46));
+  /** How far the badge extends from border onto the product corner. */
+  const overlapLg = Math.round(largeSize * 0.32);
+  const overlapSm = Math.round(smallSize * 0.28);
+
+  const placements = [
     {
       num: SHOWCASE_BADGES.topLeft,
       size: largeSize,
-      x: px + inset,
-      y: py + inset,
+      x: px - overlapLg,
+      y: py - overlapLg,
       drawn: false,
     },
     {
       num: SHOWCASE_BADGES.topRight,
       size: largeSize,
-      x: px + dw - largeSize - inset,
-      y: py + inset,
+      x: px + dw - largeSize + overlapLg,
+      y: py - overlapLg,
       drawn: false,
     },
     {
       num: SHOWCASE_BADGES.bottomLeft,
       size: smallSize,
-      x: px + inset,
-      y: py + dh - smallSize - inset,
+      x: px - overlapSm,
+      y: py + dh - smallSize + overlapSm,
       drawn: false,
     },
   ];
+
+  const pad = 3;
+  for (const p of placements) {
+    p.x = Math.max(pad, Math.min(p.x, outerW - p.size - pad));
+    p.y = Math.max(pad, Math.min(p.y, outerH - p.size - pad));
+  }
+  return placements;
 }
 
 async function drawPlacements(ctx, placements) {
@@ -170,7 +187,15 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
 async function buildShowcaseLayers(img) {
   const built = buildShowcaseFrameCanvas(img);
   const { canvas, px, py, dw, dh, border, trimmed, outerW, outerH } = built;
-  const placements = showcasePlacements(px, py, dw, dh, canvas.width);
+  const placements = showcasePlacements(
+    px,
+    py,
+    dw,
+    dh,
+    border,
+    outerW,
+    outerH,
+  );
 
   const noStickersCanvas = document.createElement("canvas");
   noStickersCanvas.width = canvas.width;
