@@ -2,10 +2,13 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=34";
-import { loadImage } from "./lib/canvas-utils.js?v=34";
-import { blobToDataUrl } from "./lib/encoder.js?v=34";
-import { buildShowcaseVariants } from "./liveShowcaseVariants.mjs?v=34";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=35";
+import { loadImage } from "./lib/canvas-utils.js?v=35";
+import { blobToDataUrl } from "./lib/encoder.js?v=35";
+import {
+  buildShowcaseVariants,
+  SHOWCASE_VARIANT_COUNT,
+} from "./liveShowcaseVariants.mjs?v=35";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -20,7 +23,7 @@ function categoryFromAnalysis(analysis) {
 function variantToAnalysisResult(v, index, extra = {}) {
   const kb = v.kb || Math.ceil((v.bytes || 0) / 1024);
   return {
-    variantId: `analysis-${v.path}-${kb}-${index}`,
+    variantId: extra.variantId || `${v.path || "analysis"}-${kb}-${index}`,
     name: v.label || v.mode || `Analysis-${index + 1}`,
     blob: v.blob || null,
     dataUrl: v.dataUrl,
@@ -87,6 +90,29 @@ function pickPrimary(ranked) {
 }
 
 /**
+ * Independent static showcase generate — portrait promo frames only.
+ */
+export async function runShowcaseGeneration(file, options = {}) {
+  const { onProgress = () => {}, count = SHOWCASE_VARIANT_COUNT } = options;
+  const img = await loadImage(file);
+  const raw = await buildShowcaseVariants(img, { onProgress, count });
+  const results = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    v.dataUrl = await blobToDataUrl(v.blob);
+    results.push(
+      variantToAnalysisResult(v, i + 60000, {
+        variantStyle: "showcase",
+        showcase: true,
+        showcasePreset: v.meta?.showcasePreset,
+        variantId: `showcase-${v.kb}-${i + 60000}`,
+      }),
+    );
+  }
+  return { success: results.length > 0, results };
+}
+
+/**
  * Run static image analysis + ranked local variants (est ₹ only).
  */
 export async function runLiveAnalysis(file, options = {}) {
@@ -112,10 +138,6 @@ export async function runLiveAnalysis(file, options = {}) {
     .filter((v) => !primarySet.has(v))
     .slice(0, SEE_MORE_CAP);
 
-  onProgress("Building showcase presets…");
-  const showcaseRaw = await buildShowcaseVariants(img, { onProgress });
-  const strategyCap = Math.max(0, SEE_MORE_CAP - showcaseRaw.length);
-
   onProgress("Encoding analysis previews…");
   const primary = [];
   for (let i = 0; i < primaryRaw.length; i++) {
@@ -125,24 +147,10 @@ export async function runLiveAnalysis(file, options = {}) {
   }
 
   const seeMore = [];
-  let seeMoreIndex = PRIMARY_COUNT;
-
-  for (let i = 0; i < showcaseRaw.length; i++) {
-    const v = showcaseRaw[i];
-    v.dataUrl = await blobToDataUrl(v.blob);
-    seeMore.push(
-      variantToAnalysisResult(v, seeMoreIndex++, {
-        variantStyle: "showcase",
-        showcase: true,
-        showcasePreset: v.meta?.showcasePreset,
-      }),
-    );
-  }
-
-  for (let i = 0; i < seeMoreRaw.length && i < strategyCap; i++) {
+  for (let i = 0; i < seeMoreRaw.length; i++) {
     const v = seeMoreRaw[i];
     v.dataUrl = await blobToDataUrl(v.blob);
-    seeMore.push(variantToAnalysisResult(v, seeMoreIndex++));
+    seeMore.push(variantToAnalysisResult(v, i + PRIMARY_COUNT));
   }
 
   return {
@@ -160,6 +168,6 @@ export async function runLiveAnalysis(file, options = {}) {
 }
 
 if (typeof window !== "undefined") {
-  window.LiveAnalysis = { runLiveAnalysis };
+  window.LiveAnalysis = { runLiveAnalysis, runShowcaseGeneration };
   window.dispatchEvent(new Event("live-analysis-ready"));
 }

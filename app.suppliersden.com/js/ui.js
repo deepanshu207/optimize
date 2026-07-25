@@ -587,7 +587,7 @@ const OptimizerUI = {
                 <button type="button" id="toggle-analysis-extras" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
                     ${showExtras ? "▼" : "▶"} See more analysis variants (${extras.length}) — best est ₹${extrasBest}
                 </button>
-                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">More image types from analysis — static est ₹, no live Meesho hit. Includes showcase frame presets (yellow/lime border + quality badges).</p>
+                <p style="font-size:10px;color:#6b7280;margin-bottom:8px;text-align:center;">More image types from analysis — static est ₹, no live Meesho hit.</p>
                 <div id="analysis-extras-panel" style="display:${showExtras ? "block" : "none"};">
                     <div class="analysis-extras-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:480px;overflow-y:auto;">
         `;
@@ -597,6 +597,61 @@ const OptimizerUI = {
           manualMode: false,
           analysisMode: true,
           isBest: false,
+        });
+      });
+      html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
+  renderShowcaseSection: function (options) {
+    options = options || {};
+    const showcase = options.showcaseResults || [];
+    const showPanel = !!options.showShowcaseResults;
+    const generating = !!options.isGeneratingShowcase;
+    const baseline = options.baselineShipping || 0;
+    const count = options.showcaseVariantCount || 25;
+    const sorted = [...showcase].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+    const bestEst =
+      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+
+    let html = `
+            <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
+                <div style="background:rgba(255,152,0,0.1);border:1px solid rgba(76,175,80,0.35);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
+                    <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">900×1200 portrait · orange→green gradient border · 3 quality badges</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · tap image for 6 edit options</div>
+                </div>
+                <button type="button" id="generate-showcase-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;${
+                  generating ? "opacity:0.65;pointer-events:none;" : ""
+                }" ${generating ? "disabled" : ""}>
+                    ${generating ? "Generating showcase frames…" : `Generate Showcase Frames (${count})`}
+                </button>
+        `;
+
+    if (showcase.length > 0) {
+      html += `
+                <button type="button" id="toggle-showcase-results" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showPanel ? "▼" : "▶"} See more showcase variants (${showcase.length}) — best est ₹${bestEst}
+                </button>
+                <div id="showcase-results-panel" style="display:${showPanel ? "block" : "none"};">
+                    <div class="showcase-results-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:520px;overflow-y:auto;">
+        `;
+      sorted.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode: false,
+          analysisMode: true,
+          isBest: i === 0,
         });
       });
       html += `
@@ -729,6 +784,10 @@ const OptimizerUI = {
 
     if (hasAnalysis) {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
+    }
+
+    if (hasLive || hasAnalysis) {
+      html += this.renderShowcaseSection(options);
     }
 
     const bestLive = hasLive && results[0]?.shippingCost > 0 ? results[0].shippingCost : null;
