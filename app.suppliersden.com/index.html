@@ -343,63 +343,40 @@
           </div>
           <!-- /live-tab-panel -->
 
-          <!-- TEST LAB TAB — isolated experiments (processImageTestLab). Must not change Live flow. -->
+          <!-- TEST LAB TAB — mirrors Live + adaptive lowest-₹ hunt -->
           <div id="test-tab-panel" class="opt-tab-panel" data-optimizer-panel="test">
-            <div class="opt-section">
-              <div class="opt-section-title">🧪 Test Lab (category strategies)</div>
-              <p class="test-lab-note">Aligned with Meesho 2026 guidelines: <strong>compact product (~65–70% of square)</strong>, pure white background, ≥1200×1200 px. Apparel shipping follows image bounding box — avoid spread flat-lay on kurtis/sarees. Home/electronics: optimize declared package size. <strong>Phase 2 live-checks</strong> real Meesho ₹ (recommended).</p>
+            <div class="opt-section" style="background:linear-gradient(135deg, rgba(4,120,87,0.08), rgba(102,126,234,0.06));border:1px solid rgba(4,120,87,0.2);">
+              <div class="opt-section-title" style="color:#047857;">🧪 Test Lab — Live logic + adaptive hunt</div>
+              <p class="test-lab-note">Same pipeline as Live (generate, analysis, 6-option editor). Once a best ₹ is found, higher shipping variants are skipped and next tries bias smaller borders / lower KB.</p>
               <div id="test-lab-session-hint" class="session-hint" style="margin-top:8px;display:none;"></div>
               <div class="opt-row" style="margin-top:10px;">
                 <div>
-                  <label class="opt-label" for="test-lab-mode">Strategy mode</label>
-                  <select id="test-lab-mode" class="opt-select">
-                    <option value="smart" selected>Smart Auto (recommended)</option>
-                    <option value="studio_ultra">Studio Ultra (small items)</option>
-                    <option value="studio">Studio White</option>
-                    <option value="tall">Tall ₹50 frame</option>
-                    <option value="flatlay">Flat-Lay 1024²</option>
-                    <option value="framed_low">Framed Low (₹64–71 band)</option>
-                    <option value="framed">Framed Promo (₹93 band)</option>
-                    <option value="collage">Collage split</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="opt-label" for="test-lab-category">Category group</label>
-                  <select id="test-lab-category" class="opt-select">
-                    <option value="auto" selected>Auto detect</option>
-                    <option value="apparel">Apparel / Kurti</option>
-                    <option value="lingerie">Lingerie / Bra</option>
-                    <option value="footwear">Footwear</option>
-                    <option value="home">Home &amp; Kitchen</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="jewellery">Jewellery</option>
-                    <option value="general">General</option>
-                  </select>
-                </div>
-              </div>
-              <div class="opt-row" style="margin-top:10px;">
-                <div>
-                  <label class="opt-label" for="test-lab-target">Est. target ₹ (filter)</label>
-                  <select id="test-lab-target" class="opt-select">
-                    <option value="">No filter</option>
+                  <label class="opt-label" for="test-target-shipping">Target Shipping</label>
+                  <select id="test-target-shipping" class="opt-select">
                     <option value="30">≤ ₹30</option>
                     <option value="40">≤ ₹40</option>
                     <option value="50" selected>≤ ₹50</option>
+                    <option value="60">≤ ₹60</option>
                     <option value="70">≤ ₹70</option>
-                    <option value="93">≤ ₹93</option>
+                    <option value="80">≤ ₹80</option>
+                    <option value="90">≤ ₹90</option>
+                    <option value="100">≤ ₹100</option>
                   </select>
                 </div>
                 <div>
-                  <label class="opt-label" for="test-lab-border">Frame color</label>
-                  <input type="color" id="test-lab-border" class="opt-input" value="#ff7900" style="height:42px;padding:4px;">
+                  <label class="opt-label" for="test-max-attempts">Max Tries</label>
+                  <select id="test-max-attempts" class="opt-select">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
                 </div>
               </div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;">
-                <input type="checkbox" id="test-lab-live-verify" style="width:18px;height:18px;" checked>
-                Phase 2: live Meesho hunt for lowest ₹ (auto when session set)
-              </label>
-              <p class="session-hint" style="margin-top:6px;">Phase 1 ranks by estimated ₹. Phase 2 adds ₹49 framed variants and checks live prices on Meesho when Supplier ID + Browser ID are saved.</p>
-              <div id="test-lab-analysis" class="test-lab-note" style="display:none;margin-top:10px;"></div>
+              <p class="session-hint" style="margin-top:8px;color:#047857;">⏭️ Skips ₹ above current best · biases next tries lower</p>
+            </div>
+            <div class="opt-section">
+              <label class="opt-label" for="test-custom-text">✏️ Text on image (optional)</label>
+              <input type="text" id="test-custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING">
             </div>
           </div>
           <!-- /test-tab-panel -->

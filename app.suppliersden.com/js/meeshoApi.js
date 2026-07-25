@@ -109,7 +109,7 @@ const MeeshoAPI = {
 
   // Keep generateVariation for fallback but use minimal by default
   generateVariation: async function (originalBlob, seed, strategy, bestParams) {
-    return this.generateVariationFull(originalBlob, seed);
+    return this.generateVariationFull(originalBlob, seed, bestParams);
   },
 
   init: function () {
@@ -992,8 +992,183 @@ const MeeshoAPI = {
     };
   },
 
+  /**
+   * Test Lab only — same pipeline as smartSearch but skips higher ₹ once a best is known
+   * and biases later generations toward smaller borders / lower KB.
+   */
+  smartSearchAdaptive: async function (
+    originalBlob,
+    targetShipping,
+    maxAttempts,
+    onProgress,
+    onFound,
+    shouldStopFn,
+  ) {
+    console.log(
+      `🧪 Adaptive Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
+    );
+    this.syncCatalogPricing();
+
+    if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
+      await ImageGenerator.preloadBadges();
+    }
+
+    const results = [];
+    let bestResult = null;
+    let bestShipping = null;
+    let attempt = 0;
+    let noPidCount = 0;
+    let skipHigherCount = 0;
+    let uploadFailures = 0;
+    let lowBiasMode = false;
+    const liveReady = this.isReady();
+    const noSessionFailLimit = 5;
+
+    const reportProgress = () => {
+      if (onProgress) {
+        onProgress(
+          attempt,
+          maxAttempts,
+          bestShipping,
+          noPidCount,
+          skipHigherCount,
+        );
+      }
+    };
+
+    while (attempt < maxAttempts) {
+      if (shouldStopFn && shouldStopFn()) {
+        console.log("⏹️ Stopped");
+        break;
+      }
+      attempt++;
+      reportProgress();
+
+      try {
+        const variation = await this.generateVariation(
+          originalBlob,
+          attempt,
+          null,
+          lowBiasMode ? { lowBias: true } : null,
+        );
+        if (!variation?.blob) continue;
+
+        const roughEst = this.roughEstShippingFromBlob(variation.blob);
+        if (bestShipping != null && roughEst > bestShipping + 4) {
+          skipHigherCount++;
+          console.log(
+            `⏭️ [${attempt}] est ₹${roughEst} > best ₹${bestShipping} — skip gen`,
+          );
+          continue;
+        }
+
+        const imageUrl = await this.uploadImage(
+          variation.blob,
+          `tv${attempt}.jpg`,
+        );
+        if (!imageUrl) {
+          uploadFailures++;
+          const localResult = this.buildLocalSearchResult(variation, attempt, {
+            uploadFailed: true,
+          });
+          results.push(localResult);
+          if (!liveReady && uploadFailures >= noSessionFailLimit) break;
+          continue;
+        }
+        uploadFailures = 0;
+
+        const priceData = await this.getShippingCharges(imageUrl);
+        if (!priceData || priceData.shippingCharges == null) {
+          const localResult = this.buildLocalSearchResult(variation, attempt, {
+            pricingImageUrl: imageUrl,
+            uploadedUrl: imageUrl,
+            priceFailed: true,
+          });
+          results.push(localResult);
+          noPidCount++;
+          continue;
+        }
+
+        const pid = priceData.duplicatePid;
+        const shipping = priceData.shippingCharges;
+
+        if (bestShipping != null && shipping > bestShipping) {
+          skipHigherCount++;
+          console.log(
+            `⏭️ [${attempt}] ₹${shipping} > best ₹${bestShipping} — skipped higher`,
+          );
+          continue;
+        }
+
+        const result = {
+          name: `Var-${attempt}`,
+          dataUrl: variation.dataUrl,
+          layers: variation.layers,
+          pricingImageUrl: imageUrl,
+          uploadedUrl: imageUrl,
+          shippingCost: shipping,
+          duplicatePid: pid || null,
+          isVerified: !!pid,
+          liveVerified: true,
+          liveTotalPrice: priceData.totalPrice,
+          meeshoPriceUsed: priceData.priceUsed,
+          noPid: !pid,
+        };
+        results.push(result);
+
+        if (!pid) noPidCount++;
+
+        if (bestShipping == null || shipping < bestShipping) {
+          bestShipping = shipping;
+          bestResult = result;
+          lowBiasMode = true;
+          console.log(`⭐ Adaptive best: ₹${shipping}`);
+        }
+
+        if (shipping <= targetShipping && onFound) onFound(result);
+
+        await new Promise((r) => setTimeout(r, 20));
+      } catch (e) {
+        console.error(`[${attempt}]`, e.message);
+      }
+    }
+
+    results.sort((a, b) => {
+      const av = a.isVerified ? 0 : a.shippingCost > 0 ? 1 : 2;
+      const bv = b.isVerified ? 0 : b.shippingCost > 0 ? 1 : 2;
+      if (av !== bv) return av - bv;
+      const aPrice = a.shippingCost > 0 ? a.shippingCost : a.estShipping || 999;
+      const bPrice = b.shippingCost > 0 ? b.shippingCost : b.estShipping || 999;
+      return aPrice - bPrice;
+    });
+
+    if (results.length) {
+      await this.confirmLiveShippingForResults(results);
+    }
+
+    const resultLimit = Math.min(
+      Math.max(parseInt(maxAttempts, 10) || this.MAX_RESULT_VARIANTS, 1),
+      this.MAX_RESULT_VARIANTS,
+    );
+
+    return {
+      success: results.length > 0,
+      results: results.slice(0, resultLimit),
+      bestResult: results[0] || bestResult,
+      targetReached:
+        results[0]?.shippingCost > 0 &&
+        results[0]?.shippingCost <= targetShipping,
+      attempts: attempt,
+      noPidCount,
+      skipHigherCount,
+      verifiedCount: results.filter((r) => r.isVerified).length,
+    };
+  },
+
   // Generate variation with random border 20-80px and badges 50-200px
-  generateVariationFull: async function (originalBlob, seed) {
+  generateVariationFull: async function (originalBlob, seed, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const lowBias = !!opts.lowBias;
     return new Promise((resolve, reject) => {
       const img = new Image();
       const objectUrl = URL.createObjectURL(originalBlob);
@@ -1002,7 +1177,9 @@ const MeeshoAPI = {
         try {
           const w = img.width;
           const h = img.height;
-          const quality = 0.75 + Math.random() * 0.15;
+          const quality = lowBias
+            ? 0.6 + Math.random() * 0.12
+            : 0.75 + Math.random() * 0.15;
 
           const productCanvas = document.createElement("canvas");
           productCanvas.width = w;
@@ -1011,7 +1188,9 @@ const MeeshoAPI = {
           productCtx.drawImage(img, 0, 0);
           const productOnly = productCanvas.toDataURL("image/jpeg", quality);
 
-          const border = 20 + Math.floor(Math.random() * 60);
+          const border = lowBias
+            ? 16 + Math.floor(Math.random() * 20)
+            : 20 + Math.floor(Math.random() * 60);
           const finalW = w + border * 2;
           const finalH = h + border * 2;
 
@@ -1069,7 +1248,9 @@ const MeeshoAPI = {
           this.addNoise(noStickersCtx, finalW, finalH, seed);
           const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
-          const badgeCount = 2 + Math.floor(Math.random() * 2);
+          const badgeCount = lowBias
+            ? Math.floor(Math.random() * 2)
+            : 2 + Math.floor(Math.random() * 2);
           const badgePlacements = await this.addBadges(
             ctx,
             finalW,
