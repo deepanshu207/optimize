@@ -1344,38 +1344,6 @@ Please share payment details and license key.`;
     this.setupOptimizerTabs();
   }
 
-  getTestLabOptions() {
-    const mode =
-      document.getElementById("test-lab-mode")?.value || "smart";
-    const category =
-      document.getElementById("test-lab-category")?.value || "auto";
-    const targetRaw = document.getElementById("test-lab-target")?.value;
-    const borderColor =
-      document.getElementById("test-lab-border")?.value || "#ff7900";
-    const categoryName =
-      document.getElementById("selected-category-name")?.textContent?.trim() ||
-      "";
-    const sscatId = parseInt(
-      document.getElementById("category-select")?.value,
-      10
-    );
-    const sessionReady =
-      typeof MeeshoAPI !== "undefined" && MeeshoAPI.isReady?.();
-    const liveCheckbox = document.getElementById("test-lab-live-verify");
-
-    return {
-      mode,
-      category,
-      categoryName,
-      sscatId: Number.isFinite(sscatId) ? sscatId : null,
-      targetInr: targetRaw ? parseInt(targetRaw, 10) : null,
-      borderColor,
-      liveVerify: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      phase2Live: liveCheckbox ? !!liveCheckbox.checked : !!sessionReady,
-      maxLiveVerify: window.WEB_OPTIMIZER_MODE ? 24 : 40,
-    };
-  }
-
   /**
    * TEST LAB — mirrors Live processImage but uses smartSearchAdaptive (skips higher ₹).
    * Does not modify Live tab state or MeeshoAPI.smartSearch.
@@ -1456,7 +1424,7 @@ Please share payment details and license key.`;
       100;
 
     const startTime = Date.now();
-    const renderProgress = (attempt, max, bestSoFar, noPidCount, skipHigher) => {
+    const renderProgress = (attempt, max, bestSoFar, noPidCount, skipHigher, phaseLabel) => {
       if (!processingArea || this.shouldStop) return;
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       processingArea.innerHTML = this.getSmartModeHTML(
@@ -1466,7 +1434,11 @@ Please share payment details and license key.`;
         bestSoFar,
         noPidCount,
         elapsed,
-        { testLab: true, skipHigherCount: skipHigher || 0 }
+        {
+          testLab: true,
+          skipHigherCount: skipHigher || 0,
+          phaseLabel: phaseLabel || "",
+        }
       );
       const stopBtn = document.getElementById("stop-btn");
       if (stopBtn) stopBtn.onclick = () => { this.shouldStop = true; };
@@ -1509,8 +1481,8 @@ Please share payment details and license key.`;
           blob,
           targetShipping,
           maxAttempts,
-          (attempt, max, bestSoFar, noPidCount, skipHigher) => {
-            renderProgress(attempt, max, bestSoFar, noPidCount, skipHigher);
+          (attempt, max, bestSoFar, noPidCount, skipHigher, phaseLabel) => {
+            renderProgress(attempt, max, bestSoFar, noPidCount, skipHigher, phaseLabel);
           },
           (foundResult) => {
             OptimizerUtils.showNotification(
@@ -1561,8 +1533,9 @@ Please share payment details and license key.`;
         const skipNote = result.skipHigherCount
           ? ` · ${result.skipHigherCount} higher skipped`
           : "";
+        const recoveryNote = result.recoveryTriggered ? " · recovery mode used" : "";
         OptimizerUtils.showNotification(
-          `🧪 Best: ₹${result.bestResult?.shippingCost || "—"}${skipNote}`,
+          `🧪 Best: ₹${result.bestResult?.shippingCost || "—"}${skipNote}${recoveryNote}`,
           "success"
         );
       } else if (this.testLabAnalysisPrimaryResults.length > 0) {
@@ -1920,6 +1893,7 @@ Please share payment details and license key.`;
   ) {
     const testLab = !!options.testLab;
     const skipHigherCount = options.skipHigherCount || 0;
+    const phaseLabel = options.phaseLabel || "";
     const pct = Math.round((attempt / maxAttempts) * 100);
 
     // Format elapsed time
@@ -1947,6 +1921,11 @@ Please share payment details and license key.`;
                 <p style="color:#9ca3af;font-size:11px;margin-bottom:5px;">${attempt} / ${maxAttempts}${
       noPidCount > 0 ? ` • ${noPidCount} no PID (kept)` : ""
     }${skipHigherCount > 0 ? ` • ${skipHigherCount} skipped higher` : ""}</p>
+                ${
+                  testLab && phaseLabel
+                    ? `<p style="color:#047857;font-size:11px;margin-bottom:8px;">${phaseLabel}</p>`
+                    : ""
+                }
                 <p style="color:#667eea;font-size:12px;margin-bottom:12px;">⏱️ ${timeStr}${
       estRemaining ? ` • ${estRemaining}` : ""
     }</p>
