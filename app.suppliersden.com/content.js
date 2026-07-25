@@ -1215,38 +1215,79 @@ Please share payment details and license key.`;
   }
 
   restoreTestLabFormUi() {
+    this.resetToUploadForm({ keepImage: true });
+  }
+
+  resetToUploadForm(options = {}) {
+    const keepImage = !!options.keepImage;
+
+    this.isProcessing = false;
+    this.shouldStop = false;
+    this.currentResults = [];
+    this.framedExtraResults = [];
+    this.showFramedExtras = false;
+    this.testLabResults = [];
+    this.testLabAnalysis = null;
+    this.testLabPhase2Meta = null;
+
+    if (!keepImage) {
+      this._pendingFile = null;
+      this.originalImageUrl = null;
+      if (typeof window !== "undefined") window.__webPendingFile = null;
+    }
+
+    this.closeVariantEditor();
     this.setTestLabChromeVisible(true);
+
+    const processingArea = document.getElementById("processing-area");
     const resultsArea = document.getElementById("results-area");
+    const testResultsArea = document.getElementById("test-results-area");
+    const uploadArea = document.getElementById("upload-area");
+    const previewBox = document.getElementById("preview-box");
+    const previewImg = document.getElementById("preview-img");
+    const imageInput = document.getElementById("image-input");
+    const generateBtn = document.getElementById("generate-btn");
+    const testGenBtn = document.getElementById("test-generate-btn");
+    const generateSticky = document.getElementById("generate-sticky");
+
+    if (processingArea) {
+      processingArea.style.display = "none";
+      processingArea.innerHTML = "";
+    }
     if (resultsArea) {
       resultsArea.style.display = "none";
       resultsArea.innerHTML = "";
       delete resultsArea.dataset.view;
     }
-    const testResultsArea = document.getElementById("test-results-area");
     if (testResultsArea) {
       testResultsArea.style.display = "none";
       testResultsArea.innerHTML = "";
     }
-    const previewBox = document.getElementById("preview-box");
-    const previewImg = document.getElementById("preview-img");
-    const uploadArea = document.getElementById("upload-area");
-    const generateBtn = document.getElementById("generate-btn");
-    const testGenBtn = document.getElementById("test-generate-btn");
+
     const hasFile =
-      this._pendingFile ||
-      window.__webPendingFile ||
-      document.getElementById("image-input")?.files?.[0];
+      keepImage &&
+      (this._pendingFile ||
+        window.__webPendingFile ||
+        imageInput?.files?.[0]);
+
+    if (!keepImage && imageInput) imageInput.value = "";
+    if (!keepImage) {
+      if (previewImg) previewImg.src = "";
+      if (previewBox) previewBox.style.display = "none";
+    } else if (previewBox && previewImg && this.originalImageUrl) {
+      previewImg.src = this.originalImageUrl;
+      previewBox.style.display = "block";
+    }
 
     if (uploadArea) {
       uploadArea.style.display = hasFile ? "none" : "block";
     }
-    if (previewBox && previewImg && this.originalImageUrl) {
-      previewImg.src = this.originalImageUrl;
-      previewBox.style.display = "block";
-    }
+
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
+
+    if (generateSticky) generateSticky.style.display = "";
     if (generateBtn) {
       generateBtn.style.display =
         this.getActiveOptimizerTab() === "test" ? "none" : "block";
@@ -1257,6 +1298,7 @@ Please share payment details and license key.`;
         this.getActiveOptimizerTab() === "test" ? "block" : "none";
       testGenBtn.disabled = !hasFile;
     }
+
     this.setupOptimizerTabs();
   }
 
@@ -2651,17 +2693,7 @@ Please share payment details and license key.`;
     const restartBtn = document.getElementById("restart-btn");
     if (restartBtn) {
       restartBtn.onclick = () => {
-        if (this.isTestLabResultsActive()) {
-          this.testLabResults = [];
-          this.restoreTestLabFormUi();
-          return;
-        }
-        if (window.WEB_OPTIMIZER_MODE && this.embeddedRoot) {
-          this.mountEmbedded(this.embeddedRoot);
-        } else {
-          this.closeModal();
-          setTimeout(() => this.openModal(), 200);
-        }
+        this.resetToUploadForm();
       };
     }
   }
