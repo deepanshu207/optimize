@@ -2,6 +2,7 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=45";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
@@ -120,8 +121,6 @@ function placementSize(p) {
     h: p.h || p.size || 48,
   };
 }
-
-/** Map anchor name → x/y on outer canvas. */
 export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, border = 16, outerW, outerH } = frame;
   let x = px;
@@ -219,7 +218,13 @@ async function drawPlacementsOnCtx(ctx, placements) {
   for (const p of placements) {
     if (!p || p.drawn === false) continue;
     try {
-      if (p.kind === "freeShipping") {
+      if (
+        p.kind === "priceTag" ||
+        p.kind === "curvedArrow" ||
+        p.kind === "truckIcon"
+      ) {
+        drawTallPlacement(ctx, p);
+      } else if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, p.size);
       } else if (p.num != null) {
         const badge = await loadBadge(p.num);
@@ -330,9 +335,9 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id === "showcase-satisfaction") p.label = "Satisfaction";
       else if (p.id === "lifestyle-hot") p.label = "HOT SALE";
       else if (p.id === "lifestyle-flash") p.label = "FLASH SALE";
-      else if (p.id === "tall-sale") p.label = "Sale tag";
-      else if (p.id === "tall-arrow") p.label = "Arrow ribbon";
-      else if (p.id === "tall-ship") p.label = "FREE SHIPPING";
+      else if (p.id === "tall-sale") p.label = "Price tag";
+      else if (p.id === "tall-arrow") p.label = "Arrow";
+      else if (p.id === "tall-ship") p.label = "Delivery truck";
     }
     applyAnchorToPlacement(p, layers._staticFrame);
   }

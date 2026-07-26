@@ -1,66 +1,24 @@
 /**
  * Web-only tall portrait promo frames — 703×1024 blue border + corner badges @ ₹50 band.
- * Isolated from Live Meesho hunt and analysis tallFrame strategy.
+ * Layout matches competitor reference: thick blue frame, white mat, full product, 3 corner icons.
  */
+import { imageToWhiteCanvas } from "./lib/canvas-utils.js?v=45";
+import { compressFramedToKb } from "./lib/encoder.js?v=45";
+import { estimateImageShipping } from "./lib/shipping.js?v=45";
 import {
-  imageToWhiteCanvas,
-  trimMargins,
-  isTallPortrait,
-} from "./lib/canvas-utils.js?v=44";
-import { compressFramedToKb } from "./lib/encoder.js?v=44";
-import { estimateImageShipping } from "./lib/shipping.js?v=44";
-
-/** HOT SALE red tag, star ribbon — truck drawn procedurally. */
-export const TALL_STATIC_BADGES = {
-  saleTag: 19,
-  arrow: 5,
-};
+  drawPriceTag,
+  drawCurvedArrow,
+  drawDeliveryTruck,
+  drawTallPlacement,
+} from "./tallStaticBadges.mjs?v=45";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
 export const TALL_STATIC_VARIANT_COUNT = 25;
 
 const BORDER_BLUE = "#add8e6";
-const WHITE_PAD = 8;
-
-const badgeCache = {};
-
-function assetUrl(relative) {
-  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.assetUrl) {
-    return MeeshoAPI.assetUrl(relative);
-  }
-  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-    return chrome.runtime.getURL(relative);
-  }
-  return relative;
-}
-
-async function loadBadge(num) {
-  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.loadBadge) {
-    return MeeshoAPI.loadBadge(num);
-  }
-  if (badgeCache[num]) return badgeCache[num];
-  const src = assetUrl("Badge/badge" + num + ".png");
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      badgeCache[num] = img;
-      resolve(img);
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-async function preloadTallStaticBadges() {
-  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.preloadBadges) {
-    await MeeshoAPI.preloadBadges();
-    return;
-  }
-  await Promise.all(
-    Object.values(TALL_STATIC_BADGES).map((n) => loadBadge(n)),
-  );
-}
+const BLUE_PCT = 0.17;
+const WHITE_PCT = 0.04;
 
 function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -73,65 +31,43 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
   return tiers;
 }
 
-function drawTruckIcon(ctx, cx, cy, size) {
-  const w = size * 0.42;
-  const h = size * 0.22;
-  const x = cx - w / 2;
-  const y = cy - h / 2 + size * 0.04;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x, y + h * 0.35, w * 0.62, h * 0.55);
-  ctx.fillRect(x + w * 0.58, y + h * 0.5, w * 0.38, h * 0.4);
-  ctx.beginPath();
-  ctx.arc(x + w * 0.22, y + h * 0.95, h * 0.18, 0, Math.PI * 2);
-  ctx.arc(x + w * 0.78, y + h * 0.95, h * 0.18, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawFreeShippingCircle(ctx, x, y, size) {
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  const r = size / 2;
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#e53935";
-  ctx.fill();
-  ctx.lineWidth = Math.max(2, Math.round(size * 0.04));
-  ctx.strokeStyle = "#ffffff";
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  const fs = Math.max(6, Math.round(size * 0.1));
-  ctx.font = `bold ${fs}px system-ui,sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("FREE", cx, cy - size * 0.14);
-  ctx.fillText("SHIPPING", cx, cy - size * 0.02);
-  drawTruckIcon(ctx, cx, cy + size * 0.14, size);
-  ctx.restore();
-}
-
 /**
- * Fixed 703×1024 — thick blue outer, white mat, tall product centered.
+ * Screenshot-style frame scaled to exactly 703×1024 (same as low_*_tall hunt layout).
  */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
-  const blueBorder = Math.max(52, Math.round(Math.min(outerW, outerH) * 0.1));
-  const border = blueBorder + WHITE_PAD;
-  const innerW = outerW - border * 2;
-  const innerH = outerH - border * 2;
+  const white = imageToWhiteCanvas(img);
 
-  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.035);
-  const topM = 0.12;
-  const bottomM = 0.04;
-  const sideM = 0.08;
-  const areaW = innerW * (1 - sideM * 2);
-  const areaH = innerH * (1 - topM - bottomM);
-  const scale = Math.min(areaW / trimmed.width, areaH / trimmed.height);
-  const dw = Math.round(trimmed.width * scale);
-  const dh = Math.round(trimmed.height * scale);
-  const px = border + Math.round((innerW - dw) / 2);
-  const py = border + Math.round(innerH * topM + (areaH - dh) / 2);
+  let w = white.width;
+  let h = white.height;
+  const cap = 920;
+  if (Math.max(w, h) > cap) {
+    const s = cap / Math.max(w, h);
+    w = Math.round(w * s);
+    h = Math.round(h * s);
+  }
+
+  const minDim = Math.min(w, h);
+  const blueOuter = Math.max(24, Math.round(minDim * BLUE_PCT * 1.06));
+  const whitePad = Math.max(10, Math.round(minDim * WHITE_PCT));
+  const inset = blueOuter + whitePad;
+
+  const framedW = w + inset * 2;
+  const framedH = h + inset * 2;
+  const scale = Math.min(outerW / framedW, outerH / framedH);
+
+  const outFramedW = Math.round(framedW * scale);
+  const outFramedH = Math.round(framedH * scale);
+  const ox = Math.round((outerW - outFramedW) / 2);
+  const oy = Math.round((outerH - outFramedH) / 2);
+
+  const outBlue = Math.round(blueOuter * scale);
+  const outInset = Math.round(inset * scale);
+  const dw = Math.round(w * scale);
+  const dh = Math.round(h * scale);
+  const px = ox + outInset;
+  const py = oy + outInset;
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -140,15 +76,21 @@ function buildTallStaticFrameCanvas(img) {
 
   ctx.fillStyle = BORDER_BLUE;
   ctx.fillRect(0, 0, outerW, outerH);
+
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(blueBorder, blueBorder, outerW - blueBorder * 2, outerH - blueBorder * 2);
+  ctx.fillRect(
+    ox + outBlue,
+    oy + outBlue,
+    outFramedW - outBlue * 2,
+    outFramedH - outBlue * 2,
+  );
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(trimmed, 0, 0, trimmed.width, trimmed.height, px, py, dw, dh);
+  ctx.drawImage(white, 0, 0, white.width, white.height, px, py, dw, dh);
 
   ctx.strokeStyle = "#9ec5e8";
-  ctx.lineWidth = Math.max(2, Math.round(Math.min(dw, dh) * 0.006));
+  ctx.lineWidth = Math.max(2, Math.round(minDim * scale * 0.006));
   ctx.strokeRect(px - 1, py - 1, dw + 2, dh + 2);
 
   return {
@@ -157,63 +99,62 @@ function buildTallStaticFrameCanvas(img) {
     py,
     dw,
     dh,
-    border: blueBorder,
-    trimmed,
+    border: outBlue,
+    trimmed: white,
     outerW,
     outerH,
+    scale,
   };
 }
 
 function tallStaticPlacements(px, py, dw, dh, outerW, outerH) {
   const ref = Math.min(dw, dh);
-  const tagSize = Math.round(ref * 0.2);
-  const arrowSize = Math.round(ref * 0.16);
-  const shipSize = Math.round(ref * 0.18);
-  const overlap = Math.round(tagSize * 0.12);
+  const tagSize = Math.max(52, Math.round(ref * 0.14));
+  const arrowW = Math.max(44, Math.round(ref * 0.12));
+  const arrowH = Math.max(50, Math.round(ref * 0.16));
+  const truckSize = Math.max(48, Math.round(ref * 0.13));
+  const inset = Math.max(6, Math.round(tagSize * 0.06));
 
   const placements = [
     {
       id: "tall-sale",
-      label: "Sale tag",
+      label: "Price tag",
       anchor: "top-left",
-      kind: "badge",
-      num: TALL_STATIC_BADGES.saleTag,
-      w: tagSize,
-      h: tagSize,
-      x: px - overlap,
-      y: py - overlap,
+      kind: "priceTag",
+      size: tagSize,
+      x: px + inset,
+      y: py + inset,
       drawn: false,
     },
     {
       id: "tall-arrow",
-      label: "Arrow ribbon",
+      label: "Arrow",
       anchor: "top-right",
-      kind: "badge",
-      num: TALL_STATIC_BADGES.arrow,
-      w: arrowSize,
-      h: arrowSize,
-      x: px + dw - arrowSize + overlap,
-      y: py - Math.round(overlap * 0.5),
+      kind: "curvedArrow",
+      w: arrowW,
+      h: arrowH,
+      x: px + dw - arrowW - inset,
+      y: py + inset,
       drawn: false,
     },
     {
       id: "tall-ship",
-      label: "FREE SHIPPING",
+      label: "Delivery truck",
       anchor: "bottom-left",
-      kind: "freeShipping",
-      size: shipSize,
-      x: px - Math.round(shipSize * 0.06),
-      y: py + dh - shipSize + Math.round(shipSize * 0.08),
+      kind: "truckIcon",
+      size: truckSize,
+      x: px + inset,
+      y: py + dh - truckSize - inset,
       drawn: false,
     },
   ];
 
   const pad = 3;
   for (const p of placements) {
-    const w = p.w || p.size;
-    const h = p.h || p.size;
-    p.x = Math.max(pad, Math.min(p.x, outerW - w - pad));
-    p.y = Math.max(pad, Math.min(p.y, outerH - h - pad));
+    const pw = p.w || p.size;
+    const ph = p.h || p.size;
+    p.x = Math.max(pad, Math.min(p.x, outerW - pw - pad));
+    p.y = Math.max(pad, Math.min(p.y, outerH - ph - pad));
   }
   return placements;
 }
@@ -223,16 +164,8 @@ async function drawPlacements(ctx, placements) {
   for (const p of placements) {
     const copy = { ...p };
     try {
-      if (p.kind === "freeShipping") {
-        drawFreeShippingCircle(ctx, p.x, p.y, p.size);
-        copy.drawn = true;
-      } else if (p.kind === "badge" && p.num != null) {
-        const badge = await loadBadge(p.num);
-        if (badge) {
-          ctx.drawImage(badge, p.x, p.y, p.w, p.h);
-          copy.drawn = true;
-        }
-      }
+      drawTallPlacement(ctx, p);
+      copy.drawn = true;
     } catch (e) {}
     out.push(copy);
   }
@@ -309,7 +242,6 @@ async function buildTallStaticLayers(img) {
       borderPx: border,
       outerW,
       outerH,
-      tallPortrait: isTallPortrait(img),
     },
   };
 }
@@ -323,7 +255,6 @@ export async function buildTallStaticVariants(img, options = {}) {
     count = TALL_STATIC_VARIANT_COUNT,
   } = options;
 
-  await preloadTallStaticBadges();
   onProgress("Building tall promo frames…");
 
   const { canvas, layers, meta } = await buildTallStaticLayers(img);
