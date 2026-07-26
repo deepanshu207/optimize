@@ -1,17 +1,27 @@
 /**
- * Web-only tall portrait promo — exact reference layout @ 703×1024.
- * Thick blue border · white mat · full product · 3 corner badges on white mat.
+ * Web-only tall portrait promo — pixel-match reference @ 703×1024.
+ * Screenshot-style frame (low_*_tall) + 3 corner badges on white mat.
  */
-import { imageToWhiteCanvas } from "./lib/canvas-utils.js?v=46";
-import { compressFramedToKb } from "./lib/encoder.js?v=46";
-import { estimateImageShipping } from "./lib/shipping.js?v=46";
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=46";
+import {
+  imageToWhiteCanvas,
+  trimMargins,
+} from "./lib/canvas-utils.js?v=47";
+import { compressFramedToKb } from "./lib/encoder.js?v=47";
+import { estimateImageShipping } from "./lib/shipping.js?v=47";
+import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=47";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
 export const TALL_STATIC_VARIANT_COUNT = 25;
 
-/** Light blue border — matches reference screenshot. */
+/** PNG badge ids — same pool as low-shipping hunt; fallback to procedural. */
+export const TALL_STATIC_BADGES = {
+  tag: 3,
+  arrow: 7,
+  ship: 12,
+};
+
+const BORDER_BLUES = ["#9ec5e8", "#add8e6", "#b8d4e8"];
 const BORDER_BLUE = "#add8e6";
 
 function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
@@ -26,30 +36,35 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
 }
 
 /**
- * Build exactly 703×1024 — blue fills entire canvas, white mat inside, product maximized.
+ * Build fixed 703×1024 — blue border edge-to-edge, white mat, scaled product.
+ * Border math matches low_*_tall hunt profiles (buildScreenshotFramedCanvas).
  */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
 
-  // Thick uniform blue border (~10.5% of short side) like reference
-  const blueOuter = Math.round(Math.min(outerW, outerH) * 0.105);
-  const whitePad = Math.max(10, Math.round(blueOuter * 0.16));
+  const white = trimMargins(imageToWhiteCanvas(img), 0.02);
+
+  const bluePct = Math.min(0.22, 0.17 * 1.06);
+  const whitePct = 0.045;
+  const ref = Math.min(outerW, outerH);
+  const blueOuter = Math.max(28, Math.round(ref * bluePct));
+  const whitePad = Math.max(10, Math.round(ref * whitePct));
+  const inset = blueOuter + whitePad;
+
+  const innerW = outerW - inset * 2;
+  const innerH = outerH - inset * 2;
+  const scale = Math.min(innerW / white.width, innerH / white.height);
+  const sw = Math.round(white.width * scale);
+  const sh = Math.round(white.height * scale);
+  const px = inset + Math.round((innerW - sw) / 2);
+  const py = inset + Math.round((innerH - sh) / 2);
+  const minDim = Math.min(sw, sh);
 
   const whiteX = blueOuter;
   const whiteY = blueOuter;
   const whiteW = outerW - blueOuter * 2;
   const whiteH = outerH - blueOuter * 2;
-
-  const availW = whiteW - whitePad * 2;
-  const availH = whiteH - whitePad * 2;
-
-  const white = imageToWhiteCanvas(img);
-  const scale = Math.min(availW / white.width, availH / white.height);
-  const dw = Math.round(white.width * scale);
-  const dh = Math.round(white.height * scale);
-  const px = whiteX + whitePad + Math.round((availW - dw) / 2);
-  const py = whiteY + whitePad + Math.round((availH - dh) / 2);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -63,14 +78,18 @@ function buildTallStaticFrameCanvas(img) {
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(white, 0, 0, white.width, white.height, px, py, dw, dh);
+  ctx.drawImage(white, 0, 0, white.width, white.height, px, py, sw, sh);
+
+  ctx.strokeStyle = BORDER_BLUES[0];
+  ctx.lineWidth = Math.max(2, Math.round(minDim * 0.006));
+  ctx.strokeRect(px - 1, py - 1, sw + 2, sh + 2);
 
   return {
     canvas,
     px,
     py,
-    dw,
-    dh,
+    dw: sw,
+    dh: sh,
     border: blueOuter,
     whiteX,
     whiteY,
@@ -82,23 +101,26 @@ function buildTallStaticFrameCanvas(img) {
   };
 }
 
-/** Badges sit on white-mat corners (reference positions). */
+/** Badge slots — white-mat corners with reference padding. */
 function tallStaticPlacements(frame) {
-  const { whiteX, whiteY, whiteW, whiteH, outerW, outerH } = frame;
+  const { whiteX, whiteY, whiteW, whiteH, px, py, dw, dh, outerW, outerH } =
+    frame;
   const ref = Math.min(outerW, outerH);
 
-  const tagSize = Math.round(ref * 0.11);
-  const arrowW = Math.round(ref * 0.1);
-  const arrowH = Math.round(ref * 0.14);
-  const truckSize = Math.round(ref * 0.1);
-  const pad = Math.max(6, Math.round(ref * 0.012));
+  const badgeSize = Math.max(54, Math.round(Math.min(dw, dh) * 0.14));
+  const tagSize = Math.round(badgeSize * 1.05);
+  const arrowW = Math.round(ref * 0.11);
+  const arrowH = Math.round(ref * 0.15);
+  const truckSize = Math.round(badgeSize * 0.88);
+  const pad = Math.max(8, Math.round(ref * 0.014));
 
-  const placements = [
+  return [
     {
       id: "tall-sale",
       label: "Price tag",
       anchor: "top-left",
       kind: "priceTag",
+      num: TALL_STATIC_BADGES.tag,
       size: tagSize,
       x: whiteX + pad,
       y: whiteY + pad,
@@ -109,6 +131,7 @@ function tallStaticPlacements(frame) {
       label: "Arrow",
       anchor: "top-right",
       kind: "curvedArrow",
+      num: TALL_STATIC_BADGES.arrow,
       w: arrowW,
       h: arrowH,
       x: whiteX + whiteW - arrowW - pad,
@@ -120,14 +143,13 @@ function tallStaticPlacements(frame) {
       label: "Delivery truck",
       anchor: "bottom-left",
       kind: "truckIcon",
+      num: TALL_STATIC_BADGES.ship,
       size: truckSize,
       x: whiteX + pad,
       y: whiteY + whiteH - truckSize - pad,
       drawn: false,
     },
   ];
-
-  return placements;
 }
 
 async function drawPlacements(ctx, placements) {
@@ -135,9 +157,10 @@ async function drawPlacements(ctx, placements) {
   for (const p of placements) {
     const copy = { ...p };
     try {
-      drawTallPlacement(ctx, p);
-      copy.drawn = true;
-    } catch (e) {}
+      copy.drawn = await drawTallPlacement(ctx, p);
+    } catch (e) {
+      copy.drawn = false;
+    }
     out.push(copy);
   }
   return out;
@@ -148,6 +171,12 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
 }
 
 async function buildTallStaticLayers(img) {
+  await Promise.all([
+    loadTallBadge(TALL_STATIC_BADGES.tag),
+    loadTallBadge(TALL_STATIC_BADGES.arrow),
+    loadTallBadge(TALL_STATIC_BADGES.ship),
+  ]);
+
   const built = buildTallStaticFrameCanvas(img);
   const {
     canvas,
@@ -235,9 +264,6 @@ async function buildTallStaticLayers(img) {
   };
 }
 
-/**
- * Generate tall static promo variants (40–52 KB) — ₹50 band.
- */
 export async function buildTallStaticVariants(img, options = {}) {
   const {
     onProgress = () => {},
