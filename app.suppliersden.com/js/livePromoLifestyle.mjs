@@ -2,12 +2,9 @@
  * Web-only lifestyle promo frames — competitor-style solid green border @ 48–54 KB.
  * Keeps original scene (no white flatten); isolated from tall ₹50 and showcase paths.
  */
-import {
-  imageToCanvas,
-  trimUniformEdges,
-} from "./lib/canvas-utils.js?v=39";
-import { compressFramedToKb } from "./lib/encoder.js?v=39";
-import { estimateImageShipping } from "./lib/shipping.js?v=39";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=40";
+import { compressFramedToKb } from "./lib/encoder.js?v=40";
+import { estimateImageShipping } from "./lib/shipping.js?v=40";
 
 /** HOT SALE, FLASH SALE — match competitor listing stickers. */
 export const PROMO_LIFESTYLE_BADGES = {
@@ -15,12 +12,13 @@ export const PROMO_LIFESTYLE_BADGES = {
   flashSale: 22,
 };
 
-export const PROMO_LIFESTYLE_MAX_W = 720;
-export const PROMO_LIFESTYLE_MAX_H = 960;
-export const PROMO_LIFESTYLE_BORDER_RATIO = 0.055;
+/** Cap outer canvas so JPEG lands in 48–54 KB with lifestyle detail. */
+export const PROMO_LIFESTYLE_MAX_W = 640;
+export const PROMO_LIFESTYLE_MAX_H = 853;
+export const PROMO_LIFESTYLE_BORDER_RATIO = 0.05;
 export const PROMO_LIFESTYLE_VARIANT_COUNT = 25;
 
-const BORDER_COLOR = "#22c55e";
+const BORDER_COLOR = "#32d74b";
 
 const badgeCache = {};
 
@@ -72,53 +70,31 @@ function promoKbTiers(count = PROMO_LIFESTYLE_VARIANT_COUNT) {
   return tiers;
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function drawFreeShippingSticker(ctx, x, y, w, h) {
-  roundRect(ctx, x, y, w, h, 6);
-  ctx.fillStyle = "#16a34a";
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = `bold ${Math.max(10, Math.round(h * 0.42))}px system-ui,sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("FREE SHIPPING", x + w / 2, y + h / 2);
-}
-
 /**
- * Solid green border around lifestyle photo — no white mat / letterbox.
+ * Solid neon-green border around full lifestyle photo — no crop / white mat.
  */
 function buildPromoLifestyleCanvas(img) {
-  const base = trimUniformEdges(imageToCanvas(img, 1400), 0.018);
+  const base = imageToCanvas(img, 1200);
   let dw = base.width;
   let dh = base.height;
 
-  const borderGuess = Math.max(
-    20,
-    Math.round(Math.min(dw, dh) * PROMO_LIFESTYLE_BORDER_RATIO),
+  let border = Math.max(18, Math.round(Math.min(dw, dh) * PROMO_LIFESTYLE_BORDER_RATIO));
+  let outerW = dw + border * 2;
+  let outerH = dh + border * 2;
+
+  const fitScale = Math.min(
+    PROMO_LIFESTYLE_MAX_W / outerW,
+    PROMO_LIFESTYLE_MAX_H / outerH,
+    1,
   );
-  const maxDw = PROMO_LIFESTYLE_MAX_W - borderGuess * 2;
-  const maxDh = PROMO_LIFESTYLE_MAX_H - borderGuess * 2;
-  const fitScale = Math.min(maxDw / dw, maxDh / dh, 1);
   if (fitScale < 1) {
     dw = Math.round(dw * fitScale);
     dh = Math.round(dh * fitScale);
+    border = Math.max(16, Math.round(border * fitScale));
+    outerW = dw + border * 2;
+    outerH = dh + border * 2;
   }
 
-  const border = Math.max(
-    20,
-    Math.round(Math.min(dw, dh) * PROMO_LIFESTYLE_BORDER_RATIO),
-  );
-  const outerW = dw + border * 2;
-  const outerH = dh + border * 2;
   const px = border;
   const py = border;
 
@@ -135,45 +111,66 @@ function buildPromoLifestyleCanvas(img) {
   return { canvas, px, py, dw, dh, border, base, outerW, outerH };
 }
 
-/** HOT SALE top-right, FLASH SALE mid-left, FREE SHIPPING bottom — on green strip. */
-function promoPlacements(px, py, dw, dh, border, outerW, outerH) {
-  const hotSize = Math.min(
-    Math.max(44, Math.round(border * 1.15)),
-    Math.round(outerW / 4.5),
-  );
-  const flashSize = Math.max(36, Math.round(hotSize * 0.88));
-  const overlap = Math.round(hotSize * 0.28);
+/**
+ * Reference layout (competitor): badges sit on the photo area.
+ * HOT SALE top-right · FLASH SALE left waist · FREE SHIPPING bottom-right circle.
+ */
+function promoPlacements(px, py, dw, dh) {
+  const ref = Math.min(dw, dh);
+  const hotSize = Math.round(ref * 0.19);
+  const flashW = Math.round(ref * 0.24);
+  const flashH = Math.round(flashW * 0.75);
+  const shipSize = Math.round(ref * 0.17);
 
-  const shipW = Math.round(dw * 0.46);
-  const shipH = Math.max(22, Math.round(border * 0.72));
-
-  const placements = [
+  return [
     {
+      kind: "badge",
       num: PROMO_LIFESTYLE_BADGES.hotSale,
-      size: hotSize,
-      x: px + dw - hotSize + overlap,
-      y: py - overlap,
+      w: hotSize,
+      h: hotSize,
+      x: px + dw - hotSize - Math.round(dw * 0.02),
+      y: py + Math.round(dh * 0.03),
       drawn: false,
     },
     {
+      kind: "badge",
       num: PROMO_LIFESTYLE_BADGES.flashSale,
-      size: flashSize,
-      x: px - Math.round(flashSize * 0.35),
-      y: py + Math.round(dh * 0.38),
+      w: flashW,
+      h: flashH,
+      x: px - Math.round(flashW * 0.12),
+      y: py + Math.round(dh * 0.4) - Math.round(flashH / 2),
+      drawn: false,
+    },
+    {
+      kind: "freeShipping",
+      size: shipSize,
+      x: px + dw - shipSize - Math.round(dw * 0.04),
+      y: py + dh - shipSize - Math.round(dh * 0.06),
       drawn: false,
     },
   ];
+}
 
-  const pad = 3;
-  for (const p of placements) {
-    p.x = Math.max(pad, Math.min(p.x, outerW - p.size - pad));
-    p.y = Math.max(pad, Math.min(p.y, outerH - p.size - pad));
-  }
-
-  const shipX = px + Math.round((dw - shipW) / 2);
-  const shipY = py + dh - shipH - Math.round(border * 0.35);
-
-  return { placements, shipX, shipY, shipW, shipH };
+function drawFreeShippingCircle(ctx, x, y, size) {
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  const r = size / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#e53935";
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, Math.round(size * 0.045));
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  const fs = Math.max(7, Math.round(size * 0.11));
+  ctx.font = `bold ${fs}px system-ui,sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("FREE", cx, cy - size * 0.08);
+  ctx.fillText("SHIPPING", cx, cy + size * 0.1);
+  ctx.restore();
 }
 
 async function drawPlacements(ctx, placements) {
@@ -181,10 +178,15 @@ async function drawPlacements(ctx, placements) {
   for (const p of placements) {
     const copy = { ...p };
     try {
-      const badge = await loadBadge(p.num);
-      if (badge) {
-        ctx.drawImage(badge, p.x, p.y, p.size, p.size);
+      if (p.kind === "freeShipping") {
+        drawFreeShippingCircle(ctx, p.x, p.y, p.size);
         copy.drawn = true;
+      } else if (p.kind === "badge") {
+        const badge = await loadBadge(p.num);
+        if (badge) {
+          ctx.drawImage(badge, p.x, p.y, p.w, p.h);
+          copy.drawn = true;
+        }
       }
     } catch (e) {}
     out.push(copy);
@@ -192,22 +194,40 @@ async function drawPlacements(ctx, placements) {
   return out;
 }
 
-function dataUrlFromCanvas(canvas, quality = 0.8) {
+function dataUrlFromCanvas(canvas, quality = 0.78) {
   return canvas.toDataURL("image/jpeg", quality);
+}
+
+function scaleCanvas(src, scale) {
+  const w = Math.max(1, Math.round(src.width * scale));
+  const h = Math.max(1, Math.round(src.height * scale));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
+
+/** Shrink canvas until framed JPEG fits target KB (real Meesho band). */
+async function compressPromoToKb(canvas, targetKb) {
+  let work = canvas;
+  let blob = await compressFramedToKb(work, targetKb);
+  let attempts = 0;
+  while (blob.size > targetKb * 1024 && attempts < 6 && work.width > 320) {
+    work = scaleCanvas(work, 0.92);
+    blob = await compressFramedToKb(work, targetKb);
+    attempts++;
+  }
+  return { blob, canvas: work };
 }
 
 async function buildPromoLayers(img) {
   const built = buildPromoLifestyleCanvas(img);
   const { canvas, px, py, dw, dh, border, base, outerW, outerH } = built;
-  const { placements, shipX, shipY, shipW, shipH } = promoPlacements(
-    px,
-    py,
-    dw,
-    dh,
-    border,
-    outerW,
-    outerH,
-  );
+  const placements = promoPlacements(px, py, dw, dh);
 
   const noStickersCanvas = document.createElement("canvas");
   noStickersCanvas.width = canvas.width;
@@ -217,7 +237,6 @@ async function buildPromoLayers(img) {
 
   const fullCtx = canvas.getContext("2d");
   const badgePlacements = await drawPlacements(fullCtx, placements);
-  drawFreeShippingSticker(fullCtx, shipX, shipY, shipW, shipH);
   const full = dataUrlFromCanvas(canvas);
 
   const productOnlyCanvas = document.createElement("canvas");
@@ -264,26 +283,33 @@ export async function buildPromoLifestyleVariants(img, options = {}) {
   await preloadPromoBadges();
   onProgress("Building lifestyle promo frames…");
 
-  const { canvas, layers, meta } = await buildPromoLayers(img);
+  const { canvas: sourceCanvas, layers, meta } = await buildPromoLayers(img);
   const kbTiers = promoKbTiers(count);
   const variants = [];
 
   for (let i = 0; i < kbTiers.length; i++) {
     const kb = kbTiers[i];
     onProgress(`Lifestyle promo · ${kb}KB (${i + 1}/${kbTiers.length})`);
-    const blob = await compressFramedToKb(canvas, kb);
+    const { blob, canvas: outCanvas } = await compressPromoToKb(sourceCanvas, kb);
     const v = {
       blob,
       bytes: blob.size,
-      width: meta.outerW,
-      height: meta.outerH,
+      width: outCanvas.width,
+      height: outCanvas.height,
       path: "lifestyle_promo",
       mode: "Lifestyle Promo",
-      label: `Lifestyle Promo · ${meta.outerW}×${meta.outerH} · ${kb}KB`,
+      label: `Lifestyle Promo · ${outCanvas.width}×${outCanvas.height} · ${kb}KB`,
       recommended: kb === 50 || kb === 52,
       lowest: i === 0,
       layers,
-      meta: { ...meta, targetKb: kb },
+      meta: {
+        ...meta,
+        targetKb: kb,
+        outerW: outCanvas.width,
+        outerH: outCanvas.height,
+        canvasW: outCanvas.width,
+        canvasH: outCanvas.height,
+      },
     };
     v.kb = Math.ceil(blob.size / 1024);
     v.estInr = estimateImageShipping(v);
