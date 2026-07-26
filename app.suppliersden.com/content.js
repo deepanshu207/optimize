@@ -54,12 +54,12 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=37";
+      return "/js/liveAnalysisBridge.mjs?v=38";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=37");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=38");
     }
-    return "/js/liveAnalysisBridge.mjs?v=37";
+    return "/js/liveAnalysisBridge.mjs?v=38";
   }
 
   async preloadLiveAnalysisModule() {
@@ -104,6 +104,7 @@ class MeeshoShippingOptimizer {
   }
 
   async generateShowcaseFrames() {
+    if (!window.WEB_OPTIMIZER_MODE) return;
     if (this.isGeneratingShowcase) return;
 
     const file = await this.getImageFileForShowcase();
@@ -120,9 +121,9 @@ class MeeshoShippingOptimizer {
       processingArea.style.display = "block";
       processingArea.innerHTML = `
         <div style="text-align:center;padding:24px 16px;">
-          <motion.div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building showcase frames…</motion.div>
-          <div style="font-size:12px;color:#666;">900×1200 portrait · static · no Meesho session</div>
-        </div>`.replace(/<\/?motion\.div>/g, (m) => m.replace("motion.", ""));
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building showcase frames…</div>
+          <div style="font-size:12px;color:#666;">Tight portrait frame · static · no Meesho session</div>
+        </div>`;
     }
 
     try {
@@ -157,11 +158,14 @@ class MeeshoShippingOptimizer {
   }
 
   displayLiveResultsPanel() {
+    if (!window.WEB_OPTIMIZER_MODE && !this.currentResults.length && !this.analysisPrimaryResults.length) {
+      return;
+    }
     const resultsArea = document.getElementById("results-area");
     const hasContent =
       this.currentResults.length > 0 ||
       this.analysisPrimaryResults.length > 0 ||
-      this.showcaseResults.length > 0;
+      (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0);
     if (!hasContent || !resultsArea) return;
 
     resultsArea.style.display = "block";
@@ -1975,7 +1979,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || this.showcaseResults.length > 0) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0)) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -2517,7 +2521,9 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
-    if (this.showcaseResults.length) return this.showcaseResults[0];
+    if (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length) {
+      return this.showcaseResults[0];
+    }
     return null;
   }
 
@@ -2911,7 +2917,7 @@ Please share payment details and license key.`;
       if (
         !this.currentResults.length &&
         !this.analysisPrimaryResults.length &&
-        !this.showcaseResults.length
+        !(window.WEB_OPTIMIZER_MODE && this.showcaseResults.length)
       ) {
         return;
       }
