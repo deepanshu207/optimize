@@ -2521,7 +2521,9 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
-    if (this.showcaseResults.length) return this.showcaseResults[0];
+    if (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length) {
+      return this.showcaseResults[0];
+    }
     return null;
   }
 
