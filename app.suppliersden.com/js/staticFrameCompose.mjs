@@ -2,7 +2,7 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=48";
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=49";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
@@ -124,48 +124,47 @@ function placementSize(p) {
 export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, outerW, outerH } = frame;
 
-  // Tall static: badges sit on the product photo (same as low_*_tall hunt slots).
-  if (frame.style === "tall_static" && frame.px != null) {
-    const size = Math.max(56, Math.round(Math.min(frame.dw, frame.dh) * 0.14));
-    const inset = Math.max(6, Math.round(size * 0.06));
-    const px = frame.px;
-    const py = frame.py;
-    const dw = frame.dw;
-    const dh = frame.dh;
-    let x = px + inset;
-    let y = py + inset;
+  // Tall static: badges on white-mat corners (reference layout).
+  if (frame.style === "tall_static" && frame.whiteX != null) {
+    const pad = Math.max(8, Math.round(Math.min(frame.whiteW, frame.whiteH) * 0.016));
+    const wx = frame.whiteX;
+    const wy = frame.whiteY;
+    const ww = frame.whiteW;
+    const wh = frame.whiteH;
+    let x = wx + pad;
+    let y = wy + pad;
     switch (anchor) {
       case "top-left":
-        x = px + inset;
-        y = py + inset;
+        x = wx + pad;
+        y = wy + pad;
         break;
       case "top-right":
-        x = px + dw - w - inset;
-        y = py + inset;
+        x = wx + ww - w - pad;
+        y = wy + pad;
         break;
       case "bottom-left":
-        x = px + inset;
-        y = py + dh - h - inset;
+        x = wx + pad;
+        y = wy + wh - h - pad;
         break;
       case "bottom-right":
-        x = px + dw - w - inset;
-        y = py + dh - h - inset;
+        x = wx + ww - w - pad;
+        y = wy + wh - h - pad;
         break;
       case "middle-left":
-        x = px + inset;
-        y = py + Math.round(dh / 2) - Math.round(h / 2);
+        x = wx + pad;
+        y = wy + Math.round(wh / 2) - Math.round(h / 2);
         break;
       case "middle-right":
-        x = px + dw - w - inset;
-        y = py + Math.round(dh / 2) - Math.round(h / 2);
+        x = wx + ww - w - pad;
+        y = wy + Math.round(wh / 2) - Math.round(h / 2);
         break;
       case "bottom-center":
-        x = px + Math.round(dw / 2) - Math.round(w / 2);
-        y = py + dh - h - inset;
+        x = wx + Math.round(ww / 2) - Math.round(w / 2);
+        y = wy + wh - h - pad;
         break;
       case "top-center":
-        x = px + Math.round(dw / 2) - Math.round(w / 2);
-        y = py + inset;
+        x = wx + Math.round(ww / 2) - Math.round(w / 2);
+        y = wy + pad;
         break;
       default:
         break;
@@ -274,7 +273,8 @@ async function drawPlacementsOnCtx(ctx, placements) {
       if (
         p.kind === "priceTag" ||
         p.kind === "curvedArrow" ||
-        p.kind === "truckIcon"
+        p.kind === "truckIcon" ||
+        p.id?.startsWith("tall-")
       ) {
         await drawTallPlacement(ctx, p);
       } else if (p.kind === "freeShipping") {

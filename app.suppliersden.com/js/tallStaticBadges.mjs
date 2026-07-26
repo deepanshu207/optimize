@@ -1,6 +1,8 @@
 /**
- * Tall static promo badges — PNG assets when available, procedural fallback.
- * Matches reference: red scalloped tag (TL), curved arrow (TR), truck (BL).
+ * Tall static promo badges — exact PNG assets from Badge/ folder.
+ * badge3 = red scalloped price seal (TL)
+ * badge2 = thin curved arrow toward top-right (TR)
+ * badge1 = delivery truck silhouette (BL)
  */
 
 const badgeCache = {};
@@ -23,6 +25,7 @@ export async function loadTallBadge(num) {
   const src = assetUrl("Badge/badge" + num + ".png");
   return new Promise((resolve) => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       badgeCache[num] = img;
       resolve(img);
@@ -32,13 +35,12 @@ export async function loadTallBadge(num) {
   });
 }
 
-/** Red scalloped tag + white outline + top string (reference top-left). */
+/** Procedural fallbacks only when PNG assets fail to load. */
 export function drawPriceTag(ctx, x, y, size) {
   const cx = x + size * 0.5;
   const cy = y + size * 0.56;
   const r = size * 0.34;
   ctx.save();
-  // Hanging string
   ctx.strokeStyle = "#111111";
   ctx.lineWidth = Math.max(1.2, size * 0.02);
   ctx.lineCap = "round";
@@ -46,7 +48,6 @@ export function drawPriceTag(ctx, x, y, size) {
   ctx.moveTo(cx, y + size * 0.04);
   ctx.lineTo(cx, cy - r - size * 0.02);
   ctx.stroke();
-  // Scalloped body
   ctx.beginPath();
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2 - Math.PI / 2;
@@ -68,20 +69,18 @@ export function drawPriceTag(ctx, x, y, size) {
   ctx.restore();
 }
 
-/** Hand-drawn thin curved arrow — sweeps upward toward the top-right corner. */
 export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.save();
   ctx.strokeStyle = "#111111";
   ctx.fillStyle = "#111111";
   ctx.lineWidth = Math.max(1.2, w * 0.028);
   ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  const x0 = x + w * 0.12;
-  const y0 = y + h * 0.82;
-  const x1 = x + w * 0.94;
-  const y1 = y + h * 0.06;
-  const cx = x + w * 0.42;
-  const cy = y + h * 0.98;
+  const x0 = x + w * 0.1;
+  const y0 = y + h * 0.78;
+  const x1 = x + w * 0.92;
+  const y1 = y + h * 0.08;
+  const cx = x + w * 0.38;
+  const cy = y + h * 0.92;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
@@ -97,39 +96,27 @@ export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/** Small black delivery truck silhouette (reference bottom-left). */
 export function drawDeliveryTruck(ctx, x, y, size) {
   ctx.save();
-  const bx = x + size * 0.18;
-  const by = y + size * 0.34;
-  const bw = size * 0.68;
-  const bh = size * 0.36;
+  const bx = x + size * 0.12;
+  const by = y + size * 0.28;
+  const bw = size * 0.76;
+  const bh = size * 0.4;
   ctx.fillStyle = "#111111";
-  ctx.fillRect(bx, by + bh * 0.42, bw * 0.52, bh * 0.45);
-  ctx.fillRect(bx + bw * 0.48, by + bh * 0.52, bw * 0.44, bh * 0.35);
-  const wr = bh * 0.12;
+  ctx.fillRect(bx, by + bh * 0.38, bw * 0.5, bh * 0.5);
+  ctx.fillRect(bx + bw * 0.46, by + bh * 0.48, bw * 0.46, bh * 0.38);
+  ctx.fillRect(bx + bw * 0.46, by + bh * 0.1, bw * 0.22, bh * 0.42);
+  const wr = bh * 0.11;
   ctx.beginPath();
-  ctx.arc(bx + bw * 0.18, by + bh * 0.92, wr, 0, Math.PI * 2);
-  ctx.arc(bx + bw * 0.7, by + bh * 0.92, wr, 0, Math.PI * 2);
+  ctx.arc(bx + bw * 0.16, by + bh * 0.95, wr, 0, Math.PI * 2);
+  ctx.arc(bx + bw * 0.72, by + bh * 0.95, wr, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
 export async function drawTallPlacement(ctx, p) {
   if (!p) return false;
-  // Procedural icons match the tall promo reference (tag / arrow / truck).
-  if (p.kind === "priceTag") {
-    drawPriceTag(ctx, p.x, p.y, p.size);
-    return true;
-  }
-  if (p.kind === "curvedArrow") {
-    drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
-    return true;
-  }
-  if (p.kind === "truckIcon") {
-    drawDeliveryTruck(ctx, p.x, p.y, p.size);
-    return true;
-  }
+
   if (p.num != null) {
     const badge = await loadTallBadge(p.num);
     if (badge) {
@@ -138,6 +125,19 @@ export async function drawTallPlacement(ctx, p) {
       ctx.drawImage(badge, p.x, p.y, w, h);
       return true;
     }
+  }
+
+  if (p.kind === "priceTag" || p.id === "tall-sale") {
+    drawPriceTag(ctx, p.x, p.y, p.size);
+    return true;
+  }
+  if (p.kind === "curvedArrow" || p.id === "tall-arrow") {
+    drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
+    return true;
+  }
+  if (p.kind === "truckIcon" || p.id === "tall-ship") {
+    drawDeliveryTruck(ctx, p.x, p.y, p.size);
+    return true;
   }
   return false;
 }
