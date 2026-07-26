@@ -5,10 +5,10 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=47";
-import { compressFramedToKb } from "./lib/encoder.js?v=47";
-import { estimateImageShipping } from "./lib/shipping.js?v=47";
-import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=47";
+} from "./lib/canvas-utils.js?v=48";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=48";
+import { estimateImageShipping } from "./lib/shipping.js?v=48";
+import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=48";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
@@ -21,8 +21,19 @@ export const TALL_STATIC_BADGES = {
   ship: 12,
 };
 
+/** low_48_tall profile — same border math as Live hunt tall frames. */
+const TALL_PROFILE = {
+  bluePct: 0.16,
+  whitePct: 0.05,
+};
+
 const BORDER_BLUES = ["#9ec5e8", "#add8e6", "#b8d4e8"];
 const BORDER_BLUE = "#add8e6";
+
+function prepareTallProduct(img) {
+  const white = imageToWhiteCanvas(img, 2400);
+  return trimMargins(white, 0.01);
+}
 
 function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -43,10 +54,10 @@ function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
 
-  const white = trimMargins(imageToWhiteCanvas(img), 0.02);
+  const white = prepareTallProduct(img);
 
-  const bluePct = Math.min(0.22, 0.17 * 1.06);
-  const whitePct = 0.045;
+  const bluePct = Math.min(0.22, TALL_PROFILE.bluePct * 1.06);
+  const whitePct = TALL_PROFILE.whitePct;
   const ref = Math.min(outerW, outerH);
   const blueOuter = Math.max(28, Math.round(ref * bluePct));
   const whitePad = Math.max(10, Math.round(ref * whitePct));
@@ -59,7 +70,6 @@ function buildTallStaticFrameCanvas(img) {
   const sh = Math.round(white.height * scale);
   const px = inset + Math.round((innerW - sw) / 2);
   const py = inset + Math.round((innerH - sh) / 2);
-  const minDim = Math.min(sw, sh);
 
   const whiteX = blueOuter;
   const whiteY = blueOuter;
@@ -80,10 +90,6 @@ function buildTallStaticFrameCanvas(img) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(white, 0, 0, white.width, white.height, px, py, sw, sh);
 
-  ctx.strokeStyle = BORDER_BLUES[0];
-  ctx.lineWidth = Math.max(2, Math.round(minDim * 0.006));
-  ctx.strokeRect(px - 1, py - 1, sw + 2, sh + 2);
-
   return {
     canvas,
     px,
@@ -101,18 +107,16 @@ function buildTallStaticFrameCanvas(img) {
   };
 }
 
-/** Badge slots — white-mat corners with reference padding. */
+/** Badge slots — product corners (same slots as addLowShippingBadges). */
 function tallStaticPlacements(frame) {
-  const { whiteX, whiteY, whiteW, whiteH, px, py, dw, dh, outerW, outerH } =
-    frame;
-  const ref = Math.min(outerW, outerH);
+  const { px, py, dw, dh, outerW, outerH } = frame;
 
-  const badgeSize = Math.max(54, Math.round(Math.min(dw, dh) * 0.14));
-  const tagSize = Math.round(badgeSize * 1.05);
-  const arrowW = Math.round(ref * 0.11);
-  const arrowH = Math.round(ref * 0.15);
-  const truckSize = Math.round(badgeSize * 0.88);
-  const pad = Math.max(8, Math.round(ref * 0.014));
+  const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
+  const inset = Math.max(6, Math.round(size * 0.06));
+  const tagSize = size;
+  const arrowW = Math.round(size * 1.15);
+  const arrowH = Math.round(size * 1.35);
+  const truckSize = Math.round(size * 0.92);
 
   return [
     {
@@ -122,8 +126,8 @@ function tallStaticPlacements(frame) {
       kind: "priceTag",
       num: TALL_STATIC_BADGES.tag,
       size: tagSize,
-      x: whiteX + pad,
-      y: whiteY + pad,
+      x: px + inset,
+      y: py + inset,
       drawn: false,
     },
     {
@@ -134,8 +138,8 @@ function tallStaticPlacements(frame) {
       num: TALL_STATIC_BADGES.arrow,
       w: arrowW,
       h: arrowH,
-      x: whiteX + whiteW - arrowW - pad,
-      y: whiteY + pad,
+      x: px + dw - arrowW - inset,
+      y: py + inset,
       drawn: false,
     },
     {
@@ -145,8 +149,8 @@ function tallStaticPlacements(frame) {
       kind: "truckIcon",
       num: TALL_STATIC_BADGES.ship,
       size: truckSize,
-      x: whiteX + pad,
-      y: whiteY + whiteH - truckSize - pad,
+      x: px + inset,
+      y: py + dh - truckSize - inset,
       drawn: false,
     },
   ];
@@ -280,8 +284,10 @@ export async function buildTallStaticVariants(img, options = {}) {
     const kb = kbTiers[i];
     onProgress(`Tall promo · ${kb}KB (${i + 1}/${kbTiers.length})`);
     const blob = await compressFramedToKb(canvas, kb);
+    const dataUrl = await blobToDataUrl(blob);
     const v = {
       blob,
+      dataUrl,
       bytes: blob.size,
       width: meta.outerW,
       height: meta.outerH,
