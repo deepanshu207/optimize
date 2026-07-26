@@ -1,34 +1,33 @@
 /**
- * Web-only tall portrait promo — pixel-match reference @ 703×1024.
- * Screenshot-style frame (low_*_tall) + 3 corner badges on white mat.
+ * Web-only tall portrait promo — exact reference @ 703×1024.
+ * Thick cyan border + white mat + badge3 / badge2 / badge1 on white-mat corners.
  */
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=48";
-import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=48";
-import { estimateImageShipping } from "./lib/shipping.js?v=48";
-import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=48";
+} from "./lib/canvas-utils.js?v=49";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=49";
+import { estimateImageShipping } from "./lib/shipping.js?v=49";
+import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=49";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
 export const TALL_STATIC_VARIANT_COUNT = 25;
 
-/** PNG badge ids — same pool as low-shipping hunt; fallback to procedural. */
+/** Exact Badge/ PNG assets for tag + arrow; truck is procedural silhouette. */
 export const TALL_STATIC_BADGES = {
-  tag: 3,
-  arrow: 7,
-  ship: 12,
+  tag: 3, // red scalloped price seal
+  arrow: 2, // thin curved arrow → top-right
 };
 
-/** low_48_tall profile — same border math as Live hunt tall frames. */
+/** low_48_tall profile — border math from buildScreenshotFramedCanvas. */
 const TALL_PROFILE = {
   bluePct: 0.16,
   whitePct: 0.05,
 };
 
-const BORDER_BLUES = ["#9ec5e8", "#add8e6", "#b8d4e8"];
-const BORDER_BLUE = "#add8e6";
+/** Reference frame cyan — bright sky blue (#42ADE2 family). */
+const BORDER_BLUE = "#42ADE2";
 
 function prepareTallProduct(img) {
   const white = imageToWhiteCanvas(img, 2400);
@@ -47,8 +46,7 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
 }
 
 /**
- * Build fixed 703×1024 — blue border edge-to-edge, white mat, scaled product.
- * Border math matches low_*_tall hunt profiles (buildScreenshotFramedCanvas).
+ * Build fixed 703×1024 — cyan border edge-to-edge, white mat, scaled product.
  */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
@@ -107,39 +105,41 @@ function buildTallStaticFrameCanvas(img) {
   };
 }
 
-/** Badge slots — product corners (same slots as addLowShippingBadges). */
+/**
+ * Badge slots on white-mat corners (reference layout).
+ * Stickers sit in the white padding area, not on the product photo.
+ */
 function tallStaticPlacements(frame) {
-  const { px, py, dw, dh, outerW, outerH } = frame;
+  const { whiteX, whiteY, whiteW, whiteH } = frame;
+  const ref = Math.min(whiteW, whiteH);
 
-  const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
-  const inset = Math.max(6, Math.round(size * 0.06));
-  const tagSize = size;
-  const arrowW = Math.round(size * 1.15);
-  const arrowH = Math.round(size * 1.35);
-  const truckSize = Math.round(size * 0.92);
+  const tagSize = Math.max(54, Math.round(ref * 0.095));
+  const arrowSize = Math.round(tagSize * 1.05);
+  const truckSize = Math.round(tagSize * 0.88);
+  const pad = Math.max(10, Math.round(ref * 0.016));
 
   return [
     {
       id: "tall-sale",
       label: "Price tag",
       anchor: "top-left",
-      kind: "priceTag",
       num: TALL_STATIC_BADGES.tag,
       size: tagSize,
-      x: px + inset,
-      y: py + inset,
+      w: tagSize,
+      h: tagSize,
+      x: whiteX + pad,
+      y: whiteY + pad,
       drawn: false,
     },
     {
       id: "tall-arrow",
       label: "Arrow",
       anchor: "top-right",
-      kind: "curvedArrow",
       num: TALL_STATIC_BADGES.arrow,
-      w: arrowW,
-      h: arrowH,
-      x: px + dw - arrowW - inset,
-      y: py + inset,
+      w: arrowSize,
+      h: arrowSize,
+      x: whiteX + whiteW - arrowSize - pad,
+      y: whiteY + pad,
       drawn: false,
     },
     {
@@ -147,10 +147,11 @@ function tallStaticPlacements(frame) {
       label: "Delivery truck",
       anchor: "bottom-left",
       kind: "truckIcon",
-      num: TALL_STATIC_BADGES.ship,
       size: truckSize,
-      x: px + inset,
-      y: py + dh - truckSize - inset,
+      w: truckSize,
+      h: truckSize,
+      x: whiteX + pad,
+      y: whiteY + whiteH - truckSize - pad,
       drawn: false,
     },
   ];
@@ -178,7 +179,6 @@ async function buildTallStaticLayers(img) {
   await Promise.all([
     loadTallBadge(TALL_STATIC_BADGES.tag),
     loadTallBadge(TALL_STATIC_BADGES.arrow),
-    loadTallBadge(TALL_STATIC_BADGES.ship),
   ]);
 
   const built = buildTallStaticFrameCanvas(img);
