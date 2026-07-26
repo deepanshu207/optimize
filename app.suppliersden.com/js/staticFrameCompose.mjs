@@ -2,7 +2,7 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=46";
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=47";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
@@ -275,7 +275,7 @@ async function drawPlacementsOnCtx(ctx, placements) {
         p.kind === "curvedArrow" ||
         p.kind === "truckIcon"
       ) {
-        drawTallPlacement(ctx, p);
+        await drawTallPlacement(ctx, p);
       } else if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, p.size);
       } else if (p.num != null) {
