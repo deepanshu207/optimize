@@ -57,12 +57,47 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=38";
+      return "/js/liveAnalysisBridge.mjs?v=42";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=38");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=42");
     }
-    return "/js/liveAnalysisBridge.mjs?v=38";
+    return "/js/liveAnalysisBridge.mjs?v=42";
+  }
+
+  getStaticComposeModuleUrl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/js/staticFrameCompose.mjs?v=42";
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=42");
+    }
+    return "/js/staticFrameCompose.mjs?v=42";
+  }
+
+  async preloadStaticComposeModule() {
+    if (window.StaticFrameCompose?.composeStaticPreview) return true;
+    if (!window.__staticComposePromise) {
+      window.__staticComposePromise = (async () => {
+        try {
+          await import(this.getStaticComposeModuleUrl());
+          return !!window.StaticFrameCompose?.composeStaticPreview;
+        } catch (e) {
+          console.warn("Static compose preload:", e);
+          return false;
+        }
+      })();
+    }
+    return window.__staticComposePromise;
+  }
+
+  isStaticPromoRow(row) {
+    if (row?.layers?._staticFrame) return true;
+    if (typeof window.StaticFrameCompose !== "undefined") {
+      return window.StaticFrameCompose.isStaticPromoVariant(row);
+    }
+    const style = row?.variantStyle || row?.meta?.path || "";
+    return style === "showcase" || style === "lifestyle_promo";
   }
 
   async preloadLiveAnalysisModule() {
@@ -2515,11 +2550,14 @@ Please share payment details and license key.`;
       canAddStickers: false,
       canAddBorder: false,
       canAddBoth: false,
+      isStaticPromo: false,
+      canAdjustBadges: false,
     };
   }
 
-  isVariantEdited(editFlags, layers) {
+  isVariantEdited(editFlags, layers, row) {
     if (!editFlags) return false;
+    if (row?._badgesRepositioned) return true;
     const caps =
       layers &&
       typeof MeeshoAPI !== "undefined" &&
@@ -2531,13 +2569,15 @@ Please share payment details and license key.`;
       editFlags.borderOnlyRemoved ||
       editFlags.cleanProduct ||
       editFlags.borderRemoved ||
-      editFlags.stickersAdded ||
-      editFlags.borderAdded ||
-      editFlags.fullDecorationsAdded ||
-      (caps &&
-        ((editFlags.stickersAdded && caps.canAddStickers) ||
-          (editFlags.borderAdded && caps.canAddBorder) ||
-          (editFlags.fullDecorationsAdded && caps.canAddBoth)))
+      (caps?.isStaticPromo
+        ? false
+        : editFlags.stickersAdded ||
+          editFlags.borderAdded ||
+          editFlags.fullDecorationsAdded ||
+          (caps &&
+            ((editFlags.stickersAdded && caps.canAddStickers) ||
+              (editFlags.borderAdded && caps.canAddBorder) ||
+              (editFlags.fullDecorationsAdded && caps.canAddBoth))))
     );
   }
 
@@ -2728,7 +2768,15 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
-    row.editFlags = this.normalizeEditFlags(editFlags);
+    const normalized = this.normalizeEditFlags(editFlags);
+    if (row.layers._staticFrame) {
+      normalized.stickersAdded = false;
+      normalized.borderAdded = false;
+      normalized.fullDecorationsAdded = false;
+    }
+    row.editFlags = normalized;
+
+    await this.preloadStaticComposeModule();
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
@@ -2737,6 +2785,11 @@ Please share payment details and license key.`;
       }
     } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
       row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+    } else if (window.StaticFrameCompose?.composeStaticPreview) {
+      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
+        row.layers,
+        row.editFlags,
+      );
     }
 
     if (this._editingVariantId === variantId) {
@@ -2744,6 +2797,78 @@ Please share payment details and license key.`;
     } else {
       this.refreshVariantCard(row);
     }
+  }
+
+  async setStaticBadgeAnchor(variantId, placementId, anchor) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updatePlacementAnchor) return;
+
+    const ok = window.StaticFrameCompose.updatePlacementAnchor(
+      row.layers,
+      placementId,
+      anchor,
+    );
+    if (!ok) return;
+
+    row._badgesRepositioned = true;
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+      try {
+        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
+      } catch (e) {
+        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      }
+    } else {
+      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
+        row.layers,
+        row.editFlags || {},
+      );
+    }
+
+    if (this._editingVariantId === variantId) {
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview) preview.src = row.imageUrl;
+      this.refreshVariantCard(row);
+    } else {
+      this.refreshVariantCard(row);
+    }
+  }
+
+  renderStaticBadgePlacementControls(row, container) {
+    const SFC = window.StaticFrameCompose;
+    if (!SFC || !container) return;
+
+    const slots = SFC.getBadgeSlots(row);
+    const options = SFC.BADGE_ANCHOR_OPTIONS;
+    const placements = row.layers._badgePlacements || [];
+
+    let html = `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Badge placement</div>`;
+    slots.forEach((slot) => {
+      const p = placements.find((b) => b.id === slot.id);
+      const anchor = p?.anchor || slot.anchor;
+      html += `<label style="display:block;font-size:12px;margin-bottom:8px;">${slot.label}
+        <select data-badge-id="${slot.id}" class="static-badge-anchor opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:8px;">`;
+      options.forEach((opt) => {
+        html += `<option value="${opt.value}"${
+          opt.value === anchor ? " selected" : ""
+        }>${opt.label}</option>`;
+      });
+      html += `</select></label>`;
+    });
+    html += `<p style="font-size:10px;color:#6b7280;margin:0;">Pick a position per badge. Shipping ₹ unchanged.</p>`;
+    container.innerHTML = html;
+
+    container.querySelectorAll(".static-badge-anchor").forEach((sel) => {
+      sel.onchange = () => {
+        void this.setStaticBadgeAnchor(
+          row.variantId,
+          sel.dataset.badgeId,
+          sel.value,
+        );
+      };
+    });
   }
 
   refreshVariantCard(row) {
@@ -2755,7 +2880,7 @@ Please share payment details and license key.`;
       `.result-edit-badge[data-variant-id="${row.variantId}"]`
     );
     if (badge) {
-      const edited = this.isVariantEdited(row.editFlags, row.layers);
+      const edited = this.isVariantEdited(row.editFlags, row.layers, row);
       badge.style.display = edited ? "block" : "none";
     }
   }
@@ -2798,6 +2923,24 @@ Please share payment details and license key.`;
     setRow("#variant-edit-add-border-wrap", addBorderCb, caps.canAddBorder);
     setRow("#variant-edit-add-both-wrap", addBothCb, caps.canAddBoth);
 
+    const isStatic = caps.isStaticPromo || this.isStaticPromoRow(row);
+    const addSection = panel.querySelector("#variant-edit-add-section");
+    const staticSection = panel.querySelector("#variant-edit-static-badges");
+    if (addSection) addSection.style.display = isStatic ? "none" : "block";
+    if (staticSection) {
+      if (isStatic && caps.canAdjustBadges) {
+        staticSection.style.display = "block";
+        void this.preloadStaticComposeModule().then(() => {
+          if (this._editingVariantId === row.variantId) {
+            this.renderStaticBadgePlacementControls(row, staticSection);
+          }
+        });
+      } else {
+        staticSection.style.display = "none";
+        staticSection.innerHTML = "";
+      }
+    }
+
     if (preview) preview.src = row.imageUrl;
     if (stickerCb) stickerCb.checked = !!flags.stickersRemoved;
     if (borderOnlyCb) borderOnlyCb.checked = !!flags.borderOnlyRemoved;
@@ -2814,11 +2957,25 @@ Please share payment details and license key.`;
           ? `Est. ₹${row.estShipping} is unchanged — preview/save only.`
           : "Shipping price is unchanged — this only affects the image you save.";
     }
+    const footerNote = panel.querySelector("#variant-edit-footer-note");
+    if (footerNote) {
+      footerNote.textContent = isStatic
+        ? "Remove layers or reposition badges — save only, not shipping ₹."
+        : "6 preview options — edits update save only, not shipping ₹.";
+    }
   }
 
   ensureVariantEditorPanel() {
     let panel = document.getElementById("variant-edit-panel");
+    if (panel && panel.querySelector("motionless")) {
+      panel.remove();
+      panel = null;
+    }
     if (panel && !panel.querySelector("#variant-edit-add-stickers")) {
+      panel.remove();
+      panel = null;
+    }
+    if (panel && !panel.querySelector("#variant-edit-static-badges")) {
       panel.remove();
       panel = null;
     }
@@ -2851,6 +3008,7 @@ Please share payment details and license key.`;
             Remove border and stickers (clean product)
           </label>
         </div>
+        <div id="variant-edit-static-badges" style="display:none;margin-bottom:10px;"></div>
         <div id="variant-edit-add-section" style="margin-bottom:10px;">
           <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Add</div>
           <label id="variant-edit-add-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
@@ -2866,7 +3024,7 @@ Please share payment details and license key.`;
             Add border and stickers
           </label>
         </div>
-        <p style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
+        <p id="variant-edit-footer-note" style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -2885,7 +3043,9 @@ Please share payment details and license key.`;
       if (!id) return;
 
       const row = this.findResultRow(id);
+      if (!row) return;
       const caps = this.getVariantLayerCaps(row);
+      const isStatic = caps.isStaticPromo || this.isStaticPromoRow(row);
       const stickerCb = panel.querySelector("#variant-edit-no-stickers");
       const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
       const cleanCb = panel.querySelector("#variant-edit-clean-product");
@@ -2963,9 +3123,10 @@ Please share payment details and license key.`;
         stickersRemoved: caps.canRemoveStickers && stickerCb.checked,
         borderOnlyRemoved: caps.canRemoveBorder && borderOnlyCb.checked,
         cleanProduct: caps.canRemoveBoth && cleanCb.checked,
-        stickersAdded: caps.canAddStickers && addStickersCb.checked,
-        borderAdded: caps.canAddBorder && addBorderCb.checked,
-        fullDecorationsAdded: caps.canAddBoth && addBothCb.checked,
+        stickersAdded: !isStatic && caps.canAddStickers && addStickersCb.checked,
+        borderAdded: !isStatic && caps.canAddBorder && addBorderCb.checked,
+        fullDecorationsAdded:
+          !isStatic && caps.canAddBoth && addBothCb.checked,
       });
     };
     [
@@ -2983,7 +3144,7 @@ Please share payment details and license key.`;
     return panel;
   }
 
-  openVariantEditor(variantId) {
+  async openVariantEditor(variantId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers) {
       OptimizerUtils.showNotification(
@@ -2991,6 +3152,21 @@ Please share payment details and license key.`;
         "info"
       );
       return;
+    }
+    if (this.isStaticPromoRow(row)) {
+      await this.preloadStaticComposeModule();
+      if (window.StaticFrameCompose?.ensureStaticPlacementMeta && row.layers._staticFrame) {
+        window.StaticFrameCompose.ensureStaticPlacementMeta(
+          row.layers,
+          row.layers._staticFrame.style,
+        );
+      }
+      row.editFlags = this.normalizeEditFlags({
+        ...(row.editFlags || {}),
+        stickersAdded: false,
+        borderAdded: false,
+        fullDecorationsAdded: false,
+      });
     }
     this._editingVariantId = variantId;
     this.ensureVariantEditorPanel();
@@ -3244,7 +3420,12 @@ Please share payment details and license key.`;
     }
 
     try {
-      let blob = result.blob instanceof Blob ? result.blob : null;
+      const edited = this.isVariantEdited(
+        result.editFlags,
+        result.layers,
+        result,
+      );
+      let blob = !edited && result.blob instanceof Blob ? result.blob : null;
       if (!blob) {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("Fetch failed");

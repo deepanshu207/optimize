@@ -1841,6 +1841,28 @@ const MeeshoAPI = {
       flags.fullDecorationsAdded || flags.decorationsAdded
     );
 
+    if (layers._staticFrame) {
+      if (cleanProduct) {
+        return layers.productOnly || layers.full || result.pricingImageUrl || "";
+      }
+      if (flags.stickersRemoved) {
+        return layers.noStickers || layers.full || result.pricingImageUrl || "";
+      }
+      if (flags.borderOnlyRemoved) {
+        return layers.noBorder || layers.noStickers || layers.full || "";
+      }
+      if (flags.stickersAdded || flags.borderAdded || flags.fullDecorationsAdded) {
+        return layers.full || result.pricingImageUrl || "";
+      }
+      return (
+        result.imageUrl ||
+        layers.full ||
+        result.pricingImageUrl ||
+        result.dataUrl ||
+        ""
+      );
+    }
+
     if (cleanProduct) {
       return layers.productOnly || layers.full || result.pricingImageUrl || "";
     }
@@ -1873,8 +1895,26 @@ const MeeshoAPI = {
       canAddStickers: false,
       canAddBorder: false,
       canAddBoth: false,
+      isStaticPromo: false,
+      canAdjustBadges: false,
     };
     if (!layers) return empty;
+
+    if (layers._staticFrame) {
+      const hasStickers = layers._stickersRendered !== false;
+      return {
+        hasStickers,
+        hasBorder: true,
+        canRemoveStickers: hasStickers,
+        canRemoveBorder: !!layers.noBorder,
+        canRemoveBoth: !!layers.productOnly,
+        canAddStickers: false,
+        canAddBorder: false,
+        canAddBoth: false,
+        isStaticPromo: true,
+        canAdjustBadges: hasStickers && !!(layers._badgePlacements || []).length,
+      };
+    }
 
     const diff = (a, b) => !!(a && b && a !== b);
     const hasStickers =
@@ -1897,6 +1937,8 @@ const MeeshoAPI = {
       canAddStickers: !hasStickers && !!(layers.full || layers.noBorder),
       canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
       canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
+      isStaticPromo: false,
+      canAdjustBadges: false,
     };
   },
 
@@ -1904,6 +1946,33 @@ const MeeshoAPI = {
     const base = this.getLayerCapabilities(layers);
     const flags = editFlags || {};
     if (!layers) return base;
+
+    if (layers._staticFrame) {
+      let hasStickers = base.hasStickers;
+      let hasBorder = base.hasBorder;
+      if (flags.cleanProduct) {
+        hasStickers = false;
+        hasBorder = false;
+      } else {
+        if (flags.stickersRemoved) hasStickers = false;
+        if (flags.borderOnlyRemoved) hasBorder = false;
+      }
+      return {
+        hasStickers,
+        hasBorder,
+        canRemoveStickers:
+          base.hasStickers && !flags.stickersRemoved && !flags.cleanProduct,
+        canRemoveBorder:
+          base.hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
+        canRemoveBoth: base.canRemoveBoth && !flags.cleanProduct,
+        canAddStickers: false,
+        canAddBorder: false,
+        canAddBoth: false,
+        isStaticPromo: true,
+        canAdjustBadges:
+          base.canAdjustBadges && !flags.stickersRemoved && !flags.cleanProduct,
+      };
+    }
 
     let hasStickers = base.hasStickers;
     let hasBorder = base.hasBorder;
@@ -1934,6 +2003,8 @@ const MeeshoAPI = {
         !hasStickers && !!(layers.full || layers.noBorder),
       canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
       canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
+      isStaticPromo: false,
+      canAdjustBadges: false,
     };
   },
 
@@ -1950,6 +2021,23 @@ const MeeshoAPI = {
 
   resolveDisplayUrlAsync: async function (result) {
     if (!result?.layers) return this.resolveDisplayUrl(result);
+
+    if (result.layers._staticFrame) {
+      const flags = result.editFlags || {};
+      if (
+        typeof window !== "undefined" &&
+        window.StaticFrameCompose?.composeStaticPreview
+      ) {
+        try {
+          return await window.StaticFrameCompose.composeStaticPreview(
+            result.layers,
+            flags,
+          );
+        } catch (e) {}
+      }
+      return this.resolveDisplayUrl(result);
+    }
+
     const flags = result.editFlags || {};
     const syncUrl = this.resolveDisplayUrl(result);
     const needsCompose =

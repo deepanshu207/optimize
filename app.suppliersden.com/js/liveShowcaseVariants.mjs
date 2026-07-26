@@ -146,6 +146,9 @@ function showcasePlacements(px, py, dw, dh, border, outerW, outerH) {
 
   const placements = [
     {
+      id: "showcase-quality",
+      label: "100% Quality",
+      anchor: "top-left",
       num: SHOWCASE_BADGES.topLeft,
       size: largeSize,
       x: px - overlapLg,
@@ -153,6 +156,9 @@ function showcasePlacements(px, py, dw, dh, border, outerW, outerH) {
       drawn: false,
     },
     {
+      id: "showcase-star",
+      label: "Star ribbon",
+      anchor: "top-right",
       num: SHOWCASE_BADGES.topRight,
       size: largeSize,
       x: px + dw - largeSize + overlapLg,
@@ -160,6 +166,9 @@ function showcasePlacements(px, py, dw, dh, border, outerW, outerH) {
       drawn: false,
     },
     {
+      id: "showcase-satisfaction",
+      label: "Satisfaction",
+      anchor: "bottom-left",
       num: SHOWCASE_BADGES.bottomLeft,
       size: smallSize,
       x: px - overlapSm,
@@ -270,6 +279,16 @@ async function buildShowcaseLayers(img) {
       productOnly,
       _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
+      _staticFrame: {
+        style: "showcase",
+        px,
+        py,
+        dw,
+        dh,
+        border,
+        outerW,
+        outerH,
+      },
     },
     meta: {
       style: "showcase",
