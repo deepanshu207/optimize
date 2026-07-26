@@ -57,22 +57,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=42";
+      return "/js/liveAnalysisBridge.mjs?v=43";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=42");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=43");
     }
-    return "/js/liveAnalysisBridge.mjs?v=42";
+    return "/js/liveAnalysisBridge.mjs?v=43";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=42";
+      return "/js/staticFrameCompose.mjs?v=43";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=42");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=43");
     }
-    return "/js/staticFrameCompose.mjs?v=42";
+    return "/js/staticFrameCompose.mjs?v=43";
   }
 
   async preloadStaticComposeModule() {
@@ -2556,28 +2556,22 @@ Please share payment details and license key.`;
   }
 
   isVariantEdited(editFlags, layers, row) {
-    if (!editFlags) return false;
+    if (!editFlags && !row?._badgesRepositioned) return false;
     if (row?._badgesRepositioned) return true;
-    const caps =
-      layers &&
-      typeof MeeshoAPI !== "undefined" &&
-      MeeshoAPI.getEffectiveLayerCapabilities
-        ? MeeshoAPI.getEffectiveLayerCapabilities(layers, editFlags)
-        : null;
+    if (
+      layers?._staticFrame &&
+      typeof window.StaticFrameCompose?.isStaticEdited === "function"
+    ) {
+      return window.StaticFrameCompose.isStaticEdited(editFlags, false);
+    }
     return !!(
       editFlags.stickersRemoved ||
       editFlags.borderOnlyRemoved ||
       editFlags.cleanProduct ||
       editFlags.borderRemoved ||
-      (caps?.isStaticPromo
-        ? false
-        : editFlags.stickersAdded ||
-          editFlags.borderAdded ||
-          editFlags.fullDecorationsAdded ||
-          (caps &&
-            ((editFlags.stickersAdded && caps.canAddStickers) ||
-              (editFlags.borderAdded && caps.canAddBorder) ||
-              (editFlags.fullDecorationsAdded && caps.canAddBoth))))
+      editFlags.stickersAdded ||
+      editFlags.borderAdded ||
+      editFlags.fullDecorationsAdded
     );
   }
 
@@ -2769,11 +2763,6 @@ Please share payment details and license key.`;
     if (!row?.layers) return;
 
     const normalized = this.normalizeEditFlags(editFlags);
-    if (row.layers._staticFrame) {
-      normalized.stickersAdded = false;
-      normalized.borderAdded = false;
-      normalized.fullDecorationsAdded = false;
-    }
     row.editFlags = normalized;
 
     await this.preloadStaticComposeModule();
@@ -2791,6 +2780,30 @@ Please share payment details and license key.`;
         row.editFlags,
       );
     }
+
+    if (this._editingVariantId === variantId) {
+      this.renderVariantEditorPanel(row);
+    } else {
+      this.refreshVariantCard(row);
+    }
+  }
+
+  async resetStaticVariantEdits(variantId) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (window.StaticFrameCompose?.resetStaticPlacements) {
+      window.StaticFrameCompose.resetStaticPlacements(row.layers);
+    }
+
+    row.editFlags = this.normalizeEditFlags({});
+    row._badgesRepositioned = false;
+    row.imageUrl =
+      row.layers.full ||
+      row.pricingImageUrl ||
+      row.dataUrl ||
+      "";
 
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
@@ -2926,7 +2939,8 @@ Please share payment details and license key.`;
     const isStatic = caps.isStaticPromo || this.isStaticPromoRow(row);
     const addSection = panel.querySelector("#variant-edit-add-section");
     const staticSection = panel.querySelector("#variant-edit-static-badges");
-    if (addSection) addSection.style.display = isStatic ? "none" : "block";
+    const resetBtn = panel.querySelector("#variant-edit-reset");
+    if (addSection) addSection.style.display = "block";
     if (staticSection) {
       if (isStatic && caps.canAdjustBadges) {
         staticSection.style.display = "block";
@@ -2960,14 +2974,22 @@ Please share payment details and license key.`;
     const footerNote = panel.querySelector("#variant-edit-footer-note");
     if (footerNote) {
       footerNote.textContent = isStatic
-        ? "Remove layers or reposition badges — save only, not shipping ₹."
+        ? "Remove, add, or reposition badges — save only, not shipping ₹."
         : "6 preview options — edits update save only, not shipping ₹.";
+    }
+    if (resetBtn) {
+      const edited = this.isVariantEdited(row.editFlags, row.layers, row);
+      resetBtn.style.display = isStatic && edited ? "block" : "none";
     }
   }
 
   ensureVariantEditorPanel() {
     let panel = document.getElementById("variant-edit-panel");
     if (panel && panel.querySelector("motionless")) {
+      panel.remove();
+      panel = null;
+    }
+    if (panel && !panel.querySelector("#variant-edit-reset")) {
       panel.remove();
       panel = null;
     }
@@ -3025,6 +3047,7 @@ Please share payment details and license key.`;
           </label>
         </div>
         <p id="variant-edit-footer-note" style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
+        <button type="button" id="variant-edit-reset" style="display:none;width:100%;padding:10px;margin-bottom:8px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Reset to original</button>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
       </div>
     `;
@@ -3034,6 +3057,13 @@ Please share payment details and license key.`;
       this.closeVariantEditor();
     panel.querySelector("#variant-edit-done").onclick = () =>
       this.closeVariantEditor();
+    const resetBtn = panel.querySelector("#variant-edit-reset");
+    if (resetBtn) {
+      resetBtn.onclick = () => {
+        const id = this._editingVariantId;
+        if (id) void this.resetStaticVariantEdits(id);
+      };
+    }
     panel.onclick = (e) => {
       if (e.target === panel) this.closeVariantEditor();
     };
@@ -3045,7 +3075,6 @@ Please share payment details and license key.`;
       const row = this.findResultRow(id);
       if (!row) return;
       const caps = this.getVariantLayerCaps(row);
-      const isStatic = caps.isStaticPromo || this.isStaticPromoRow(row);
       const stickerCb = panel.querySelector("#variant-edit-no-stickers");
       const borderOnlyCb = panel.querySelector("#variant-edit-border-only");
       const cleanCb = panel.querySelector("#variant-edit-clean-product");
@@ -3123,10 +3152,9 @@ Please share payment details and license key.`;
         stickersRemoved: caps.canRemoveStickers && stickerCb.checked,
         borderOnlyRemoved: caps.canRemoveBorder && borderOnlyCb.checked,
         cleanProduct: caps.canRemoveBoth && cleanCb.checked,
-        stickersAdded: !isStatic && caps.canAddStickers && addStickersCb.checked,
-        borderAdded: !isStatic && caps.canAddBorder && addBorderCb.checked,
-        fullDecorationsAdded:
-          !isStatic && caps.canAddBoth && addBothCb.checked,
+        stickersAdded: caps.canAddStickers && addStickersCb.checked,
+        borderAdded: caps.canAddBorder && addBorderCb.checked,
+        fullDecorationsAdded: caps.canAddBoth && addBothCb.checked,
       });
     };
     [
@@ -3161,12 +3189,6 @@ Please share payment details and license key.`;
           row.layers._staticFrame.style,
         );
       }
-      row.editFlags = this.normalizeEditFlags({
-        ...(row.editFlags || {}),
-        stickersAdded: false,
-        borderAdded: false,
-        fullDecorationsAdded: false,
-      });
     }
     this._editingVariantId = variantId;
     this.ensureVariantEditorPanel();
