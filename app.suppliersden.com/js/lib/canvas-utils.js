@@ -293,3 +293,109 @@ export function isStudioBackground(img) {
 export function isTallPortrait(img) {
   return img.height / img.width >= 1.2;
 }
+
+/** Draw source image to canvas without background flattening (lifestyle / busy scenes). */
+export function imageToCanvas(img, maxSide = 1600) {
+  let w = img.width;
+  let h = img.height;
+  const max = Math.max(w, h);
+  if (max > maxSide) {
+    const s = maxSide / max;
+    w = Math.round(w * s);
+    h = Math.round(h * s);
+  }
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, w, h);
+  return c;
+}
+
+function sampleCornerColor(data, width, height, corner) {
+  const pts = [];
+  const span = Math.max(2, Math.round(Math.min(width, height) * 0.04));
+  const xs =
+    corner === "tl" || corner === "bl"
+      ? [0, span - 1]
+      : [width - span, width - 1];
+  const ys =
+    corner === "tl" || corner === "tr"
+      ? [0, span - 1]
+      : [height - span, height - 1];
+  for (const y of ys) {
+    for (const x of xs) {
+      const i = (y * width + x) * 4;
+      pts.push([data[i], data[i + 1], data[i + 2]]);
+    }
+  }
+  const r = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const g = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const b = pts.reduce((s, p) => s + p[2], 0) / pts.length;
+  return [r, g, b];
+}
+
+function colorDist(a, b) {
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+}
+
+function rowIsBorder(data, width, y, refs, tol) {
+  let match = 0;
+  for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * 4;
+    const px = [data[i], data[i + 1], data[i + 2]];
+    const d = Math.min(...refs.map((r) => colorDist(px, r)));
+    if (d <= tol) match++;
+  }
+  return match / width >= 0.88;
+}
+
+function colIsBorder(data, width, height, x, refs, tol) {
+  let match = 0;
+  for (let y = 0; y < height; y++) {
+    const i = (y * width + x) * 4;
+    const px = [data[i], data[i + 1], data[i + 2]];
+    const d = Math.min(...refs.map((r) => colorDist(px, r)));
+    if (d <= tol) match++;
+  }
+  return match / height >= 0.88;
+}
+
+/**
+ * Trim uniform margins on busy lifestyle backgrounds (trellis, stone walls).
+ * Does not flatten to white — safe for competitor-style promo frames only.
+ */
+export function trimUniformEdges(canvas, pad = 0.02) {
+  const { width, height } = canvas;
+  const { data } = canvas.getContext("2d").getImageData(0, 0, width, height);
+  const refs = [
+    sampleCornerColor(data, width, height, "tl"),
+    sampleCornerColor(data, width, height, "tr"),
+    sampleCornerColor(data, width, height, "bl"),
+    sampleCornerColor(data, width, height, "br"),
+  ];
+  const tol = 42;
+  let top = 0;
+  let bottom = height - 1;
+  let left = 0;
+  let right = width - 1;
+  while (top < bottom && rowIsBorder(data, width, top, refs, tol)) top++;
+  while (bottom > top && rowIsBorder(data, width, bottom, refs, tol)) bottom--;
+  while (left < right && colIsBorder(data, width, height, left, refs, tol)) left++;
+  while (right > left && colIsBorder(data, width, height, right, refs, tol)) right--;
+  if (right <= left || bottom <= top) return canvas;
+  const px = Math.round(width * pad);
+  const py = Math.round(height * pad);
+  const x0 = Math.max(0, left - px);
+  const y0 = Math.max(0, top - py);
+  const x1 = Math.min(width - 1, right + px);
+  const y1 = Math.min(height - 1, bottom + py);
+  const cw = x1 - x0 + 1;
+  const ch = y1 - y0 + 1;
+  const c = document.createElement("canvas");
+  c.width = cw;
+  c.height = ch;
+  c.getContext("2d").drawImage(canvas, x0, y0, cw, ch, 0, 0, cw, ch);
+  return c;
+}

@@ -2,13 +2,17 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=38";
-import { loadImage } from "./lib/canvas-utils.js?v=38";
-import { blobToDataUrl } from "./lib/encoder.js?v=38";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=39";
+import { loadImage } from "./lib/canvas-utils.js?v=39";
+import { blobToDataUrl } from "./lib/encoder.js?v=39";
 import {
   buildShowcaseVariants,
   SHOWCASE_VARIANT_COUNT,
-} from "./liveShowcaseVariants.mjs?v=38";
+} from "./liveShowcaseVariants.mjs?v=39";
+import {
+  buildPromoLifestyleVariants,
+  PROMO_LIFESTYLE_VARIANT_COUNT,
+} from "./livePromoLifestyle.mjs?v=39";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -113,6 +117,29 @@ export async function runShowcaseGeneration(file, options = {}) {
 }
 
 /**
+ * Competitor-style lifestyle promo — solid green frame @ 48–54 KB (web only).
+ */
+export async function runPromoLifestyleGeneration(file, options = {}) {
+  const { onProgress = () => {}, count = PROMO_LIFESTYLE_VARIANT_COUNT } = options;
+  const img = await loadImage(file);
+  const raw = await buildPromoLifestyleVariants(img, { onProgress, count });
+  const results = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    v.dataUrl = await blobToDataUrl(v.blob);
+    results.push(
+      variantToAnalysisResult(v, i + 70000, {
+        variantStyle: "lifestyle_promo",
+        showcase: true,
+        showcasePreset: v.meta?.showcasePreset,
+        variantId: `lifestyle-promo-${v.kb}-${i + 70000}`,
+      }),
+    );
+  }
+  return { success: results.length > 0, results };
+}
+
+/**
  * Run static image analysis + ranked local variants (est ₹ only).
  */
 export async function runLiveAnalysis(file, options = {}) {
@@ -168,6 +195,10 @@ export async function runLiveAnalysis(file, options = {}) {
 }
 
 if (typeof window !== "undefined") {
-  window.LiveAnalysis = { runLiveAnalysis, runShowcaseGeneration };
+  window.LiveAnalysis = {
+    runLiveAnalysis,
+    runShowcaseGeneration,
+    runPromoLifestyleGeneration,
+  };
   window.dispatchEvent(new Event("live-analysis-ready"));
 }
