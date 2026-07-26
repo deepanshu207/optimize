@@ -1842,6 +1842,29 @@ const MeeshoAPI = {
     );
 
     if (layers._staticFrame) {
+      const eff =
+        typeof window !== "undefined" &&
+        window.StaticFrameCompose?.getStaticEffectiveFlags
+          ? window.StaticFrameCompose.getStaticEffectiveFlags(flags)
+          : null;
+      if (eff) {
+        if (!eff.hasBorder && !eff.hasStickers) {
+          return layers.productOnly || layers.full || result.pricingImageUrl || "";
+        }
+        if (eff.hasBorder && !eff.hasStickers) {
+          return layers.noStickers || layers.full || result.pricingImageUrl || "";
+        }
+        if (!eff.hasBorder && eff.hasStickers) {
+          return layers.noBorder || layers.full || result.pricingImageUrl || "";
+        }
+        return (
+          result.imageUrl ||
+          layers.full ||
+          result.pricingImageUrl ||
+          result.dataUrl ||
+          ""
+        );
+      }
       if (cleanProduct) {
         return layers.productOnly || layers.full || result.pricingImageUrl || "";
       }
@@ -1956,21 +1979,27 @@ const MeeshoAPI = {
       } else {
         if (flags.stickersRemoved) hasStickers = false;
         if (flags.borderOnlyRemoved) hasBorder = false;
+        if (flags.stickersAdded) hasStickers = true;
+        if (flags.borderAdded) hasBorder = true;
+        if (flags.fullDecorationsAdded) {
+          hasStickers = true;
+          hasBorder = true;
+        }
       }
       return {
         hasStickers,
         hasBorder,
-        canRemoveStickers:
-          base.hasStickers && !flags.stickersRemoved && !flags.cleanProduct,
-        canRemoveBorder:
-          base.hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
-        canRemoveBoth: base.canRemoveBoth && !flags.cleanProduct,
-        canAddStickers: false,
-        canAddBorder: false,
-        canAddBoth: false,
+        canRemoveStickers: hasStickers,
+        canRemoveBorder: hasBorder && !!layers.noBorder,
+        canRemoveBoth:
+          (hasStickers || hasBorder) && !!layers.productOnly,
+        canAddStickers:
+          !hasStickers && !!(layers.noStickers || layers.noBorder || layers.full),
+        canAddBorder: !hasBorder && !!(layers.noStickers || layers.full),
+        canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
         isStaticPromo: true,
         canAdjustBadges:
-          base.canAdjustBadges && !flags.stickersRemoved && !flags.cleanProduct,
+          base.canAdjustBadges && hasStickers,
       };
     }
 

@@ -14,6 +14,47 @@ export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-center", label: "Top center" },
 ];
 
+/**
+ * Effective sticker/border visibility from remove + add flags (mirrors dynamic variants).
+ */
+export function getStaticEffectiveFlags(flags = {}) {
+  const f = flags || {};
+  let hasStickers = true;
+  let hasBorder = true;
+
+  if (f.cleanProduct && !f.stickersAdded && !f.borderAdded && !f.fullDecorationsAdded) {
+    return { hasStickers: false, hasBorder: false };
+  }
+
+  if (f.cleanProduct) {
+    hasStickers = false;
+    hasBorder = false;
+  } else {
+    if (f.stickersRemoved) hasStickers = false;
+    if (f.borderOnlyRemoved) hasBorder = false;
+  }
+  if (f.stickersAdded) hasStickers = true;
+  if (f.borderAdded) hasBorder = true;
+  if (f.fullDecorationsAdded) {
+    hasStickers = true;
+    hasBorder = true;
+  }
+  return { hasStickers, hasBorder };
+}
+
+const DEFAULT_ANCHORS = {
+  lifestyle_promo: {
+    "lifestyle-hot": "top-right",
+    "lifestyle-flash": "middle-left",
+    "lifestyle-ship": "bottom-center",
+  },
+  showcase: {
+    "showcase-quality": "top-left",
+    "showcase-star": "top-right",
+    "showcase-satisfaction": "bottom-left",
+  },
+};
+
 const badgeCache = {};
 
 function assetUrl(relative) {
@@ -197,15 +238,24 @@ function loadImage(url) {
  * Pick base layer + optional badge overlay for static frames.
  */
 export function pickStaticBaseLayer(layers, flags = {}) {
-  const f = flags || {};
-  if (f.cleanProduct || f.borderRemoved) {
+  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
+  const style = layers._staticFrame?.style;
+
+  if (!hasBorder && !hasStickers) {
     return { url: layers.productOnly || layers.full, drawBadges: false };
   }
-  if (f.stickersRemoved) {
+  if (hasBorder && !hasStickers) {
     return { url: layers.noStickers || layers.full, drawBadges: false };
   }
-  if (f.borderOnlyRemoved) {
-    return { url: layers.noBorder || layers.noStickers || layers.full, drawBadges: false };
+  if (!hasBorder && hasStickers) {
+    if (style === "showcase" && layers.noBorder) {
+      return { url: layers.noBorder, drawBadges: false, isProductCanvas: true };
+    }
+    return {
+      url: layers.productOnly || layers.noBorder || layers.full,
+      drawBadges: true,
+      isProductCanvas: true,
+    };
   }
   return { url: layers.noStickers || layers.full, drawBadges: true };
 }
@@ -220,6 +270,16 @@ export async function composeStaticPreview(layers, flags = {}) {
   const placements = (layers._badgePlacements || []).filter((p) => p.drawn !== false);
   if (!placements.length) return layers.full || picked.url;
 
+  const frame = layers._staticFrame;
+  let toDraw = placements;
+  if (picked.isProductCanvas && frame) {
+    toDraw = placements.map((p) => ({
+      ...p,
+      x: p.x - frame.px,
+      y: p.y - frame.py,
+    }));
+  }
+
   try {
     const img = await loadImage(picked.url);
     const canvas = document.createElement("canvas");
@@ -227,7 +287,7 @@ export async function composeStaticPreview(layers, flags = {}) {
     canvas.height = img.height;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0);
-    await drawPlacementsOnCtx(ctx, placements);
+    await drawPlacementsOnCtx(ctx, toDraw);
     return canvas.toDataURL("image/jpeg", 0.82);
   } catch (e) {
     return layers.full || picked.url;
@@ -248,16 +308,8 @@ export function ensureStaticPlacementMeta(layers, style) {
 
   const defaults =
     style === "lifestyle_promo"
-      ? {
-          "lifestyle-hot": "top-right",
-          "lifestyle-flash": "middle-left",
-          "lifestyle-ship": "bottom-center",
-        }
-      : {
-          "showcase-quality": "top-left",
-          "showcase-star": "top-right",
-          "showcase-satisfaction": "bottom-left",
-        };
+      ? DEFAULT_ANCHORS.lifestyle_promo
+      : DEFAULT_ANCHORS.showcase;
 
   for (const p of layers._badgePlacements) {
     if (!p.id) continue;
@@ -275,16 +327,49 @@ export function ensureStaticPlacementMeta(layers, style) {
   return layers;
 }
 
+/** Reset badge anchors to defaults (used by static variant reset). */
+export function resetStaticPlacements(layers) {
+  if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
+  const style = layers._staticFrame.style;
+  const defaults =
+    style === "lifestyle_promo"
+      ? DEFAULT_ANCHORS.lifestyle_promo
+      : DEFAULT_ANCHORS.showcase;
+
+  for (const p of layers._badgePlacements) {
+    if (!p.id) continue;
+    p.anchor = defaults[p.id] || "top-left";
+    applyAnchorToPlacement(p, layers._staticFrame);
+  }
+  return true;
+}
+
+export function isStaticEdited(flags, badgesRepositioned) {
+  if (badgesRepositioned) return true;
+  const f = flags || {};
+  return !!(
+    f.stickersRemoved ||
+    f.borderOnlyRemoved ||
+    f.cleanProduct ||
+    f.stickersAdded ||
+    f.borderAdded ||
+    f.fullDecorationsAdded
+  );
+}
+
 if (typeof window !== "undefined") {
   window.StaticFrameCompose = {
     isStaticPromoVariant,
     getBadgeSlots,
     BADGE_ANCHOR_OPTIONS,
+    getStaticEffectiveFlags,
     positionForAnchor,
     applyAnchorToPlacement,
     pickStaticBaseLayer,
     composeStaticPreview,
     updatePlacementAnchor,
     ensureStaticPlacementMeta,
+    resetStaticPlacements,
+    isStaticEdited,
   };
 }
