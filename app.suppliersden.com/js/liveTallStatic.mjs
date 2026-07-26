@@ -1,24 +1,18 @@
 /**
- * Web-only tall portrait promo frames — 703×1024 blue border + corner badges @ ₹50 band.
- * Layout matches competitor reference: thick blue frame, white mat, full product, 3 corner icons.
+ * Web-only tall portrait promo — exact reference layout @ 703×1024.
+ * Thick blue border · white mat · full product · 3 corner badges on white mat.
  */
-import { imageToWhiteCanvas } from "./lib/canvas-utils.js?v=45";
-import { compressFramedToKb } from "./lib/encoder.js?v=45";
-import { estimateImageShipping } from "./lib/shipping.js?v=45";
-import {
-  drawPriceTag,
-  drawCurvedArrow,
-  drawDeliveryTruck,
-  drawTallPlacement,
-} from "./tallStaticBadges.mjs?v=45";
+import { imageToWhiteCanvas } from "./lib/canvas-utils.js?v=46";
+import { compressFramedToKb } from "./lib/encoder.js?v=46";
+import { estimateImageShipping } from "./lib/shipping.js?v=46";
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=46";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
 export const TALL_STATIC_VARIANT_COUNT = 25;
 
+/** Light blue border — matches reference screenshot. */
 const BORDER_BLUE = "#add8e6";
-const BLUE_PCT = 0.17;
-const WHITE_PCT = 0.04;
 
 function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -32,42 +26,30 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
 }
 
 /**
- * Screenshot-style frame scaled to exactly 703×1024 (same as low_*_tall hunt layout).
+ * Build exactly 703×1024 — blue fills entire canvas, white mat inside, product maximized.
  */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
+
+  // Thick uniform blue border (~10.5% of short side) like reference
+  const blueOuter = Math.round(Math.min(outerW, outerH) * 0.105);
+  const whitePad = Math.max(10, Math.round(blueOuter * 0.16));
+
+  const whiteX = blueOuter;
+  const whiteY = blueOuter;
+  const whiteW = outerW - blueOuter * 2;
+  const whiteH = outerH - blueOuter * 2;
+
+  const availW = whiteW - whitePad * 2;
+  const availH = whiteH - whitePad * 2;
+
   const white = imageToWhiteCanvas(img);
-
-  let w = white.width;
-  let h = white.height;
-  const cap = 920;
-  if (Math.max(w, h) > cap) {
-    const s = cap / Math.max(w, h);
-    w = Math.round(w * s);
-    h = Math.round(h * s);
-  }
-
-  const minDim = Math.min(w, h);
-  const blueOuter = Math.max(24, Math.round(minDim * BLUE_PCT * 1.06));
-  const whitePad = Math.max(10, Math.round(minDim * WHITE_PCT));
-  const inset = blueOuter + whitePad;
-
-  const framedW = w + inset * 2;
-  const framedH = h + inset * 2;
-  const scale = Math.min(outerW / framedW, outerH / framedH);
-
-  const outFramedW = Math.round(framedW * scale);
-  const outFramedH = Math.round(framedH * scale);
-  const ox = Math.round((outerW - outFramedW) / 2);
-  const oy = Math.round((outerH - outFramedH) / 2);
-
-  const outBlue = Math.round(blueOuter * scale);
-  const outInset = Math.round(inset * scale);
-  const dw = Math.round(w * scale);
-  const dh = Math.round(h * scale);
-  const px = ox + outInset;
-  const py = oy + outInset;
+  const scale = Math.min(availW / white.width, availH / white.height);
+  const dw = Math.round(white.width * scale);
+  const dh = Math.round(white.height * scale);
+  const px = whiteX + whitePad + Math.round((availW - dw) / 2);
+  const py = whiteY + whitePad + Math.round((availH - dh) / 2);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -76,22 +58,12 @@ function buildTallStaticFrameCanvas(img) {
 
   ctx.fillStyle = BORDER_BLUE;
   ctx.fillRect(0, 0, outerW, outerH);
-
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(
-    ox + outBlue,
-    oy + outBlue,
-    outFramedW - outBlue * 2,
-    outFramedH - outBlue * 2,
-  );
+  ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(white, 0, 0, white.width, white.height, px, py, dw, dh);
-
-  ctx.strokeStyle = "#9ec5e8";
-  ctx.lineWidth = Math.max(2, Math.round(minDim * scale * 0.006));
-  ctx.strokeRect(px - 1, py - 1, dw + 2, dh + 2);
 
   return {
     canvas,
@@ -99,21 +71,27 @@ function buildTallStaticFrameCanvas(img) {
     py,
     dw,
     dh,
-    border: outBlue,
+    border: blueOuter,
+    whiteX,
+    whiteY,
+    whiteW,
+    whiteH,
     trimmed: white,
     outerW,
     outerH,
-    scale,
   };
 }
 
-function tallStaticPlacements(px, py, dw, dh, outerW, outerH) {
-  const ref = Math.min(dw, dh);
-  const tagSize = Math.max(52, Math.round(ref * 0.14));
-  const arrowW = Math.max(44, Math.round(ref * 0.12));
-  const arrowH = Math.max(50, Math.round(ref * 0.16));
-  const truckSize = Math.max(48, Math.round(ref * 0.13));
-  const inset = Math.max(6, Math.round(tagSize * 0.06));
+/** Badges sit on white-mat corners (reference positions). */
+function tallStaticPlacements(frame) {
+  const { whiteX, whiteY, whiteW, whiteH, outerW, outerH } = frame;
+  const ref = Math.min(outerW, outerH);
+
+  const tagSize = Math.round(ref * 0.11);
+  const arrowW = Math.round(ref * 0.1);
+  const arrowH = Math.round(ref * 0.14);
+  const truckSize = Math.round(ref * 0.1);
+  const pad = Math.max(6, Math.round(ref * 0.012));
 
   const placements = [
     {
@@ -122,8 +100,8 @@ function tallStaticPlacements(px, py, dw, dh, outerW, outerH) {
       anchor: "top-left",
       kind: "priceTag",
       size: tagSize,
-      x: px + inset,
-      y: py + inset,
+      x: whiteX + pad,
+      y: whiteY + pad,
       drawn: false,
     },
     {
@@ -133,8 +111,8 @@ function tallStaticPlacements(px, py, dw, dh, outerW, outerH) {
       kind: "curvedArrow",
       w: arrowW,
       h: arrowH,
-      x: px + dw - arrowW - inset,
-      y: py + inset,
+      x: whiteX + whiteW - arrowW - pad,
+      y: whiteY + pad,
       drawn: false,
     },
     {
@@ -143,19 +121,12 @@ function tallStaticPlacements(px, py, dw, dh, outerW, outerH) {
       anchor: "bottom-left",
       kind: "truckIcon",
       size: truckSize,
-      x: px + inset,
-      y: py + dh - truckSize - inset,
+      x: whiteX + pad,
+      y: whiteY + whiteH - truckSize - pad,
       drawn: false,
     },
   ];
 
-  const pad = 3;
-  for (const p of placements) {
-    const pw = p.w || p.size;
-    const ph = p.h || p.size;
-    p.x = Math.max(pad, Math.min(p.x, outerW - pw - pad));
-    p.y = Math.max(pad, Math.min(p.y, outerH - ph - pad));
-  }
   return placements;
 }
 
@@ -178,8 +149,22 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
 
 async function buildTallStaticLayers(img) {
   const built = buildTallStaticFrameCanvas(img);
-  const { canvas, px, py, dw, dh, border, trimmed, outerW, outerH } = built;
-  const placements = tallStaticPlacements(px, py, dw, dh, outerW, outerH);
+  const {
+    canvas,
+    px,
+    py,
+    dw,
+    dh,
+    border,
+    whiteX,
+    whiteY,
+    whiteW,
+    whiteH,
+    trimmed,
+    outerW,
+    outerH,
+  } = built;
+  const placements = tallStaticPlacements(built);
 
   const noStickersCanvas = document.createElement("canvas");
   noStickersCanvas.width = canvas.width;
@@ -230,6 +215,10 @@ async function buildTallStaticLayers(img) {
         border,
         outerW,
         outerH,
+        whiteX,
+        whiteY,
+        whiteW,
+        whiteH,
       },
     },
     meta: {
