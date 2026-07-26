@@ -2,17 +2,21 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=42";
-import { loadImage } from "./lib/canvas-utils.js?v=42";
-import { blobToDataUrl } from "./lib/encoder.js?v=42";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=44";
+import { loadImage } from "./lib/canvas-utils.js?v=44";
+import { blobToDataUrl } from "./lib/encoder.js?v=44";
 import {
   buildShowcaseVariants,
   SHOWCASE_VARIANT_COUNT,
-} from "./liveShowcaseVariants.mjs?v=42";
+} from "./liveShowcaseVariants.mjs?v=44";
 import {
   buildPromoLifestyleVariants,
   PROMO_LIFESTYLE_VARIANT_COUNT,
-} from "./livePromoLifestyle.mjs?v=42";
+} from "./livePromoLifestyle.mjs?v=44";
+import {
+  buildTallStaticVariants,
+  TALL_STATIC_VARIANT_COUNT,
+} from "./liveTallStatic.mjs?v=44";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -140,6 +144,29 @@ export async function runPromoLifestyleGeneration(file, options = {}) {
 }
 
 /**
+ * Tall portrait promo — 703×1024 blue frame + corner badges @ ₹50 band (web only).
+ */
+export async function runTallStaticGeneration(file, options = {}) {
+  const { onProgress = () => {}, count = TALL_STATIC_VARIANT_COUNT } = options;
+  const img = await loadImage(file);
+  const raw = await buildTallStaticVariants(img, { onProgress, count });
+  const results = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    v.dataUrl = await blobToDataUrl(v.blob);
+    results.push(
+      variantToAnalysisResult(v, i + 80000, {
+        variantStyle: "tall_static",
+        showcase: true,
+        showcasePreset: v.meta?.showcasePreset,
+        variantId: `tall-static-${v.kb}-${i + 80000}`,
+      }),
+    );
+  }
+  return { success: results.length > 0, results };
+}
+
+/**
  * Run static image analysis + ranked local variants (est ₹ only).
  */
 export async function runLiveAnalysis(file, options = {}) {
@@ -199,6 +226,7 @@ if (typeof window !== "undefined") {
     runLiveAnalysis,
     runShowcaseGeneration,
     runPromoLifestyleGeneration,
+    runTallStaticGeneration,
   };
   window.dispatchEvent(new Event("live-analysis-ready"));
 }

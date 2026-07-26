@@ -105,6 +105,10 @@ export function estimateImageShipping(variant) {
     if (kb >= 48 && kb <= 54) return kb;
     return Math.min(kb, 54);
   }
+  if (path === "tall_static") {
+    if (maxSide <= 1024 && kb >= 37 && kb <= 55) return Math.min(kb, 50);
+    return 50;
+  }
   if (path === "collage_back") {
     if (kb >= 54 && kb <= 58) return 41;
     if (kb >= 48 && kb <= 52) return 71;

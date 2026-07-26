@@ -19,6 +19,9 @@ class MeeshoShippingOptimizer {
     this.promoLifestyleResults = [];
     this.showPromoLifestyleResults = false;
     this.isGeneratingPromoLifestyle = false;
+    this.tallStaticResults = [];
+    this.showTallStaticResults = false;
+    this.isGeneratingTallStatic = false;
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -57,22 +60,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=43";
+      return "/js/liveAnalysisBridge.mjs?v=44";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=43");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=44");
     }
-    return "/js/liveAnalysisBridge.mjs?v=43";
+    return "/js/liveAnalysisBridge.mjs?v=44";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=43";
+      return "/js/staticFrameCompose.mjs?v=44";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=43");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=44");
     }
-    return "/js/staticFrameCompose.mjs?v=43";
+    return "/js/staticFrameCompose.mjs?v=44";
   }
 
   async preloadStaticComposeModule() {
@@ -97,7 +100,7 @@ class MeeshoShippingOptimizer {
       return window.StaticFrameCompose.isStaticPromoVariant(row);
     }
     const style = row?.variantStyle || row?.meta?.path || "";
-    return style === "showcase" || style === "lifestyle_promo";
+    return style === "showcase" || style === "lifestyle_promo" || style === "tall_static";
   }
 
   async preloadLiveAnalysisModule() {
@@ -146,6 +149,14 @@ class MeeshoShippingOptimizer {
     if (!ready || !window.LiveAnalysis?.runPromoLifestyleGeneration) return null;
     return window.LiveAnalysis.runPromoLifestyleGeneration(file, {
       onProgress: (msg) => console.log("Promo lifestyle:", msg),
+    });
+  }
+
+  async runTallStaticGeneration(file) {
+    const ready = await this.preloadLiveAnalysisModule();
+    if (!ready || !window.LiveAnalysis?.runTallStaticGeneration) return null;
+    return window.LiveAnalysis.runTallStaticGeneration(file, {
+      onProgress: (msg) => console.log("Tall static:", msg),
     });
   }
 
@@ -198,6 +209,60 @@ class MeeshoShippingOptimizer {
       OptimizerUtils.showNotification("Lifestyle promo generation failed", "error");
     } finally {
       this.isGeneratingPromoLifestyle = false;
+      if (processingArea) processingArea.style.display = "none";
+      this.displayLiveResultsPanel();
+    }
+  }
+
+  async generateTallStaticFrames() {
+    if (!window.WEB_OPTIMIZER_MODE) return;
+    if (this.isGeneratingTallStatic) return;
+
+    const file = await this.getImageFileForShowcase();
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+
+    this.lastProcessedFile = file;
+    this.isGeneratingTallStatic = true;
+
+    const processingArea = document.getElementById("processing-area");
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:24px 16px;">
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building tall promo frames…</div>
+          <div style="font-size:12px;color:#666;">703×1024 blue frame · corner badges · ₹50 band</div>
+        </div>`;
+    }
+
+    try {
+      const out = await this.runTallStaticGeneration(file);
+      if (!out?.success || !out.results?.length) {
+        OptimizerUtils.showNotification(
+          "Could not generate tall promo frames",
+          "error",
+        );
+        return;
+      }
+      this.tallStaticResults = out.results.map((r, i) =>
+        this.mapResultFromApi(r, i + 80000),
+      );
+      this.tallStaticResults.sort(
+        (a, b) => (a.estShipping || 999) - (b.estShipping || 999),
+      );
+      this.showTallStaticResults = true;
+      OptimizerUtils.showNotification(
+        `✅ ${this.tallStaticResults.length} tall promo frames ready (est ₹${this.tallStaticResults[0]?.estShipping || "—"})`,
+        "success",
+      );
+      this.displayLiveResultsPanel();
+    } catch (e) {
+      console.error("Tall static generate:", e);
+      OptimizerUtils.showNotification("Tall promo generation failed", "error");
+    } finally {
+      this.isGeneratingTallStatic = false;
       if (processingArea) processingArea.style.display = "none";
       this.displayLiveResultsPanel();
     }
@@ -266,7 +331,8 @@ class MeeshoShippingOptimizer {
       this.currentResults.length > 0 ||
       this.analysisPrimaryResults.length > 0 ||
       (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0) ||
-      (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length > 0);
+      (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length > 0) ||
+      (window.WEB_OPTIMIZER_MODE && this.tallStaticResults.length > 0);
     if (!hasContent || !resultsArea) return;
 
     resultsArea.style.display = "block";
@@ -594,6 +660,14 @@ class MeeshoShippingOptimizer {
         document.getElementById("image-input")?.files?.[0];
       promoBtn.disabled = !hasFile;
     }
+    const tallStaticBtn = document.getElementById("generate-tall-static-btn");
+    if (tallStaticBtn) {
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      tallStaticBtn.disabled = !hasFile;
+    }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
@@ -894,11 +968,13 @@ Please share payment details and license key.`;
       const testGenBtn = document.getElementById("test-generate-btn");
       const showcaseBtn = document.getElementById("generate-showcase-btn");
       const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
+      const tallStaticBtn = document.getElementById("generate-tall-static-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (showcaseBtn) showcaseBtn.disabled = false;
         if (promoBtn) promoBtn.disabled = false;
+        if (tallStaticBtn) tallStaticBtn.disabled = false;
         if (bootMsg) {
           bootMsg.textContent =
             this.getActiveOptimizerTab() === "test"
@@ -972,6 +1048,15 @@ Please share payment details and license key.`;
           e.preventDefault();
           e.stopPropagation();
           void this.generatePromoLifestyleFrames();
+        };
+      }
+      const tallStaticBtn = document.getElementById("generate-tall-static-btn");
+      if (tallStaticBtn) {
+        tallStaticBtn.disabled = !getUploadFile();
+        tallStaticBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void this.generateTallStaticFrames();
         };
       }
     }
@@ -1512,6 +1597,9 @@ Please share payment details and license key.`;
     this.promoLifestyleResults = [];
     this.showPromoLifestyleResults = false;
     this.isGeneratingPromoLifestyle = false;
+    this.tallStaticResults = [];
+    this.showTallStaticResults = false;
+    this.isGeneratingTallStatic = false;
     this.testLabCurrentResults = [];
     this.testLabFramedExtraResults = [];
     this.testLabShowFramedExtras = false;
@@ -1878,6 +1966,9 @@ Please share payment details and license key.`;
     this.promoLifestyleResults = [];
     this.showPromoLifestyleResults = false;
     this.isGeneratingPromoLifestyle = false;
+    this.tallStaticResults = [];
+    this.showTallStaticResults = false;
+    this.isGeneratingTallStatic = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -2105,7 +2196,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0))) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0))) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -2514,6 +2605,10 @@ Please share payment details and license key.`;
       showPromoLifestyleResults: this.showPromoLifestyleResults,
       isGeneratingPromoLifestyle: this.isGeneratingPromoLifestyle,
       promoLifestyleVariantCount: 25,
+      tallStaticResults: this.tallStaticResults,
+      showTallStaticResults: this.showTallStaticResults,
+      isGeneratingTallStatic: this.isGeneratingTallStatic,
+      tallStaticVariantCount: 25,
     };
   }
 
@@ -2650,6 +2745,9 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
+    if (window.WEB_OPTIMIZER_MODE && this.tallStaticResults.length) {
+      return this.tallStaticResults[0];
+    }
     if (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length) {
       return this.promoLifestyleResults[0];
     }
@@ -2750,6 +2848,7 @@ Please share payment details and license key.`;
       this.analysisExtraResults.find((r) => r.variantId === variantId) ||
       this.showcaseResults.find((r) => r.variantId === variantId) ||
       this.promoLifestyleResults.find((r) => r.variantId === variantId) ||
+      this.tallStaticResults.find((r) => r.variantId === variantId) ||
       this.testLabCurrentResults.find((r) => r.variantId === variantId) ||
       this.testLabFramedExtraResults.find((r) => r.variantId === variantId) ||
       this.testLabAnalysisPrimaryResults.find((r) => r.variantId === variantId) ||
@@ -3214,7 +3313,7 @@ Please share payment details and license key.`;
       if (
         !this.currentResults.length &&
         !this.analysisPrimaryResults.length &&
-        !(window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length || this.promoLifestyleResults.length))
+        !(window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length || this.promoLifestyleResults.length || this.tallStaticResults.length))
       ) {
         return;
       }
@@ -3384,6 +3483,21 @@ Please share payment details and license key.`;
     if (togglePromo) {
       togglePromo.onclick = () => {
         this.showPromoLifestyleResults = !this.showPromoLifestyleResults;
+        this.refreshResultsView();
+      };
+    }
+
+    const generateTallBtn = document.getElementById("generate-tall-static-btn");
+    if (generateTallBtn) {
+      generateTallBtn.onclick = () => {
+        void this.generateTallStaticFrames();
+      };
+    }
+
+    const toggleTall = document.getElementById("toggle-tall-static-results");
+    if (toggleTall) {
+      toggleTall.onclick = () => {
+        this.showTallStaticResults = !this.showTallStaticResults;
         this.refreshResultsView();
       };
     }

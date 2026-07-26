@@ -724,6 +724,63 @@ const OptimizerUI = {
     return html;
   },
 
+  renderTallStaticSection: function (options) {
+    if (!window.WEB_OPTIMIZER_MODE) return "";
+
+    options = options || {};
+    const tall = options.tallStaticResults || [];
+    const showPanel = !!options.showTallStaticResults;
+    const generating = !!options.isGeneratingTallStatic;
+    const baseline = options.baselineShipping || 0;
+    const count = options.tallStaticVariantCount || 25;
+    const sorted = [...tall].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+    const bestEst =
+      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+
+    let html = `
+            <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
+                <div style="background:rgba(124,58,237,0.1);border:1px solid rgba(173,216,230,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
+                    <div style="font-size:11px;color:#5b21b6;">📐 Tall Promo Frames</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · blue border · sale tag + truck badges</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ₹50 band</div>
+                </div>
+                <button type="button" id="generate-tall-static-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;background:#7c3aed;color:#fff;${
+                  generating ? "opacity:0.65;pointer-events:none;" : ""
+                }" ${generating ? "disabled" : ""}>
+                    ${generating ? "Generating tall promo frames…" : `Generate Tall Promo (${count})`}
+                </button>
+        `;
+
+    if (tall.length > 0) {
+      html += `
+                <button type="button" id="toggle-tall-static-results" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showPanel ? "▼" : "▶"} See more tall promo variants (${tall.length}) — best est ₹${bestEst}
+                </button>
+                <div id="tall-static-results-panel" style="display:${showPanel ? "block" : "none"};">
+                    <div class="tall-static-results-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:520px;overflow-y:auto;">
+        `;
+      sorted.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode: false,
+          analysisMode: true,
+          isBest: i === 0,
+        });
+      });
+      html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
   // Results HTML - Only accurate results
   getResultsHTML: function (results, options) {
     options = options || {};
@@ -733,12 +790,15 @@ const OptimizerUI = {
       window.WEB_OPTIMIZER_MODE ? options.showcaseResults || [] : [];
     const promoLifestyleResults =
       window.WEB_OPTIMIZER_MODE ? options.promoLifestyleResults || [] : [];
+    const tallStaticResults =
+      window.WEB_OPTIMIZER_MODE ? options.tallStaticResults || [] : [];
     const hasShowcase = showcaseResults.length > 0;
     const hasPromoLifestyle = promoLifestyleResults.length > 0;
+    const hasTallStatic = tallStaticResults.length > 0;
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
 
-    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle) {
+    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && !hasTallStatic) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -754,7 +814,7 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     let html = "";
 
-    if (!hasLive && !hasAnalysis && hasShowcase && !hasPromoLifestyle) {
+    if (!hasLive && !hasAnalysis && hasShowcase && !hasPromoLifestyle && !hasTallStatic) {
       const sortedShowcase = [...showcaseResults].sort(
         (a, b) =>
           (a.estShipping || a.meta?.estInr || 999) -
@@ -770,7 +830,7 @@ const OptimizerUI = {
             </div>`;
     }
 
-    if (!hasLive && !hasAnalysis && !hasShowcase && hasPromoLifestyle) {
+    if (!hasLive && !hasAnalysis && !hasShowcase && hasPromoLifestyle && !hasTallStatic) {
       const sortedPromo = [...promoLifestyleResults].sort(
         (a, b) =>
           (a.estShipping || a.meta?.estInr || 999) -
@@ -783,6 +843,22 @@ const OptimizerUI = {
                 <div style="font-size:11px;color:#15803d;">🏷️ Lifestyle Promo Frames</div>
                 <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestPromoOnly}</div>
                 <div style="font-size:10px;color:#666;margin-top:4px;">${promoLifestyleResults.length} variants · green frame · 48–54 KB</div>
+            </div>`;
+    }
+
+    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && hasTallStatic) {
+      const sortedTall = [...tallStaticResults].sort(
+        (a, b) =>
+          (a.estShipping || a.meta?.estInr || 999) -
+          (b.estShipping || b.meta?.estInr || 999),
+      );
+      const bestTallOnly =
+        sortedTall[0]?.estShipping || sortedTall[0]?.meta?.estInr || 0;
+      html += `
+            <div style="background:rgba(124,58,237,0.12);border:1px solid rgba(173,216,230,0.5);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                <div style="font-size:11px;color:#5b21b6;">📐 Tall Promo Frames</div>
+                <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestTallOnly}</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${tallStaticResults.length} variants · 703×1024 · ₹50 band</div>
             </div>`;
     }
 
@@ -884,10 +960,21 @@ const OptimizerUI = {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
-    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && (hasShowcase || hasPromoLifestyle))) {
+    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && (hasShowcase || hasPromoLifestyle || hasTallStatic))) {
+      html += this.renderTallStaticSection(options);
       html += this.renderPromoLifestyleSection(options);
       html += this.renderShowcaseSection(options);
     }
+
+    const bestTall = hasTallStatic
+      ? [...tallStaticResults].sort(
+          (a, b) =>
+            (a.estShipping || a.meta?.estInr || 999) -
+            (b.estShipping || b.meta?.estInr || 999),
+        )[0]
+      : null;
+    const bestTallEst =
+      bestTall?.estShipping || bestTall?.meta?.estInr || 0;
 
     const bestPromo = hasPromoLifestyle
       ? [...promoLifestyleResults].sort(
@@ -921,7 +1008,7 @@ const OptimizerUI = {
       ? analysisSorted[0].estShipping || analysisSorted[0].meta?.estInr || 0
       : 0;
 
-    const bestStaticEst = bestPromoEst || bestShowcaseEst;
+    const bestStaticEst = bestTallEst || bestPromoEst || bestShowcaseEst;
 
     html += `
             <div style="display:flex;gap:8px;">

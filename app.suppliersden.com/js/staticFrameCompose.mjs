@@ -53,6 +53,11 @@ const DEFAULT_ANCHORS = {
     "showcase-star": "top-right",
     "showcase-satisfaction": "bottom-left",
   },
+  tall_static: {
+    "tall-sale": "top-left",
+    "tall-arrow": "top-right",
+    "tall-ship": "bottom-left",
+  },
 };
 
 const badgeCache = {};
@@ -90,8 +95,10 @@ export function isStaticPromoVariant(row) {
   return (
     style === "showcase" ||
     style === "lifestyle_promo" ||
+    style === "tall_static" ||
     row.meta?.path === "showcase" ||
     row.meta?.path === "lifestyle_promo" ||
+    row.meta?.path === "tall_static" ||
     !!row.layers?._staticFrame
   );
 }
@@ -309,6 +316,8 @@ export function ensureStaticPlacementMeta(layers, style) {
   const defaults =
     style === "lifestyle_promo"
       ? DEFAULT_ANCHORS.lifestyle_promo
+      : style === "tall_static"
+      ? DEFAULT_ANCHORS.tall_static
       : DEFAULT_ANCHORS.showcase;
 
   for (const p of layers._badgePlacements) {
@@ -321,6 +330,9 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id === "showcase-satisfaction") p.label = "Satisfaction";
       else if (p.id === "lifestyle-hot") p.label = "HOT SALE";
       else if (p.id === "lifestyle-flash") p.label = "FLASH SALE";
+      else if (p.id === "tall-sale") p.label = "Sale tag";
+      else if (p.id === "tall-arrow") p.label = "Arrow ribbon";
+      else if (p.id === "tall-ship") p.label = "FREE SHIPPING";
     }
     applyAnchorToPlacement(p, layers._staticFrame);
   }
@@ -334,6 +346,8 @@ export function resetStaticPlacements(layers) {
   const defaults =
     style === "lifestyle_promo"
       ? DEFAULT_ANCHORS.lifestyle_promo
+      : style === "tall_static"
+      ? DEFAULT_ANCHORS.tall_static
       : DEFAULT_ANCHORS.showcase;
 
   for (const p of layers._badgePlacements) {
