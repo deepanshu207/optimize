@@ -101,6 +101,10 @@ export function estimateImageShipping(variant) {
     if (kb >= 64 && kb <= 71) return kb;
     return Math.min(kb, 71);
   }
+  if (path === "lifestyle_promo") {
+    if (kb >= 48 && kb <= 54) return kb;
+    return Math.min(kb, 54);
+  }
   if (path === "collage_back") {
     if (kb >= 54 && kb <= 58) return 41;
     if (kb >= 48 && kb <= 52) return 71;

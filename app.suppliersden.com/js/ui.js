@@ -666,6 +666,63 @@ const OptimizerUI = {
     return html;
   },
 
+  renderPromoLifestyleSection: function (options) {
+    if (!window.WEB_OPTIMIZER_MODE) return "";
+
+    options = options || {};
+    const promo = options.promoLifestyleResults || [];
+    const showPanel = !!options.showPromoLifestyleResults;
+    const generating = !!options.isGeneratingPromoLifestyle;
+    const baseline = options.baselineShipping || 0;
+    const count = options.promoLifestyleVariantCount || 25;
+    const sorted = [...promo].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+    const bestEst =
+      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+
+    let html = `
+            <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
+                <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
+                    <div style="font-size:11px;color:#15803d;">🏷️ Lifestyle Promo (₹54 band)</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">Keeps trellis/lifestyle scene · solid green frame · HOT/FLASH sale</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">48–54 KB · competitor-style · no Meesho session</div>
+                </div>
+                <button type="button" id="generate-promo-lifestyle-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;background:#22c55e;color:#fff;${
+                  generating ? "opacity:0.65;pointer-events:none;" : ""
+                }" ${generating ? "disabled" : ""}>
+                    ${generating ? "Generating lifestyle promo…" : `Generate Lifestyle Promo (${count})`}
+                </button>
+        `;
+
+    if (promo.length > 0) {
+      html += `
+                <button type="button" id="toggle-promo-lifestyle-results" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showPanel ? "▼" : "▶"} See lifestyle promo variants (${promo.length}) — best est ₹${bestEst}
+                </button>
+                <div id="promo-lifestyle-results-panel" style="display:${showPanel ? "block" : "none"};">
+                    <div class="promo-lifestyle-results-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:520px;overflow-y:auto;">
+        `;
+      sorted.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode: false,
+          analysisMode: true,
+          isBest: i === 0,
+        });
+      });
+      html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
   // Results HTML - Only accurate results
   getResultsHTML: function (results, options) {
     options = options || {};
@@ -673,11 +730,14 @@ const OptimizerUI = {
     const analysisPrimary = options.analysisPrimary || [];
     const showcaseResults =
       window.WEB_OPTIMIZER_MODE ? options.showcaseResults || [] : [];
+    const promoLifestyleResults =
+      window.WEB_OPTIMIZER_MODE ? options.promoLifestyleResults || [] : [];
     const hasShowcase = showcaseResults.length > 0;
+    const hasPromoLifestyle = promoLifestyleResults.length > 0;
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
 
-    if (!hasLive && !hasAnalysis && !hasShowcase) {
+    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -693,7 +753,7 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     let html = "";
 
-    if (!hasLive && !hasAnalysis && hasShowcase) {
+    if (!hasLive && !hasAnalysis && hasShowcase && !hasPromoLifestyle) {
       const sortedShowcase = [...showcaseResults].sort(
         (a, b) =>
           (a.estShipping || a.meta?.estInr || 999) -
@@ -706,6 +766,22 @@ const OptimizerUI = {
                 <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
                 <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestShowcaseOnly}</div>
                 <div style="font-size:10px;color:#666;margin-top:4px;">${showcaseResults.length} static variants · tight frame · no Meesho session</div>
+            </div>`;
+    }
+
+    if (!hasLive && !hasAnalysis && !hasShowcase && hasPromoLifestyle) {
+      const sortedPromo = [...promoLifestyleResults].sort(
+        (a, b) =>
+          (a.estShipping || a.meta?.estInr || 999) -
+          (b.estShipping || b.meta?.estInr || 999),
+      );
+      const bestPromoOnly =
+        sortedPromo[0]?.estShipping || sortedPromo[0]?.meta?.estInr || 0;
+      html += `
+            <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                <div style="font-size:11px;color:#15803d;">🏷️ Lifestyle Promo Frames</div>
+                <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestPromoOnly}</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${promoLifestyleResults.length} variants · green frame · 48–54 KB</div>
             </div>`;
     }
 
@@ -807,9 +883,20 @@ const OptimizerUI = {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
-    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && hasShowcase)) {
+    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && (hasShowcase || hasPromoLifestyle))) {
+      html += this.renderPromoLifestyleSection(options);
       html += this.renderShowcaseSection(options);
     }
+
+    const bestPromo = hasPromoLifestyle
+      ? [...promoLifestyleResults].sort(
+          (a, b) =>
+            (a.estShipping || a.meta?.estInr || 999) -
+            (b.estShipping || b.meta?.estInr || 999),
+        )[0]
+      : null;
+    const bestPromoEst =
+      bestPromo?.estShipping || bestPromo?.meta?.estInr || 0;
 
     const bestShowcase = hasShowcase
       ? [...showcaseResults].sort(
@@ -833,6 +920,8 @@ const OptimizerUI = {
       ? analysisSorted[0].estShipping || analysisSorted[0].meta?.estInr || 0
       : 0;
 
+    const bestStaticEst = bestPromoEst || bestShowcaseEst;
+
     html += `
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
@@ -840,8 +929,8 @@ const OptimizerUI = {
                     ? "Download Best ₹" + bestLive
                     : bestEst
                     ? "Download Best est ₹" + bestEst
-                    : bestShowcaseEst
-                    ? "Download Best est ₹" + bestShowcaseEst
+                    : bestStaticEst
+                    ? "Download Best est ₹" + bestStaticEst
                     : "Download Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>

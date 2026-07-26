@@ -16,6 +16,9 @@ class MeeshoShippingOptimizer {
     this.showcaseResults = [];
     this.showShowcaseResults = false;
     this.isGeneratingShowcase = false;
+    this.promoLifestyleResults = [];
+    this.showPromoLifestyleResults = false;
+    this.isGeneratingPromoLifestyle = false;
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -103,6 +106,68 @@ class MeeshoShippingOptimizer {
     return null;
   }
 
+  async runPromoLifestyleGeneration(file) {
+    const ready = await this.preloadLiveAnalysisModule();
+    if (!ready || !window.LiveAnalysis?.runPromoLifestyleGeneration) return null;
+    return window.LiveAnalysis.runPromoLifestyleGeneration(file, {
+      onProgress: (msg) => console.log("Promo lifestyle:", msg),
+    });
+  }
+
+  async generatePromoLifestyleFrames() {
+    if (!window.WEB_OPTIMIZER_MODE) return;
+    if (this.isGeneratingPromoLifestyle) return;
+
+    const file = await this.getImageFileForShowcase();
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+
+    this.lastProcessedFile = file;
+    this.isGeneratingPromoLifestyle = true;
+
+    const processingArea = document.getElementById("processing-area");
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:24px 16px;">
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building lifestyle promo frames…</div>
+          <div style="font-size:12px;color:#666;">Solid green frame · HOT/FLASH sale · 48–54 KB</div>
+        </div>`;
+    }
+
+    try {
+      const out = await this.runPromoLifestyleGeneration(file);
+      if (!out?.success || !out.results?.length) {
+        OptimizerUtils.showNotification(
+          "Could not generate lifestyle promo frames",
+          "error",
+        );
+        return;
+      }
+      this.promoLifestyleResults = out.results.map((r, i) =>
+        this.mapResultFromApi(r, i + 70000),
+      );
+      this.promoLifestyleResults.sort(
+        (a, b) => (a.estShipping || 999) - (b.estShipping || 999),
+      );
+      this.showPromoLifestyleResults = true;
+      OptimizerUtils.showNotification(
+        `✅ ${this.promoLifestyleResults.length} lifestyle promo frames ready (est ₹${this.promoLifestyleResults[0]?.estShipping || "—"})`,
+        "success",
+      );
+      this.displayLiveResultsPanel();
+    } catch (e) {
+      console.error("Promo lifestyle generate:", e);
+      OptimizerUtils.showNotification("Lifestyle promo generation failed", "error");
+    } finally {
+      this.isGeneratingPromoLifestyle = false;
+      if (processingArea) processingArea.style.display = "none";
+      this.displayLiveResultsPanel();
+    }
+  }
+
   async generateShowcaseFrames() {
     if (!window.WEB_OPTIMIZER_MODE) return;
     if (this.isGeneratingShowcase) return;
@@ -165,7 +230,8 @@ class MeeshoShippingOptimizer {
     const hasContent =
       this.currentResults.length > 0 ||
       this.analysisPrimaryResults.length > 0 ||
-      (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0);
+      (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0) ||
+      (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length > 0);
     if (!hasContent || !resultsArea) return;
 
     resultsArea.style.display = "block";
@@ -485,6 +551,14 @@ class MeeshoShippingOptimizer {
         document.getElementById("image-input")?.files?.[0];
       showcaseBtn.disabled = !hasFile;
     }
+    const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
+    if (promoBtn) {
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      promoBtn.disabled = !hasFile;
+    }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
@@ -784,10 +858,12 @@ Please share payment details and license key.`;
       const bootMsg = document.getElementById("boot-msg");
       const testGenBtn = document.getElementById("test-generate-btn");
       const showcaseBtn = document.getElementById("generate-showcase-btn");
+      const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (showcaseBtn) showcaseBtn.disabled = false;
+        if (promoBtn) promoBtn.disabled = false;
         if (bootMsg) {
           bootMsg.textContent =
             this.getActiveOptimizerTab() === "test"
@@ -852,6 +928,15 @@ Please share payment details and license key.`;
           e.preventDefault();
           e.stopPropagation();
           void this.generateShowcaseFrames();
+        };
+      }
+      const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
+      if (promoBtn) {
+        promoBtn.disabled = !getUploadFile();
+        promoBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void this.generatePromoLifestyleFrames();
         };
       }
     }
@@ -1389,6 +1474,9 @@ Please share payment details and license key.`;
     this.showcaseResults = [];
     this.showShowcaseResults = false;
     this.isGeneratingShowcase = false;
+    this.promoLifestyleResults = [];
+    this.showPromoLifestyleResults = false;
+    this.isGeneratingPromoLifestyle = false;
     this.testLabCurrentResults = [];
     this.testLabFramedExtraResults = [];
     this.testLabShowFramedExtras = false;
@@ -1752,6 +1840,9 @@ Please share payment details and license key.`;
     this.showcaseResults = [];
     this.showShowcaseResults = false;
     this.isGeneratingShowcase = false;
+    this.promoLifestyleResults = [];
+    this.showPromoLifestyleResults = false;
+    this.isGeneratingPromoLifestyle = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -1979,7 +2070,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0)) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0))) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -2384,6 +2475,10 @@ Please share payment details and license key.`;
       showShowcaseResults: this.showShowcaseResults,
       isGeneratingShowcase: this.isGeneratingShowcase,
       showcaseVariantCount: 25,
+      promoLifestyleResults: this.promoLifestyleResults,
+      showPromoLifestyleResults: this.showPromoLifestyleResults,
+      isGeneratingPromoLifestyle: this.isGeneratingPromoLifestyle,
+      promoLifestyleVariantCount: 25,
     };
   }
 
@@ -2521,6 +2616,9 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
+    if (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length) {
+      return this.promoLifestyleResults[0];
+    }
     if (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length) {
       return this.showcaseResults[0];
     }
@@ -2617,6 +2715,7 @@ Please share payment details and license key.`;
       this.analysisPrimaryResults.find((r) => r.variantId === variantId) ||
       this.analysisExtraResults.find((r) => r.variantId === variantId) ||
       this.showcaseResults.find((r) => r.variantId === variantId) ||
+      this.promoLifestyleResults.find((r) => r.variantId === variantId) ||
       this.testLabCurrentResults.find((r) => r.variantId === variantId) ||
       this.testLabFramedExtraResults.find((r) => r.variantId === variantId) ||
       this.testLabAnalysisPrimaryResults.find((r) => r.variantId === variantId) ||
@@ -2917,7 +3016,7 @@ Please share payment details and license key.`;
       if (
         !this.currentResults.length &&
         !this.analysisPrimaryResults.length &&
-        !(window.WEB_OPTIMIZER_MODE && this.showcaseResults.length)
+        !(window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length || this.promoLifestyleResults.length))
       ) {
         return;
       }
@@ -3072,6 +3171,21 @@ Please share payment details and license key.`;
     if (toggleShowcase) {
       toggleShowcase.onclick = () => {
         this.showShowcaseResults = !this.showShowcaseResults;
+        this.refreshResultsView();
+      };
+    }
+
+    const generatePromoBtn = document.getElementById("generate-promo-lifestyle-btn");
+    if (generatePromoBtn) {
+      generatePromoBtn.onclick = () => {
+        void this.generatePromoLifestyleFrames();
+      };
+    }
+
+    const togglePromo = document.getElementById("toggle-promo-lifestyle-results");
+    if (togglePromo) {
+      togglePromo.onclick = () => {
+        this.showPromoLifestyleResults = !this.showPromoLifestyleResults;
         this.refreshResultsView();
       };
     }
