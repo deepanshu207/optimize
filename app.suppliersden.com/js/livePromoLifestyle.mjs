@@ -2,9 +2,8 @@
  * Web-only lifestyle promo frames — competitor-style solid green border @ 48–54 KB.
  * Keeps original scene (no white flatten); isolated from tall ₹50 and showcase paths.
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=40";
-import { compressFramedToKb } from "./lib/encoder.js?v=40";
-import { estimateImageShipping } from "./lib/shipping.js?v=40";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=41";
+import { estimateImageShipping } from "./lib/shipping.js?v=41";
 
 /** HOT SALE, FLASH SALE — match competitor listing stickers. */
 export const PROMO_LIFESTYLE_BADGES = {
@@ -12,9 +11,9 @@ export const PROMO_LIFESTYLE_BADGES = {
   flashSale: 22,
 };
 
-/** Cap outer canvas so JPEG lands in 48–54 KB with lifestyle detail. */
-export const PROMO_LIFESTYLE_MAX_W = 640;
-export const PROMO_LIFESTYLE_MAX_H = 853;
+/** Outer cap tuned so lifestyle JPEGs land in Meesho ₹48–54 band. */
+export const PROMO_LIFESTYLE_MAX_W = 560;
+export const PROMO_LIFESTYLE_MAX_H = 747;
 export const PROMO_LIFESTYLE_BORDER_RATIO = 0.05;
 export const PROMO_LIFESTYLE_VARIANT_COUNT = 25;
 
@@ -74,11 +73,11 @@ function promoKbTiers(count = PROMO_LIFESTYLE_VARIANT_COUNT) {
  * Solid neon-green border around full lifestyle photo — no crop / white mat.
  */
 function buildPromoLifestyleCanvas(img) {
-  const base = imageToCanvas(img, 1200);
+  const base = imageToCanvas(img, 800);
   let dw = base.width;
   let dh = base.height;
 
-  let border = Math.max(18, Math.round(Math.min(dw, dh) * PROMO_LIFESTYLE_BORDER_RATIO));
+  let border = Math.max(16, Math.round(Math.min(dw, dh) * PROMO_LIFESTYLE_BORDER_RATIO));
   let outerW = dw + border * 2;
   let outerH = dh + border * 2;
 
@@ -90,7 +89,7 @@ function buildPromoLifestyleCanvas(img) {
   if (fitScale < 1) {
     dw = Math.round(dw * fitScale);
     dh = Math.round(dh * fitScale);
-    border = Math.max(16, Math.round(border * fitScale));
+    border = Math.max(14, Math.round(border * fitScale));
     outerW = dw + border * 2;
     outerH = dh + border * 2;
   }
@@ -112,15 +111,15 @@ function buildPromoLifestyleCanvas(img) {
 }
 
 /**
- * Reference layout (competitor): badges sit on the photo area.
- * HOT SALE top-right · FLASH SALE left waist · FREE SHIPPING bottom-right circle.
+ * Reference layout (image 3): badges on the photo.
+ * HOT SALE top-right · FLASH SALE left waist · FREE SHIPPING bottom-center-left on kurti.
  */
 function promoPlacements(px, py, dw, dh) {
   const ref = Math.min(dw, dh);
-  const hotSize = Math.round(ref * 0.19);
-  const flashW = Math.round(ref * 0.24);
+  const hotSize = Math.round(ref * 0.21);
+  const flashW = Math.round(ref * 0.26);
   const flashH = Math.round(flashW * 0.75);
-  const shipSize = Math.round(ref * 0.17);
+  const shipSize = Math.round(ref * 0.19);
 
   return [
     {
@@ -128,8 +127,8 @@ function promoPlacements(px, py, dw, dh) {
       num: PROMO_LIFESTYLE_BADGES.hotSale,
       w: hotSize,
       h: hotSize,
-      x: px + dw - hotSize - Math.round(dw * 0.02),
-      y: py + Math.round(dh * 0.03),
+      x: px + dw - hotSize - Math.round(dw * 0.01),
+      y: py + Math.round(dh * 0.02),
       drawn: false,
     },
     {
@@ -137,20 +136,35 @@ function promoPlacements(px, py, dw, dh) {
       num: PROMO_LIFESTYLE_BADGES.flashSale,
       w: flashW,
       h: flashH,
-      x: px - Math.round(flashW * 0.12),
-      y: py + Math.round(dh * 0.4) - Math.round(flashH / 2),
+      x: px - Math.round(flashW * 0.08),
+      y: py + Math.round(dh * 0.45) - Math.round(flashH / 2),
       drawn: false,
     },
     {
       kind: "freeShipping",
       size: shipSize,
-      x: px + dw - shipSize - Math.round(dw * 0.04),
-      y: py + dh - shipSize - Math.round(dh * 0.06),
+      x: px + Math.round(dw * 0.34) - Math.round(shipSize / 2),
+      y: py + Math.round(dh * 0.7) - Math.round(shipSize / 2),
       drawn: false,
     },
   ];
 }
 
+function drawTruckIcon(ctx, cx, cy, size) {
+  const w = size * 0.42;
+  const h = size * 0.22;
+  const x = cx - w / 2;
+  const y = cy - h / 2 + size * 0.04;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x, y + h * 0.35, w * 0.62, h * 0.55);
+  ctx.fillRect(x + w * 0.58, y + h * 0.5, w * 0.38, h * 0.4);
+  ctx.beginPath();
+  ctx.arc(x + w * 0.22, y + h * 0.95, h * 0.18, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.78, y + h * 0.95, h * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Red circular FREE SHIPPING + truck — matches reference frame 3. */
 function drawFreeShippingCircle(ctx, x, y, size) {
   const cx = x + size / 2;
   const cy = y + size / 2;
@@ -160,16 +174,17 @@ function drawFreeShippingCircle(ctx, x, y, size) {
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = "#e53935";
   ctx.fill();
-  ctx.lineWidth = Math.max(2, Math.round(size * 0.045));
+  ctx.lineWidth = Math.max(2, Math.round(size * 0.04));
   ctx.strokeStyle = "#ffffff";
   ctx.stroke();
   ctx.fillStyle = "#ffffff";
-  const fs = Math.max(7, Math.round(size * 0.11));
+  const fs = Math.max(6, Math.round(size * 0.1));
   ctx.font = `bold ${fs}px system-ui,sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("FREE", cx, cy - size * 0.08);
-  ctx.fillText("SHIPPING", cx, cy + size * 0.1);
+  ctx.fillText("FREE", cx, cy - size * 0.14);
+  ctx.fillText("SHIPPING", cx, cy - size * 0.02);
+  drawTruckIcon(ctx, cx, cy + size * 0.14, size);
   ctx.restore();
 }
 
@@ -194,7 +209,7 @@ async function drawPlacements(ctx, placements) {
   return out;
 }
 
-function dataUrlFromCanvas(canvas, quality = 0.78) {
+function dataUrlFromCanvas(canvas, quality = 0.76) {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
@@ -211,17 +226,41 @@ function scaleCanvas(src, scale) {
   return c;
 }
 
-/** Shrink canvas until framed JPEG fits target KB (real Meesho band). */
+function encodePromoJpeg(canvas, quality) {
+  const q = Math.max(14, Math.min(92, quality)) / 100;
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob || new Blob()), "image/jpeg", q);
+  });
+}
+
+/** Promo-only encoder — shrinks canvas until bytes ≤ target (real ₹48–54 band). */
 async function compressPromoToKb(canvas, targetKb) {
+  const targetBytes = targetKb * 1024;
   let work = canvas;
-  let blob = await compressFramedToKb(work, targetKb);
-  let attempts = 0;
-  while (blob.size > targetKb * 1024 && attempts < 6 && work.width > 320) {
-    work = scaleCanvas(work, 0.92);
-    blob = await compressFramedToKb(work, targetKb);
-    attempts++;
+  let bestBlob = null;
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    let lo = 14;
+    let hi = 92;
+    let passBest = null;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const blob = await encodePromoJpeg(work, mid);
+      if (blob.size <= targetBytes) {
+        passBest = blob;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (passBest) return { blob: passBest, canvas: work };
+    bestBlob = passBest || (await encodePromoJpeg(work, 14));
+    if (bestBlob.size <= targetBytes) return { blob: bestBlob, canvas: work };
+    if (work.width <= 260) break;
+    work = scaleCanvas(work, 0.88);
   }
-  return { blob, canvas: work };
+
+  return { blob: bestBlob || (await encodePromoJpeg(work, 14)), canvas: work };
 }
 
 async function buildPromoLayers(img) {
