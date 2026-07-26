@@ -745,7 +745,7 @@ const OptimizerUI = {
             <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
                 <div style="background:rgba(124,58,237,0.1);border:1px solid rgba(173,216,230,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#5b21b6;">📐 Tall Promo Frames</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · blue border · sale tag + truck badges</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · blue frame · price tag + arrow + truck</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ₹50 band</div>
                 </div>
                 <button type="button" id="generate-tall-static-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;background:#7c3aed;color:#fff;${
