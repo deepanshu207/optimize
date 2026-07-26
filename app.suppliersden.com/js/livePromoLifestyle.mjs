@@ -2,8 +2,8 @@
  * Web-only lifestyle promo frames — competitor-style solid green border @ 48–54 KB.
  * Keeps original scene (no white flatten); isolated from tall ₹50 and showcase paths.
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=41";
-import { estimateImageShipping } from "./lib/shipping.js?v=41";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=42";
+import { estimateImageShipping } from "./lib/shipping.js?v=42";
 
 /** HOT SALE, FLASH SALE — match competitor listing stickers. */
 export const PROMO_LIFESTYLE_BADGES = {
@@ -123,6 +123,9 @@ function promoPlacements(px, py, dw, dh) {
 
   return [
     {
+      id: "lifestyle-hot",
+      label: "HOT SALE",
+      anchor: "top-right",
       kind: "badge",
       num: PROMO_LIFESTYLE_BADGES.hotSale,
       w: hotSize,
@@ -132,6 +135,9 @@ function promoPlacements(px, py, dw, dh) {
       drawn: false,
     },
     {
+      id: "lifestyle-flash",
+      label: "FLASH SALE",
+      anchor: "middle-left",
       kind: "badge",
       num: PROMO_LIFESTYLE_BADGES.flashSale,
       w: flashW,
@@ -141,6 +147,9 @@ function promoPlacements(px, py, dw, dh) {
       drawn: false,
     },
     {
+      id: "lifestyle-ship",
+      label: "FREE SHIPPING",
+      anchor: "bottom-center",
       kind: "freeShipping",
       size: shipSize,
       x: px + Math.round(dw * 0.34) - Math.round(shipSize / 2),
@@ -295,6 +304,16 @@ async function buildPromoLayers(img) {
       productOnly,
       _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
+      _staticFrame: {
+        style: "lifestyle_promo",
+        px,
+        py,
+        dw,
+        dh,
+        border,
+        outerW,
+        outerH,
+      },
     },
     meta: {
       style: "lifestyle_promo",

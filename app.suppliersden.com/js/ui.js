@@ -410,6 +410,7 @@ const OptimizerUI = {
       baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
     const canEdit = !testLabMode && !!(r.layers && r.layers.full);
     const edited =
+      r._badgesRepositioned ||
       r.editFlags?.stickersRemoved ||
       r.editFlags?.borderOnlyRemoved ||
       r.editFlags?.cleanProduct ||
