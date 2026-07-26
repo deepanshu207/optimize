@@ -68,25 +68,26 @@ export function drawPriceTag(ctx, x, y, size) {
   ctx.restore();
 }
 
-/** Hand-drawn thin curved arrow from top-right toward model. */
+/** Hand-drawn thin curved arrow — sweeps upward toward the top-right corner. */
 export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.save();
   ctx.strokeStyle = "#111111";
   ctx.fillStyle = "#111111";
   ctx.lineWidth = Math.max(1.2, w * 0.028);
   ctx.lineCap = "round";
-  const x0 = x + w * 0.96;
-  const y0 = y + h * 0.06;
-  const x1 = x + w * 0.12;
-  const y1 = y + h * 0.78;
-  const cx = x + w * 0.7;
-  const cy = y + h * 0.32;
+  ctx.lineJoin = "round";
+  const x0 = x + w * 0.12;
+  const y0 = y + h * 0.82;
+  const x1 = x + w * 0.94;
+  const y1 = y + h * 0.06;
+  const cx = x + w * 0.42;
+  const cy = y + h * 0.98;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
   ctx.stroke();
   const angle = Math.atan2(y1 - cy, x1 - cx);
-  const ah = Math.max(4, w * 0.12);
+  const ah = Math.max(4, w * 0.11);
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x1 - ah * Math.cos(angle - 0.55), y1 - ah * Math.sin(angle - 0.55));
