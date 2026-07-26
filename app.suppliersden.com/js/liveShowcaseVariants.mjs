@@ -5,9 +5,9 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=37";
-import { compressFramedToKb } from "./lib/encoder.js?v=37";
-import { estimateImageShipping } from "./lib/shipping.js?v=37";
+} from "./lib/canvas-utils.js?v=38";
+import { compressFramedToKb } from "./lib/encoder.js?v=38";
+import { estimateImageShipping } from "./lib/shipping.js?v=38";
 
 /** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {
@@ -80,22 +80,34 @@ function showcaseKbTiers(count = SHOWCASE_VARIANT_COUNT) {
 }
 
 /**
- * Draw portrait showcase frame: gradient border + centered product on white.
+ * Draw portrait showcase frame: tight gradient border around product (no letterbox).
+ * Outer size follows product aspect — capped at 900×1200 to avoid shipping inflation.
  */
-function buildShowcaseFrameCanvas(img, outerW = SHOWCASE_OUTER_W, outerH = SHOWCASE_OUTER_H) {
-  const border = Math.max(
-    24,
-    Math.round(outerW * SHOWCASE_BORDER_RATIO),
-  );
-  const innerW = outerW - border * 2;
-  const innerH = outerH - border * 2;
+function buildShowcaseFrameCanvas(img) {
+  const MAX_OUTER_W = SHOWCASE_OUTER_W;
+  const MAX_OUTER_H = SHOWCASE_OUTER_H;
 
-  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.02);
-  const scale = Math.min(innerW / trimmed.width, innerH / trimmed.height);
-  const dw = Math.round(trimmed.width * scale);
-  const dh = Math.round(trimmed.height * scale);
-  const px = border + Math.round((innerW - dw) / 2);
-  const py = border + Math.round((innerH - dh) / 2);
+  const trimmed = trimMargins(imageToWhiteCanvas(img), 0.045);
+  let dw = trimmed.width;
+  let dh = trimmed.height;
+
+  const borderGuess = Math.max(
+    24,
+    Math.round(Math.min(dw, dh) * SHOWCASE_BORDER_RATIO),
+  );
+  const maxDw = MAX_OUTER_W - borderGuess * 2;
+  const maxDh = MAX_OUTER_H - borderGuess * 2;
+  const fitScale = Math.min(maxDw / dw, maxDh / dh, 1);
+  if (fitScale < 1) {
+    dw = Math.round(dw * fitScale);
+    dh = Math.round(dh * fitScale);
+  }
+
+  const border = Math.max(24, Math.round(Math.min(dw, dh) * SHOWCASE_BORDER_RATIO));
+  const outerW = dw + border * 2;
+  const outerH = dh + border * 2;
+  const px = border;
+  const py = border;
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -109,7 +121,7 @@ function buildShowcaseFrameCanvas(img, outerW = SHOWCASE_OUTER_W, outerH = SHOWC
   ctx.fillRect(0, 0, outerW, outerH);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(border, border, innerW, innerH);
+  ctx.fillRect(px, py, dw, dh);
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";

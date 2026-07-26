@@ -334,8 +334,6 @@ const OptimizerUI = {
 
                     <div class="generate-sticky" id="generate-sticky">
                         <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
-                        <button type="button" id="generate-showcase-btn" class="generate-btn" disabled style="margin-top:8px;font-size:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
-                        <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · no Meesho session</p>
                         <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
                     </div>
 
@@ -612,6 +610,8 @@ const OptimizerUI = {
   },
 
   renderShowcaseSection: function (options) {
+    if (!window.WEB_OPTIMIZER_MODE) return "";
+
     options = options || {};
     const showcase = options.showcaseResults || [];
     const showPanel = !!options.showShowcaseResults;
@@ -630,7 +630,7 @@ const OptimizerUI = {
             <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
                 <div style="background:rgba(255,152,0,0.1);border:1px solid rgba(76,175,80,0.35);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">900×1200 portrait · orange→green gradient border · 3 quality badges</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">Tight portrait frame · orange→green gradient · 3 quality badges</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · tap image for 6 edit options</div>
                 </div>
                 <button type="button" id="generate-showcase-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;${
@@ -671,7 +671,8 @@ const OptimizerUI = {
     options = options || {};
     const baseline = options.baselineShipping || 0;
     const analysisPrimary = options.analysisPrimary || [];
-    const showcaseResults = options.showcaseResults || [];
+    const showcaseResults =
+      window.WEB_OPTIMIZER_MODE ? options.showcaseResults || [] : [];
     const hasShowcase = showcaseResults.length > 0;
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
@@ -704,7 +705,7 @@ const OptimizerUI = {
             <div style="background:rgba(255,152,0,0.12);border:1px solid rgba(76,175,80,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
                 <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
                 <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestShowcaseOnly}</div>
-                <motion.div style="font-size:10px;color:#666;margin-top:4px;">${showcaseResults.length} static variants · 900×1200 · no Meesho session</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${showcaseResults.length} static variants · tight frame · no Meesho session</div>
             </div>`;
     }
 
@@ -806,7 +807,7 @@ const OptimizerUI = {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
-    if (hasLive || hasAnalysis || hasShowcase) {
+    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && hasShowcase)) {
       html += this.renderShowcaseSection(options);
     }
 
