@@ -54,12 +54,12 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=36";
+      return "/js/liveAnalysisBridge.mjs?v=37";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=36");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=37");
     }
-    return "/js/liveAnalysisBridge.mjs?v=36";
+    return "/js/liveAnalysisBridge.mjs?v=37";
   }
 
   async preloadLiveAnalysisModule() {
@@ -112,8 +112,18 @@ class MeeshoShippingOptimizer {
       return;
     }
 
+    this.lastProcessedFile = file;
     this.isGeneratingShowcase = true;
-    this.refreshResultsView();
+
+    const processingArea = document.getElementById("processing-area");
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:24px 16px;">
+          <motion.div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building showcase frames…</motion.div>
+          <div style="font-size:12px;color:#666;">900×1200 portrait · static · no Meesho session</div>
+        </div>`.replace(/<\/?motion\.div>/g, (m) => m.replace("motion.", ""));
+    }
 
     try {
       const out = await this.runShowcaseGeneration(file);
@@ -135,12 +145,34 @@ class MeeshoShippingOptimizer {
         `✅ ${this.showcaseResults.length} showcase frames ready (static est ₹)`,
         "success",
       );
+      this.displayLiveResultsPanel();
     } catch (e) {
       console.error("Showcase generate:", e);
       OptimizerUtils.showNotification("Showcase generation failed", "error");
     } finally {
       this.isGeneratingShowcase = false;
-      this.refreshResultsView();
+      if (processingArea) processingArea.style.display = "none";
+      this.displayLiveResultsPanel();
+    }
+  }
+
+  displayLiveResultsPanel() {
+    const resultsArea = document.getElementById("results-area");
+    const hasContent =
+      this.currentResults.length > 0 ||
+      this.analysisPrimaryResults.length > 0 ||
+      this.showcaseResults.length > 0;
+    if (!hasContent || !resultsArea) return;
+
+    resultsArea.style.display = "block";
+    delete resultsArea.dataset.view;
+    resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+      this.currentResults,
+      this.getResultsViewOptions(),
+    );
+    this.setupResultsEvents();
+    if (window.WEB_OPTIMIZER_MODE) {
+      resultsArea.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
@@ -441,11 +473,21 @@ class MeeshoShippingOptimizer {
         document.getElementById("image-input")?.files?.[0];
       if (hasFile) generateBtn.disabled = false;
     }
+    const showcaseBtn = document.getElementById("generate-showcase-btn");
+    if (showcaseBtn) {
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      showcaseBtn.disabled = !hasFile;
+    }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
 
     this.setupMainEvents();
+
+    void this.preloadLiveAnalysisModule();
 
     try {
       if (typeof MeeshoAPI !== "undefined") {
@@ -737,9 +779,11 @@ Please share payment details and license key.`;
 
       const bootMsg = document.getElementById("boot-msg");
       const testGenBtn = document.getElementById("test-generate-btn");
+      const showcaseBtn = document.getElementById("generate-showcase-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
+        if (showcaseBtn) showcaseBtn.disabled = false;
         if (bootMsg) {
           bootMsg.textContent =
             this.getActiveOptimizerTab() === "test"
@@ -796,6 +840,15 @@ Please share payment details and license key.`;
       if (testGenBtn) {
         testGenBtn.disabled = !getUploadFile();
         testGenBtn.onclick = runGenerate;
+      }
+      const showcaseBtn = document.getElementById("generate-showcase-btn");
+      if (showcaseBtn) {
+        showcaseBtn.disabled = !getUploadFile();
+        showcaseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void this.generateShowcaseFrames();
+        };
       }
     }
 
@@ -1922,7 +1975,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || this.showcaseResults.length > 0) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -2464,6 +2517,7 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
+    if (this.showcaseResults.length) return this.showcaseResults[0];
     return null;
   }
 
@@ -2856,7 +2910,8 @@ Please share payment details and license key.`;
     } else {
       if (
         !this.currentResults.length &&
-        !this.analysisPrimaryResults.length
+        !this.analysisPrimaryResults.length &&
+        !this.showcaseResults.length
       ) {
         return;
       }

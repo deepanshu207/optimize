@@ -5,9 +5,9 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=36";
-import { compressFramedToKb } from "./lib/encoder.js?v=36";
-import { estimateImageShipping } from "./lib/shipping.js?v=36";
+} from "./lib/canvas-utils.js?v=37";
+import { compressFramedToKb } from "./lib/encoder.js?v=37";
+import { estimateImageShipping } from "./lib/shipping.js?v=37";
 
 /** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {

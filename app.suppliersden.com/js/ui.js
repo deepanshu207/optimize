@@ -334,6 +334,8 @@ const OptimizerUI = {
 
                     <div class="generate-sticky" id="generate-sticky">
                         <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
+                        <button type="button" id="generate-showcase-btn" class="generate-btn" disabled style="margin-top:8px;font-size:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
+                        <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · no Meesho session</p>
                         <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
                     </div>
 
@@ -669,10 +671,12 @@ const OptimizerUI = {
     options = options || {};
     const baseline = options.baselineShipping || 0;
     const analysisPrimary = options.analysisPrimary || [];
+    const showcaseResults = options.showcaseResults || [];
+    const hasShowcase = showcaseResults.length > 0;
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
 
-    if (!hasLive && !hasAnalysis) {
+    if (!hasLive && !hasAnalysis && !hasShowcase) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -687,6 +691,22 @@ const OptimizerUI = {
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const manualMode = !!options.manualMode;
     let html = "";
+
+    if (!hasLive && !hasAnalysis && hasShowcase) {
+      const sortedShowcase = [...showcaseResults].sort(
+        (a, b) =>
+          (a.estShipping || a.meta?.estInr || 999) -
+          (b.estShipping || b.meta?.estInr || 999),
+      );
+      const bestShowcaseOnly =
+        sortedShowcase[0]?.estShipping || sortedShowcase[0]?.meta?.estInr || 0;
+      html += `
+            <div style="background:rgba(255,152,0,0.12);border:1px solid rgba(76,175,80,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
+                <div style="font-size:24px;font-weight:700;color:#047857;">est ₹${bestShowcaseOnly}</div>
+                <motion.div style="font-size:10px;color:#666;margin-top:4px;">${showcaseResults.length} static variants · 900×1200 · no Meesho session</div>
+            </div>`;
+    }
 
     if (hasLive) {
       const best = results[0];
@@ -786,9 +806,19 @@ const OptimizerUI = {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
-    if (hasLive || hasAnalysis) {
+    if (hasLive || hasAnalysis || hasShowcase) {
       html += this.renderShowcaseSection(options);
     }
+
+    const bestShowcase = hasShowcase
+      ? [...showcaseResults].sort(
+          (a, b) =>
+            (a.estShipping || a.meta?.estInr || 999) -
+            (b.estShipping || b.meta?.estInr || 999),
+        )[0]
+      : null;
+    const bestShowcaseEst =
+      bestShowcase?.estShipping || bestShowcase?.meta?.estInr || 0;
 
     const bestLive = hasLive && results[0]?.shippingCost > 0 ? results[0].shippingCost : null;
     const analysisSorted = hasAnalysis
@@ -809,6 +839,8 @@ const OptimizerUI = {
                     ? "Download Best ₹" + bestLive
                     : bestEst
                     ? "Download Best est ₹" + bestEst
+                    : bestShowcaseEst
+                    ? "Download Best est ₹" + bestShowcaseEst
                     : "Download Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
