@@ -2,9 +2,9 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=61";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=61";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=61";
+import { compressFramedToKb } from "./lib/encoder.js?v=62";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=62";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=62";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 
@@ -414,8 +414,6 @@ function ensureFrameDefaults(frame) {
   if (frame.gradientPreset === undefined) frame.gradientPreset = defs.gradientPreset;
   if (!frame.borderColor) frame.borderColor = defs.borderColor || frame.gradientTop;
   if (!frame.matColor) frame.matColor = defs.matColor || "#ffffff";
-  ensureFrameBases(frame);
-  applyBorderThickness(frame);
   return frame;
 }
 
@@ -425,6 +423,9 @@ export function ensureFrameBases(frame) {
   if (frame.borderThicknessPct == null) frame.borderThicknessPct = 100;
   if (frame.baseBorder == null && frame.border != null) frame.baseBorder = frame.border;
   if (frame.baseWhitePad == null && frame.whitePad != null) frame.baseWhitePad = frame.whitePad;
+  if (frame.baseWhitePad == null && frame.px != null && frame.whiteX != null) {
+    frame.baseWhitePad = frame.px - frame.whiteX;
+  }
   if (frame.basePx == null && frame.px != null) frame.basePx = frame.px;
   if (frame.basePy == null && frame.py != null) frame.basePy = frame.py;
   if (frame.baseWhiteX == null && frame.whiteX != null) frame.baseWhiteX = frame.whiteX;
@@ -438,7 +439,8 @@ export function ensureFrameBases(frame) {
 }
 
 /**
- * Apply border thickness (0–100). At 100% restores exact base geometry — no drift from current frames.
+ * Apply border thickness (0–100). At 100% restores exact base geometry.
+ * Only call when the user changes the slider — not on every frame read.
  */
 export function applyBorderThickness(frame) {
   if (!frame) return frame;
@@ -561,6 +563,9 @@ function drawFrameBackground(ctx, frame) {
 
 async function rebuildFrameCanvas(layers) {
   const frame = ensureFrameDefaults({ ...layers._staticFrame });
+  if (frame.borderThicknessPct != null && frame.borderThicknessPct !== 100) {
+    applyBorderThickness(frame);
+  }
   const productUrl = layers.productOnly;
   if (!productUrl || !frame.outerW) return null;
 

@@ -17,7 +17,6 @@ function drawLightning(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/** Top-left: "Best" script + "PRICE" yellow block letters. */
 export function drawGownBestPrice(ctx, x, y, w, h) {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.25)";
@@ -45,7 +44,6 @@ export function drawGownBestPrice(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/** Top-right: yellow bar + red FLASH SALE + lightning. */
 export function drawGownFlashSale(ctx, x, y, w, h) {
   ctx.save();
   const pad = Math.max(2, w * 0.04);
@@ -83,13 +81,6 @@ export function drawGownFlashSale(ctx, x, y, w, h) {
 function drawThumbsUp(ctx, cx, cy, size) {
   ctx.save();
   ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = Math.max(1.2, size * 0.08);
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(cx - size * 0.08, cy + size * 0.2);
-  ctx.lineTo(cx - size * 0.08, cy - size * 0.05);
-  ctx.stroke();
   ctx.beginPath();
   ctx.rect(cx - size * 0.22, cy - size * 0.28, size * 0.28, size * 0.22);
   ctx.fill();
@@ -105,7 +96,6 @@ function drawThumbsUp(ctx, cx, cy, size) {
   ctx.restore();
 }
 
-/** Middle-left: red pill + thumbs up + MOST POPULAR. */
 export function drawGownMostPopular(ctx, x, y, w, h) {
   ctx.save();
   const r = h / 2;
@@ -119,8 +109,7 @@ export function drawGownMostPopular(ctx, x, y, w, h) {
   ctx.fillStyle = "#e53935";
   ctx.fill();
 
-  const iconSize = h * 0.55;
-  drawThumbsUp(ctx, x + h * 0.42, y + h / 2, iconSize);
+  drawThumbsUp(ctx, x + h * 0.42, y + h / 2, h * 0.55);
 
   const fs = Math.max(6, Math.round(h * 0.22));
   ctx.font = `bold ${fs}px system-ui, sans-serif`;
@@ -132,14 +121,13 @@ export function drawGownMostPopular(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/** Draw one gown slot — custom art or badge PNG fallback. */
 export async function drawGownBadge(ctx, loadBadge, p) {
   if (!p) return false;
   const w = p.w || p.size;
   const h = p.h || p.size;
   if (!w || !h) return false;
 
-  if (p.kind === "badge" && p.num != null) {
+  if (p.kind === "badge" && p.num != null && loadBadge) {
     try {
       const badge = await loadBadge(p.num);
       if (badge) {
@@ -150,19 +138,17 @@ export async function drawGownBadge(ctx, loadBadge, p) {
   }
 
   const slot = p.id || p.gownSlot || "";
-  try {
-    if (slot === "gown-best" || slot === "gown-best-price") {
-      drawGownBestPrice(ctx, p.x, p.y, w, h);
-      return true;
-    }
-    if (slot === "gown-flash") {
-      drawGownFlashSale(ctx, p.x, p.y, w, h);
-      return true;
-    }
-    if (slot === "gown-popular") {
-      drawGownMostPopular(ctx, p.x, p.y, w, h);
-      return true;
-    }
-  } catch (e) {}
+  if (slot === "gown-best" || slot === "gown-best-price") {
+    drawGownBestPrice(ctx, p.x, p.y, w, h);
+    return true;
+  }
+  if (slot === "gown-flash") {
+    drawGownFlashSale(ctx, p.x, p.y, w, h);
+    return true;
+  }
+  if (slot === "gown-popular") {
+    drawGownMostPopular(ctx, p.x, p.y, w, h);
+    return true;
+  }
   return false;
 }

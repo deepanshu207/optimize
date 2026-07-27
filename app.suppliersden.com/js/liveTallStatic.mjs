@@ -6,10 +6,10 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=61";
-import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=61";
-import { estimateImageShipping } from "./lib/shipping.js?v=61";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=61";
+} from "./lib/canvas-utils.js?v=59";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=59";
+import { estimateImageShipping } from "./lib/shipping.js?v=59";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=59";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
@@ -139,7 +139,6 @@ function buildTallStaticFrameCanvas(img) {
     dw: sw,
     dh: sh,
     border: blueOuter,
-    whitePad,
     whiteX,
     whiteY,
     whiteW,
@@ -226,7 +225,6 @@ async function buildTallStaticLayers(img) {
     dw,
     dh,
     border,
-    whitePad,
     whiteX,
     whiteY,
     whiteW,
@@ -290,16 +288,6 @@ async function buildTallStaticLayers(img) {
         dw,
         dh,
         border,
-        whitePad,
-        baseBorder: border,
-        baseWhitePad: whitePad,
-        basePx: px,
-        basePy: py,
-        baseWhiteX: whiteX,
-        baseWhiteY: whiteY,
-        baseWhiteW: whiteW,
-        baseWhiteH: whiteH,
-        borderThicknessPct: 100,
         outerW,
         outerH,
         whiteX,

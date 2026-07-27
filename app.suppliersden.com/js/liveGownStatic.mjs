@@ -1,26 +1,18 @@
 /**
- * Gown portrait promo @ 703×1024 — reference-matched for ~₹49 Meesho band.
- *
- * Unlike tall_static (max product + white flatten → ~₹50–79), gown promo:
- * - Keeps original lifestyle scene (no white flatten)
- * - Thin teal outer border + thick white mat
- * - Product ~62–65% of white area (large breathing room like competitor listing)
- * - 38–48 KB via downscale+compress (same band as low_38–48 framed profiles)
+ * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
+ * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=61";
-import { blobToDataUrl } from "./lib/encoder.js?v=61";
-import { estimateImageShipping } from "./lib/shipping.js?v=61";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=61";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=62";
+import { blobToDataUrl } from "./lib/encoder.js?v=62";
+import { estimateImageShipping } from "./lib/shipping.js?v=62";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=62";
 
 export const GOWN_STATIC_OUTER_W = 703;
 export const GOWN_STATIC_OUTER_H = 1024;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Reference screenshot teal — thinner outer band than tall promo blue. */
 const BORDER_TEAL = "#64c5d3";
-/** ~3.5% of canvas — thin cyan rim (reference: thinner than white mat). */
 const GOWN_TEAL_RATIO = 0.035;
-/** Product fills at most this fraction of the white inner rect (reference ~60–70%). */
 const GOWN_PRODUCT_FILL = 0.64;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
@@ -54,7 +46,6 @@ function encodePromoJpeg(canvas, quality) {
   });
 }
 
-/** Downscale until ≤ target KB — required for lifestyle scenes at ₹49 band. */
 async function compressGownToKb(canvas, targetKb) {
   const targetBytes = targetKb * 1024;
   let work = canvas;
@@ -84,14 +75,9 @@ async function compressGownToKb(canvas, targetKb) {
   return { blob: bestBlob || (await encodePromoJpeg(work, 14)), canvas: work };
 }
 
-/**
- * Reference layout: [thin teal] → [wide white mat] → [lifestyle photo + badges].
- * Product is intentionally smaller than tall_static — critical for ₹49 not ₹79.
- */
 function buildGownStaticFrameCanvas(img) {
   const outerW = GOWN_STATIC_OUTER_W;
   const outerH = GOWN_STATIC_OUTER_H;
-
   const base = imageToCanvas(img, 1400);
 
   const tealOuter = Math.max(18, Math.round(Math.min(outerW, outerH) * GOWN_TEAL_RATIO));
@@ -108,12 +94,9 @@ function buildGownStaticFrameCanvas(img) {
 
   const px = whiteX + Math.round((whiteW - sw) / 2);
   const py = whiteY + Math.round((whiteH - sh) / 2);
-
-  const padL = px - whiteX;
-  const padT = py - whiteY;
-  const padR = whiteX + whiteW - (px + sw);
-  const padB = whiteY + whiteH - (py + sh);
-  const whitePad = Math.round((padL + padT + padR + padB) / 4);
+  const whitePad = Math.round(
+    ((px - whiteX) + (py - whiteY) + (whiteX + whiteW - px - sw) + (whiteY + whiteH - py - sh)) / 4,
+  );
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -147,7 +130,6 @@ function buildGownStaticFrameCanvas(img) {
   };
 }
 
-/** Reference sticker slots — on lifestyle photo, not on white mat. */
 function gownStaticPlacements(px, py, dw, dh) {
   const ref = Math.min(dw, dh);
   const bestW = Math.round(ref * 0.36);
@@ -203,7 +185,7 @@ async function drawPlacements(ctx, placements) {
   for (const p of placements) {
     const copy = { ...p };
     try {
-      copy.drawn = await drawGownBadge(ctx, () => null, p);
+      copy.drawn = await drawGownBadge(ctx, null, p);
     } catch (e) {
       copy.drawn = false;
     }
@@ -317,7 +299,6 @@ async function buildGownStaticLayers(img) {
       borderPx: border,
       outerW,
       outerH,
-      productFill: GOWN_PRODUCT_FILL,
     },
   };
 }
@@ -351,14 +332,7 @@ export async function buildGownStaticVariants(img, options = {}) {
       recommended: kb === 44 || kb === 46 || kb === 48,
       lowest: i === 0,
       layers,
-      meta: {
-        ...meta,
-        targetKb: kb,
-        outerW: outCanvas.width,
-        outerH: outCanvas.height,
-        canvasW: outCanvas.width,
-        canvasH: outCanvas.height,
-      },
+      meta: { ...meta, targetKb: kb, outerW: outCanvas.width, outerH: outCanvas.height },
     };
     v.kb = Math.ceil(blob.size / 1024);
     v.estInr = estimateImageShipping(v);
