@@ -19,24 +19,30 @@ function drawLightning(ctx, x, y, w, h) {
 
 export function drawGownBestPrice(ctx, x, y, w, h) {
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.25)";
-  ctx.shadowBlur = Math.max(2, w * 0.04);
-  ctx.shadowOffsetY = Math.max(1, h * 0.03);
+  const cx = x + w * 0.2;
+  const cy = y + h * 0.2;
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.1);
+  ctx.translate(-cx, -cy);
 
-  const bestFs = Math.max(10, Math.round(h * 0.22));
+  ctx.shadowColor = "rgba(0,0,0,0.28)";
+  ctx.shadowBlur = Math.max(2, w * 0.05);
+  ctx.shadowOffsetY = Math.max(1, h * 0.04);
+
+  const bestFs = Math.max(10, Math.round(h * 0.24));
   ctx.font = `italic bold ${bestFs}px Georgia, "Times New Roman", serif`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.lineWidth = Math.max(1.5, bestFs * 0.12);
+  ctx.lineWidth = Math.max(1.5, bestFs * 0.14);
   ctx.strokeStyle = "#c62828";
   ctx.fillStyle = "#ffffff";
   ctx.strokeText("Best", x, y);
   ctx.fillText("Best", x, y);
 
-  const priceFs = Math.max(12, Math.round(h * 0.34));
+  const priceFs = Math.max(12, Math.round(h * 0.36));
   ctx.font = `900 ${priceFs}px Impact, "Arial Black", sans-serif`;
-  const priceY = y + bestFs * 0.85;
-  ctx.lineWidth = Math.max(2, priceFs * 0.1);
+  const priceY = y + bestFs * 0.82;
+  ctx.lineWidth = Math.max(2, priceFs * 0.12);
   ctx.strokeStyle = "#c62828";
   ctx.fillStyle = "#ffeb3b";
   ctx.strokeText("PRICE", x, priceY);
