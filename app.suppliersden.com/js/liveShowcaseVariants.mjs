@@ -5,9 +5,9 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=39";
-import { compressFramedToKb } from "./lib/encoder.js?v=39";
-import { estimateImageShipping } from "./lib/shipping.js?v=39";
+} from "./lib/canvas-utils.js?v=54";
+import { compressFramedToKb } from "./lib/encoder.js?v=54";
+import { estimateImageShipping } from "./lib/shipping.js?v=54";
 
 /** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {
@@ -281,6 +281,10 @@ async function buildShowcaseLayers(img) {
       _badgePlacements: badgePlacements,
       _staticFrame: {
         style: "showcase",
+        frameType: "gradient",
+        gradientTop: GRADIENT_TOP,
+        gradientBottom: GRADIENT_BOTTOM,
+        gradientPreset: "showcase",
         px,
         py,
         dw,
