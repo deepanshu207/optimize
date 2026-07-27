@@ -611,6 +611,60 @@ const OptimizerUI = {
     return html;
   },
 
+  renderStaticPromoHub: function (options) {
+    if (!window.WEB_OPTIMIZER_MODE || !options.staticPromoHubActive) return "";
+
+    options = options || {};
+    const showcase = options.showcaseResults || [];
+    const promo = options.promoLifestyleResults || [];
+    const tall = options.tallStaticResults || [];
+    const genShowcase = !!options.isGeneratingShowcase;
+    const genPromo = !!options.isGeneratingPromoLifestyle;
+    const genTall = !!options.isGeneratingTallStatic;
+    const count = options.showcaseVariantCount || 25;
+
+    const bestEst = (list) => {
+      const s = [...list].sort(
+        (a, b) =>
+          (a.estShipping || a.meta?.estInr || 999) -
+          (b.estShipping || b.meta?.estInr || 999),
+      );
+      return s[0]?.estShipping || s[0]?.meta?.estInr || 0;
+    };
+
+    const chip = (label, n, best, doneColor) =>
+      n > 0
+        ? `<span style="display:inline-block;padding:4px 8px;border-radius:6px;background:${doneColor};font-size:10px;font-weight:600;">${label}: ${n} variants · est ₹${best}</span>`
+        : `<span style="display:inline-block;padding:4px 8px;border-radius:6px;background:#f3f4f6;color:#6b7280;font-size:10px;">${label}: not generated</span>`;
+
+    const btnStyle = (bg, busy) =>
+      `width:100%;padding:12px;font-size:13px;border:none;border-radius:8px;color:#fff;cursor:pointer;background:${bg};${
+        busy ? "opacity:0.65;pointer-events:none;" : ""
+      }`;
+
+    return `
+      <div id="static-promo-hub" style="margin-bottom:16px;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;background:linear-gradient(180deg,#fafafa,#fff);">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;text-align:center;">🎨 Static Promo Studio</div>
+        <p style="font-size:10px;color:#6b7280;text-align:center;margin:0 0 10px;">Generate showcase, lifestyle, or tall promo — same image, no refresh needed</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+          <button type="button" data-static-gen="showcase" class="generate-btn" style="${btnStyle("linear-gradient(135deg,#ff9800,#4caf50)", genShowcase)}" ${genShowcase ? "disabled" : ""}>
+            ${genShowcase ? "Generating showcase frames…" : `🖼️ Generate Showcase Frames (${count})`}
+          </button>
+          <button type="button" data-static-gen="lifestyle" class="generate-btn" style="${btnStyle("#22c55e", genPromo)}" ${genPromo ? "disabled" : ""}>
+            ${genPromo ? "Generating lifestyle promo…" : `🏷️ Generate Lifestyle Promo (${count})`}
+          </button>
+          <button type="button" data-static-gen="tall" class="generate-btn" style="${btnStyle("#7c3aed", genTall)}" ${genTall ? "disabled" : ""}>
+            ${genTall ? "Generating tall promo…" : `📐 Generate Tall Promo (${count})`}
+          </button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
+          ${chip("Showcase", showcase.length, bestEst(showcase), "rgba(255,152,0,0.15)")}
+          ${chip("Lifestyle", promo.length, bestEst(promo), "rgba(34,197,94,0.15)")}
+          ${chip("Tall", tall.length, bestEst(tall), "rgba(124,58,237,0.15)")}
+        </div>
+      </div>`;
+  },
+
   renderShowcaseSection: function (options) {
     if (!window.WEB_OPTIMIZER_MODE) return "";
 
@@ -635,11 +689,6 @@ const OptimizerUI = {
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">Tight portrait frame · orange→green gradient · 3 quality badges</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · tap image for 6 edit options</div>
                 </div>
-                <button type="button" id="generate-showcase-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;${
-                  generating ? "opacity:0.65;pointer-events:none;" : ""
-                }" ${generating ? "disabled" : ""}>
-                    ${generating ? "Generating showcase frames…" : `Generate Showcase Frames (${count})`}
-                </button>
         `;
 
     if (showcase.length > 0) {
@@ -692,11 +741,6 @@ const OptimizerUI = {
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">Keeps trellis/lifestyle scene · solid green frame · HOT/FLASH sale</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">48–54 KB · competitor-style · no Meesho session</div>
                 </div>
-                <button type="button" id="generate-promo-lifestyle-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;background:#22c55e;color:#fff;${
-                  generating ? "opacity:0.65;pointer-events:none;" : ""
-                }" ${generating ? "disabled" : ""}>
-                    ${generating ? "Generating lifestyle promo…" : `Generate Lifestyle Promo (${count})`}
-                </button>
         `;
 
     if (promo.length > 0) {
@@ -749,11 +793,6 @@ const OptimizerUI = {
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · blue frame · price tag + arrow + truck</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ₹50 band</div>
                 </div>
-                <button type="button" id="generate-tall-static-btn" class="generate-btn" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px;background:#7c3aed;color:#fff;${
-                  generating ? "opacity:0.65;pointer-events:none;" : ""
-                }" ${generating ? "disabled" : ""}>
-                    ${generating ? "Generating tall promo frames…" : `Generate Tall Promo (${count})`}
-                </button>
         `;
 
     if (tall.length > 0) {
@@ -799,7 +838,9 @@ const OptimizerUI = {
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
 
-    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && !hasTallStatic) {
+    const staticPromoHubActive = !!options.staticPromoHubActive;
+
+    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && !hasTallStatic && !staticPromoHubActive) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -961,7 +1002,12 @@ const OptimizerUI = {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
-    if (hasLive || hasAnalysis || (window.WEB_OPTIMIZER_MODE && (hasShowcase || hasPromoLifestyle || hasTallStatic))) {
+    if (staticPromoHubActive) {
+      html += this.renderStaticPromoHub(options);
+      html += this.renderShowcaseSection(options);
+      html += this.renderPromoLifestyleSection(options);
+      html += this.renderTallStaticSection(options);
+    } else if (hasLive || hasAnalysis || hasShowcase || hasPromoLifestyle || hasTallStatic) {
       html += this.renderTallStaticSection(options);
       html += this.renderPromoLifestyleSection(options);
       html += this.renderShowcaseSection(options);

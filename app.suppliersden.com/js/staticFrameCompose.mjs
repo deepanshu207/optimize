@@ -2,8 +2,8 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=58";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=58";
+import { compressFramedToKb } from "./lib/encoder.js?v=59";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=59";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 

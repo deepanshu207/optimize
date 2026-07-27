@@ -60,22 +60,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=58";
+      return "/js/liveAnalysisBridge.mjs?v=59";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=58");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=59");
     }
-    return "/js/liveAnalysisBridge.mjs?v=58";
+    return "/js/liveAnalysisBridge.mjs?v=59";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=58";
+      return "/js/staticFrameCompose.mjs?v=59";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=58");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=59");
     }
-    return "/js/staticFrameCompose.mjs?v=58";
+    return "/js/staticFrameCompose.mjs?v=59";
   }
 
   async preloadStaticComposeModule() {
@@ -164,6 +164,7 @@ class MeeshoShippingOptimizer {
     if (!window.WEB_OPTIMIZER_MODE) return;
     if (this.isGeneratingPromoLifestyle) return;
 
+    const scrollToResults = !this.hasStaticPromoResults();
     const file = await this.getImageFileForShowcase();
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
@@ -172,6 +173,7 @@ class MeeshoShippingOptimizer {
 
     this.lastProcessedFile = file;
     this.isGeneratingPromoLifestyle = true;
+    this.displayLiveResultsPanel({ scroll: false });
 
     const processingArea = document.getElementById("processing-area");
     if (processingArea) {
@@ -203,14 +205,14 @@ class MeeshoShippingOptimizer {
         `✅ ${this.promoLifestyleResults.length} lifestyle promo frames ready (est ₹${this.promoLifestyleResults[0]?.estShipping || "—"})`,
         "success",
       );
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: scrollToResults });
     } catch (e) {
       console.error("Promo lifestyle generate:", e);
       OptimizerUtils.showNotification("Lifestyle promo generation failed", "error");
     } finally {
       this.isGeneratingPromoLifestyle = false;
       if (processingArea) processingArea.style.display = "none";
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: false });
     }
   }
 
@@ -218,6 +220,7 @@ class MeeshoShippingOptimizer {
     if (!window.WEB_OPTIMIZER_MODE) return;
     if (this.isGeneratingTallStatic) return;
 
+    const scrollToResults = !this.hasStaticPromoResults();
     const file = await this.getImageFileForShowcase();
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
@@ -226,6 +229,7 @@ class MeeshoShippingOptimizer {
 
     this.lastProcessedFile = file;
     this.isGeneratingTallStatic = true;
+    this.displayLiveResultsPanel({ scroll: false });
 
     const processingArea = document.getElementById("processing-area");
     if (processingArea) {
@@ -257,14 +261,14 @@ class MeeshoShippingOptimizer {
         `✅ ${this.tallStaticResults.length} tall promo frames ready (est ₹${this.tallStaticResults[0]?.estShipping || "—"})`,
         "success",
       );
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: scrollToResults });
     } catch (e) {
       console.error("Tall static generate:", e);
       OptimizerUtils.showNotification("Tall promo generation failed", "error");
     } finally {
       this.isGeneratingTallStatic = false;
       if (processingArea) processingArea.style.display = "none";
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: false });
     }
   }
 
@@ -272,6 +276,7 @@ class MeeshoShippingOptimizer {
     if (!window.WEB_OPTIMIZER_MODE) return;
     if (this.isGeneratingShowcase) return;
 
+    const scrollToResults = !this.hasStaticPromoResults();
     const file = await this.getImageFileForShowcase();
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
@@ -280,6 +285,7 @@ class MeeshoShippingOptimizer {
 
     this.lastProcessedFile = file;
     this.isGeneratingShowcase = true;
+    this.displayLiveResultsPanel({ scroll: false });
 
     const processingArea = document.getElementById("processing-area");
     if (processingArea) {
@@ -311,29 +317,55 @@ class MeeshoShippingOptimizer {
         `✅ ${this.showcaseResults.length} showcase frames ready (static est ₹)`,
         "success",
       );
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: scrollToResults });
     } catch (e) {
       console.error("Showcase generate:", e);
       OptimizerUtils.showNotification("Showcase generation failed", "error");
     } finally {
       this.isGeneratingShowcase = false;
       if (processingArea) processingArea.style.display = "none";
-      this.displayLiveResultsPanel();
+      this.displayLiveResultsPanel({ scroll: false });
     }
   }
 
-  displayLiveResultsPanel() {
-    if (!window.WEB_OPTIMIZER_MODE && !this.currentResults.length && !this.analysisPrimaryResults.length) {
+  displayLiveResultsPanel(options = {}) {
+    this.refreshLiveResultsPanel(options);
+  }
+
+  hasImageForStaticPromo() {
+    return !!(
+      this.lastProcessedFile ||
+      this._pendingFile ||
+      window.__webPendingFile ||
+      document.getElementById("image-input")?.files?.[0]
+    );
+  }
+
+  hasStaticPromoResults() {
+    return !!(
+      this.showcaseResults.length ||
+      this.promoLifestyleResults.length ||
+      this.tallStaticResults.length
+    );
+  }
+
+  shouldShowStaticPromoWorkspace() {
+    return window.WEB_OPTIMIZER_MODE && (this.hasImageForStaticPromo() || this.hasStaticPromoResults());
+  }
+
+  refreshLiveResultsPanel(options = {}) {
+    const resultsArea = document.getElementById("results-area");
+    if (!resultsArea) return;
+
+    const hasLiveContent =
+      this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0;
+    const hasStaticWorkspace = this.shouldShowStaticPromoWorkspace();
+
+    if (!window.WEB_OPTIMIZER_MODE) {
+      if (!hasLiveContent) return;
+    } else if (!hasLiveContent && !hasStaticWorkspace) {
       return;
     }
-    const resultsArea = document.getElementById("results-area");
-    const hasContent =
-      this.currentResults.length > 0 ||
-      this.analysisPrimaryResults.length > 0 ||
-      (window.WEB_OPTIMIZER_MODE && this.showcaseResults.length > 0) ||
-      (window.WEB_OPTIMIZER_MODE && this.promoLifestyleResults.length > 0) ||
-      (window.WEB_OPTIMIZER_MODE && this.tallStaticResults.length > 0);
-    if (!hasContent || !resultsArea) return;
 
     resultsArea.style.display = "block";
     delete resultsArea.dataset.view;
@@ -342,9 +374,54 @@ class MeeshoShippingOptimizer {
       this.getResultsViewOptions(),
     );
     this.setupResultsEvents();
-    if (window.WEB_OPTIMIZER_MODE) {
+    this.syncStaticPromoChrome();
+
+    const shouldScroll =
+      options.scroll !== false &&
+      window.WEB_OPTIMIZER_MODE &&
+      (this.hasStaticPromoResults() || hasLiveContent);
+    if (shouldScroll) {
       resultsArea.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  }
+
+  syncStaticPromoChrome() {
+    const sticky = document.getElementById("generate-sticky");
+    if (!sticky) return;
+    const hideStaticBtns = this.shouldShowStaticPromoWorkspace();
+    sticky.querySelectorAll("[data-static-gen]").forEach((btn) => {
+      btn.style.display = hideStaticBtns ? "none" : "";
+    });
+  }
+
+  bindStaticPromoButtons(root = document) {
+    if (!window.WEB_OPTIMIZER_MODE) return;
+    const hasFile = this.hasImageForStaticPromo();
+
+    root.querySelectorAll('[data-static-gen="showcase"]').forEach((btn) => {
+      btn.disabled = !hasFile || this.isGeneratingShowcase;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.generateShowcaseFrames();
+      };
+    });
+    root.querySelectorAll('[data-static-gen="lifestyle"]').forEach((btn) => {
+      btn.disabled = !hasFile || this.isGeneratingPromoLifestyle;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.generatePromoLifestyleFrames();
+      };
+    });
+    root.querySelectorAll('[data-static-gen="tall"]').forEach((btn) => {
+      btn.disabled = !hasFile || this.isGeneratingTallStatic;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.generateTallStaticFrames();
+      };
+    });
   }
 
   init() {
@@ -673,6 +750,7 @@ class MeeshoShippingOptimizer {
     });
 
     this.setupMainEvents();
+    this.bindStaticPromoButtons();
 
     void this.preloadLiveAnalysisModule();
 
@@ -982,6 +1060,8 @@ Please share payment details and license key.`;
               : "Image ready — tap Generate Variants";
         }
         this.setupOptimizerTabs();
+        this.refreshLiveResultsPanel({ scroll: false });
+        this.bindStaticPromoButtons();
         return;
       }
 
@@ -1529,7 +1609,9 @@ Please share payment details and license key.`;
 
     if (
       this.activeOptimizerTab === "live" &&
-      (this.currentResults.length || this.analysisPrimaryResults.length)
+      (this.currentResults.length ||
+        this.analysisPrimaryResults.length ||
+        this.shouldShowStaticPromoWorkspace())
     ) {
       resultsArea.style.display = "block";
       delete resultsArea.dataset.view;
@@ -1679,6 +1761,10 @@ Please share payment details and license key.`;
     }
 
     this.setupOptimizerTabs();
+    this.syncStaticPromoChrome();
+    if (window.WEB_OPTIMIZER_MODE && hasFile) {
+      this.refreshLiveResultsPanel({ scroll: false });
+    }
   }
 
   /**
@@ -2609,6 +2695,7 @@ Please share payment details and license key.`;
       showTallStaticResults: this.showTallStaticResults,
       isGeneratingTallStatic: this.isGeneratingTallStatic,
       tallStaticVariantCount: 25,
+      staticPromoHubActive: this.shouldShowStaticPromoWorkspace(),
     };
   }
 
@@ -3806,7 +3893,9 @@ Please share payment details and license key.`;
       if (
         !this.currentResults.length &&
         !this.analysisPrimaryResults.length &&
-        !(window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length || this.promoLifestyleResults.length || this.tallStaticResults.length))
+        !(
+          window.WEB_OPTIMIZER_MODE && this.shouldShowStaticPromoWorkspace()
+        )
       ) {
         return;
       }
@@ -3951,7 +4040,7 @@ Please share payment details and license key.`;
     }
 
     const generateShowcaseBtn = document.getElementById("generate-showcase-btn");
-    if (generateShowcaseBtn) {
+    if (generateShowcaseBtn && !this.shouldShowStaticPromoWorkspace()) {
       generateShowcaseBtn.onclick = () => {
         void this.generateShowcaseFrames();
       };
@@ -3966,7 +4055,7 @@ Please share payment details and license key.`;
     }
 
     const generatePromoBtn = document.getElementById("generate-promo-lifestyle-btn");
-    if (generatePromoBtn) {
+    if (generatePromoBtn && !this.shouldShowStaticPromoWorkspace()) {
       generatePromoBtn.onclick = () => {
         void this.generatePromoLifestyleFrames();
       };
@@ -3981,11 +4070,13 @@ Please share payment details and license key.`;
     }
 
     const generateTallBtn = document.getElementById("generate-tall-static-btn");
-    if (generateTallBtn) {
+    if (generateTallBtn && !this.shouldShowStaticPromoWorkspace()) {
       generateTallBtn.onclick = () => {
         void this.generateTallStaticFrames();
       };
     }
+
+    this.bindStaticPromoButtons();
 
     const toggleTall = document.getElementById("toggle-tall-static-results");
     if (toggleTall) {
