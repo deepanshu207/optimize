@@ -83,6 +83,14 @@ assert(
   "lifestyle promo keeps top-level meta block",
 );
 
+const gownCode = readFileSync(
+  resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
+  "utf8",
+);
+assert(!gownCode.includes("baseDw: sw"), "gown layers use dw not undefined sw");
+assert(!gownCode.includes("borderPx: tealOuter"), "gown meta uses border not tealOuter");
+assert(gownCode.includes("baseDw: dw"), "gown frame snapshots baseDw from dw");
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);
