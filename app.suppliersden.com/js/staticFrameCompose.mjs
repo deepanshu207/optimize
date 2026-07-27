@@ -2,7 +2,7 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=49";
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=50";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
@@ -124,47 +124,48 @@ function placementSize(p) {
 export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, outerW, outerH } = frame;
 
-  // Tall static: badges on white-mat corners (reference layout).
-  if (frame.style === "tall_static" && frame.whiteX != null) {
-    const pad = Math.max(8, Math.round(Math.min(frame.whiteW, frame.whiteH) * 0.016));
-    const wx = frame.whiteX;
-    const wy = frame.whiteY;
-    const ww = frame.whiteW;
-    const wh = frame.whiteH;
-    let x = wx + pad;
-    let y = wy + pad;
+  // Tall static: badges on product-photo corners (reference #2).
+  if (frame.style === "tall_static" && frame.px != null) {
+    const size = Math.max(56, Math.round(Math.min(frame.dw, frame.dh) * 0.14));
+    const inset = Math.max(6, Math.round(size * 0.06));
+    const fx = frame.px;
+    const fy = frame.py;
+    const fw = frame.dw;
+    const fh = frame.dh;
+    let x = fx + inset;
+    let y = fy + inset;
     switch (anchor) {
       case "top-left":
-        x = wx + pad;
-        y = wy + pad;
+        x = fx + inset;
+        y = fy + inset;
         break;
       case "top-right":
-        x = wx + ww - w - pad;
-        y = wy + pad;
+        x = fx + fw - w - inset;
+        y = fy + inset;
         break;
       case "bottom-left":
-        x = wx + pad;
-        y = wy + wh - h - pad;
+        x = fx + inset;
+        y = fy + fh - h - inset;
         break;
       case "bottom-right":
-        x = wx + ww - w - pad;
-        y = wy + wh - h - pad;
+        x = fx + fw - w - inset;
+        y = fy + fh - h - inset;
         break;
       case "middle-left":
-        x = wx + pad;
-        y = wy + Math.round(wh / 2) - Math.round(h / 2);
+        x = fx + inset;
+        y = fy + Math.round(fh / 2) - Math.round(h / 2);
         break;
       case "middle-right":
-        x = wx + ww - w - pad;
-        y = wy + Math.round(wh / 2) - Math.round(h / 2);
+        x = fx + fw - w - inset;
+        y = fy + Math.round(fh / 2) - Math.round(h / 2);
         break;
       case "bottom-center":
-        x = wx + Math.round(ww / 2) - Math.round(w / 2);
-        y = wy + wh - h - pad;
+        x = fx + Math.round(fw / 2) - Math.round(w / 2);
+        y = fy + fh - h - inset;
         break;
       case "top-center":
-        x = wx + Math.round(ww / 2) - Math.round(w / 2);
-        y = wy + pad;
+        x = fx + Math.round(fw / 2) - Math.round(w / 2);
+        y = fy + inset;
         break;
       default:
         break;

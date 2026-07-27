@@ -1,8 +1,8 @@
 /**
- * Tall static promo badges — exact PNG assets from Badge/ folder.
- * badge3 = red scalloped price seal (TL)
- * badge2 = thin curved arrow toward top-right (TR)
- * badge1 = delivery truck silhouette (BL)
+ * Tall promo badges — match reference frame #2 exactly.
+ * badge3 = red scalloped seal (TL)
+ * Procedural arrow TR → down toward model
+ * badge1 = fast-delivery truck + motion lines (BL)
  */
 
 const badgeCache = {};
@@ -35,23 +35,45 @@ export async function loadTallBadge(num) {
   });
 }
 
-/** Procedural fallbacks only when PNG assets fail to load. */
+/** Knock out near-black PNG backgrounds so badges sit cleanly on white mat. */
+function drawBadgeKnockout(ctx, img, x, y, w, h) {
+  const tw = Math.max(1, Math.round(w));
+  const th = Math.max(1, Math.round(h));
+  const tmp = document.createElement("canvas");
+  tmp.width = tw;
+  tmp.height = th;
+  const tc = tmp.getContext("2d");
+  tc.drawImage(img, 0, 0, tw, th);
+  try {
+    const id = tc.getImageData(0, 0, tw, th);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] < 28 && d[i + 1] < 28 && d[i + 2] < 28) d[i + 3] = 0;
+    }
+    tc.putImageData(id, 0, 0);
+  } catch (e) {
+    /* tainted canvas — draw as-is */
+  }
+  ctx.drawImage(tmp, x, y, tw, th);
+}
+
+/** Red scalloped seal fallback (badge3). */
 export function drawPriceTag(ctx, x, y, size) {
   const cx = x + size * 0.5;
-  const cy = y + size * 0.56;
-  const r = size * 0.34;
+  const cy = y + size * 0.58;
+  const r = size * 0.32;
   ctx.save();
   ctx.strokeStyle = "#111111";
-  ctx.lineWidth = Math.max(1.2, size * 0.02);
+  ctx.lineWidth = Math.max(1, size * 0.018);
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(cx, y + size * 0.04);
+  ctx.moveTo(cx, y + size * 0.02);
   ctx.lineTo(cx, cy - r - size * 0.02);
   ctx.stroke();
   ctx.beginPath();
-  for (let i = 0; i < 18; i++) {
-    const a = (i / 18) * Math.PI * 2 - Math.PI / 2;
-    const scallop = r + (i % 2 === 0 ? r * 0.11 : 0);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 - Math.PI / 2;
+    const scallop = r + (i % 2 === 0 ? r * 0.1 : 0);
     const px = cx + Math.cos(a) * scallop;
     const py = cy + Math.sin(a) * scallop;
     if (i === 0) ctx.moveTo(px, py);
@@ -61,32 +83,34 @@ export function drawPriceTag(ctx, x, y, size) {
   ctx.fillStyle = "#e53935";
   ctx.fill();
   ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = Math.max(2.5, size * 0.05);
+  ctx.lineWidth = Math.max(2, size * 0.045);
   ctx.stroke();
   ctx.strokeStyle = "#111111";
-  ctx.lineWidth = Math.max(1.2, size * 0.022);
+  ctx.lineWidth = Math.max(1, size * 0.02);
   ctx.stroke();
   ctx.restore();
 }
 
+/** Top-right arrow — curves down toward the model (reference #2). */
 export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.save();
   ctx.strokeStyle = "#111111";
   ctx.fillStyle = "#111111";
-  ctx.lineWidth = Math.max(1.2, w * 0.028);
+  ctx.lineWidth = Math.max(1.1, w * 0.024);
   ctx.lineCap = "round";
-  const x0 = x + w * 0.1;
-  const y0 = y + h * 0.78;
-  const x1 = x + w * 0.92;
-  const y1 = y + h * 0.08;
-  const cx = x + w * 0.38;
-  const cy = y + h * 0.92;
+  ctx.lineJoin = "round";
+  const x0 = x + w * 0.9;
+  const y0 = y + h * 0.1;
+  const x1 = x + w * 0.2;
+  const y1 = y + h * 0.68;
+  const cx = x + w * 0.72;
+  const cy = y + h * 0.42;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
   ctx.stroke();
   const angle = Math.atan2(y1 - cy, x1 - cx);
-  const ah = Math.max(4, w * 0.11);
+  const ah = Math.max(3.5, w * 0.1);
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x1 - ah * Math.cos(angle - 0.55), y1 - ah * Math.sin(angle - 0.55));
@@ -96,20 +120,31 @@ export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.restore();
 }
 
+/** Truck fallback with motion lines (reference bottom-left). */
 export function drawDeliveryTruck(ctx, x, y, size) {
   ctx.save();
-  const bx = x + size * 0.12;
-  const by = y + size * 0.28;
-  const bw = size * 0.76;
-  const bh = size * 0.4;
+  ctx.strokeStyle = "#111111";
   ctx.fillStyle = "#111111";
-  ctx.fillRect(bx, by + bh * 0.38, bw * 0.5, bh * 0.5);
-  ctx.fillRect(bx + bw * 0.46, by + bh * 0.48, bw * 0.46, bh * 0.38);
-  ctx.fillRect(bx + bw * 0.46, by + bh * 0.1, bw * 0.22, bh * 0.42);
+  ctx.lineWidth = Math.max(1, size * 0.04);
+  ctx.lineCap = "round";
+  for (let i = 0; i < 3; i++) {
+    const ly = y + size * (0.38 + i * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.04, ly);
+    ctx.lineTo(x + size * (0.22 - i * 0.04), ly);
+    ctx.stroke();
+  }
+  const bx = x + size * 0.22;
+  const by = y + size * 0.34;
+  const bw = size * 0.68;
+  const bh = size * 0.36;
+  ctx.fillRect(bx, by + bh * 0.42, bw * 0.5, bh * 0.46);
+  ctx.fillRect(bx + bw * 0.46, by + bh * 0.52, bw * 0.46, bh * 0.36);
+  ctx.fillRect(bx + bw * 0.48, by + bh * 0.08, bw * 0.2, bh * 0.4);
   const wr = bh * 0.11;
   ctx.beginPath();
-  ctx.arc(bx + bw * 0.16, by + bh * 0.95, wr, 0, Math.PI * 2);
-  ctx.arc(bx + bw * 0.72, by + bh * 0.95, wr, 0, Math.PI * 2);
+  ctx.arc(bx + bw * 0.16, by + bh * 0.94, wr, 0, Math.PI * 2);
+  ctx.arc(bx + bw * 0.72, by + bh * 0.94, wr, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -117,22 +152,23 @@ export function drawDeliveryTruck(ctx, x, y, size) {
 export async function drawTallPlacement(ctx, p) {
   if (!p) return false;
 
+  if (p.kind === "curvedArrow" || p.id === "tall-arrow") {
+    drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
+    return true;
+  }
+
   if (p.num != null) {
     const badge = await loadTallBadge(p.num);
     if (badge) {
       const w = p.w || p.size;
       const h = p.h || p.size;
-      ctx.drawImage(badge, p.x, p.y, w, h);
+      drawBadgeKnockout(ctx, badge, p.x, p.y, w, h);
       return true;
     }
   }
 
   if (p.kind === "priceTag" || p.id === "tall-sale") {
     drawPriceTag(ctx, p.x, p.y, p.size);
-    return true;
-  }
-  if (p.kind === "curvedArrow" || p.id === "tall-arrow") {
-    drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
     return true;
   }
   if (p.kind === "truckIcon" || p.id === "tall-ship") {
