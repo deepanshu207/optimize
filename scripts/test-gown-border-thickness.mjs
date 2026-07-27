@@ -55,26 +55,16 @@ assert(gownFrame.dh === 715, "100 keeps product height");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
-assert(gownFrame.whitePad < 95, "50 thins white mat");
+assert(gownFrame.border < 18, "50 thins teal border");
 assert(gownFrame.dw === 477, "50 does not shrink product width");
 assert(gownFrame.dh === 715, "50 does not shrink product height");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
+assert(gownFrame.border > 18, "500 thickens teal border");
+assert(gownFrame.border + gownFrame.whitePad > 113, "500 increases total frame inset");
 assert(gownFrame.dw === 477, "500 does not shrink product width");
 assert(gownFrame.dh === 715, "500 does not shrink product height");
-
-const roomyFrame = {
-  ...gownFrame,
-  baseDw: 400,
-  baseDh: 600,
-  dw: 400,
-  dh: 600,
-  borderThicknessPct: 500,
-};
-applyBorderThickness(roomyFrame);
-assert(roomyFrame.whitePad > 95, "500 thickens mat when product has headroom");
-assert(roomyFrame.dw === 400, "500 keeps roomy product width");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
