@@ -2,10 +2,10 @@
  * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=67";
-import { blobToDataUrl } from "./lib/encoder.js?v=67";
-import { estimateImageShipping } from "./lib/shipping.js?v=67";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=69";
+import { blobToDataUrl } from "./lib/encoder.js?v=69";
+import { estimateImageShipping } from "./lib/shipping.js?v=69";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=69";
 
 export const GOWN_STATIC_OUTER_W = 703;
 export const GOWN_STATIC_OUTER_H = 1024;
@@ -285,6 +285,7 @@ async function buildGownStaticLayers(img) {
         baseWhiteW: whiteW,
         baseWhiteH: whiteH,
         borderThicknessPct: 100,
+        borderThicknessLocked: true,
         outerW,
         outerH,
         whiteX,

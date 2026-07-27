@@ -19,7 +19,7 @@ await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 await page.waitForFunction(() => window.meeshoOptimizer, { timeout: 15000 });
 
 const injected = await page.evaluate(async () => {
-  await import("/js/staticFrameCompose.mjs?v=68");
+  await import("/js/staticFrameCompose.mjs?v=69");
 
   const productCanvas = document.createElement("canvas");
   productCanvas.width = 477;
@@ -114,6 +114,9 @@ await page.evaluate((vid) => window.meeshoOptimizer.openVariantEditor(vid), inje
 
 await page.waitForSelector("#variant-edit-panel", { visible: true, timeout: 10000 });
 await page.waitForSelector("#static-border-thickness", { timeout: 10000 });
+
+await page.waitForSelector("#static-border-lock", { timeout: 10000 });
+await page.click("#static-border-lock");
 
 const before = await page.$eval("#variant-edit-preview", (el) => el.src.length);
 

@@ -1175,6 +1175,7 @@ function snapshotDefaults(layers, style) {
         matColor: frame.matColor,
         gradientPreset: frame.gradientPreset,
         borderThicknessPct: frame.borderThicknessPct ?? 100,
+        borderThicknessLocked: frame.borderThicknessLocked !== false,
       },
       placements: {},
     };
