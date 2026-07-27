@@ -2,9 +2,9 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=64";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=64";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=64";
+import { compressFramedToKb } from "./lib/encoder.js?v=65";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=65";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=65";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -56,10 +56,10 @@ const STYLE_DEFAULTS = {
   },
   gown_static: {
     frameType: "tall",
-    borderColor: "#A0E6E6",
+    borderColor: "#71cbd3",
     matColor: "#ffffff",
-    gradientTop: "#A0E6E6",
-    gradientBottom: "#7ec8d0",
+    gradientTop: "#71cbd3",
+    gradientBottom: "#5eb8c4",
     gradientPreset: null,
   },
   live_standard: {
@@ -455,9 +455,52 @@ function restoreBaseGeometry(frame) {
   if (frame.baseWhiteH != null) frame.whiteH = frame.baseWhiteH;
 }
 
+/** Gown: border slider changes mat only — product pixels stay fixed size. */
+function applyGownBorderThickness(frame, pct) {
+  const outerW = frame.outerW || 0;
+  const outerH = frame.outerH || 0;
+  const baseDw = frame.baseDw ?? frame.dw ?? 0;
+  const baseDh = frame.baseDh ?? frame.dh ?? 0;
+  const baseBorder = frame.baseBorder ?? frame.border ?? 0;
+  const baseWhitePad = frame.baseWhitePad ?? frame.whitePad ?? 0;
+  const whiteW = frame.baseWhiteW ?? outerW - baseBorder * 2;
+  const whiteH = frame.baseWhiteH ?? outerH - baseBorder * 2;
+
+  frame.dw = baseDw;
+  frame.dh = baseDh;
+  frame.border = baseBorder;
+  frame.whiteX = baseBorder;
+  frame.whiteY = baseBorder;
+  frame.whiteW = whiteW;
+  frame.whiteH = whiteH;
+
+  const t = pct / BORDER_THICKNESS_DEFAULT;
+  const maxWhitePad = Math.max(
+    0,
+    Math.floor((Math.min(whiteW, whiteH) - Math.min(baseDw, baseDh)) / 2),
+  );
+
+  let whitePad;
+  if (t <= 1) {
+    whitePad = Math.round(baseWhitePad * t);
+  } else {
+    const hi = BORDER_THICKNESS_MAX / BORDER_THICKNESS_DEFAULT;
+    const u = (t - 1) / (hi - 1);
+    whitePad = Math.round(baseWhitePad + (maxWhitePad - baseWhitePad) * u);
+  }
+  whitePad = clamp(whitePad, 0, maxWhitePad);
+  frame.whitePad = whitePad;
+
+  const prodAreaW = whiteW - whitePad * 2;
+  const prodAreaH = whiteH - whitePad * 2;
+  frame.px = baseBorder + whitePad + Math.round((prodAreaW - baseDw) / 2);
+  frame.py = baseBorder + whitePad + Math.round((prodAreaH - baseDh) / 2);
+  return frame;
+}
+
 /**
  * Apply border thickness (0–1000). 100 = exact generated frame.
- * Below 100 thins frame; above 100 thickens frame and shrinks product to fit.
+ * Gown keeps product size fixed; other variants scale border/mat around product.
  */
 export function applyBorderThickness(frame) {
   if (!frame) return frame;
@@ -467,6 +510,10 @@ export function applyBorderThickness(frame) {
   if (pct === BORDER_THICKNESS_DEFAULT) {
     restoreBaseGeometry(frame);
     return frame;
+  }
+
+  if (frame.style === "gown_static") {
+    return applyGownBorderThickness(frame, pct);
   }
 
   const outerW = frame.outerW || 0;
@@ -513,7 +560,6 @@ export function applyBorderThickness(frame) {
   const isTall =
     frame.frameType === "tall" ||
     frame.style === "tall_static" ||
-    frame.style === "gown_static" ||
     frame.style === "live_framed";
 
   if (isTall) {

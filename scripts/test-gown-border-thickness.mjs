@@ -1,5 +1,5 @@
 /**
- * Gown static variant + border thickness default (100% = unchanged frame).
+ * Gown static variant + border thickness (product size locked for gown).
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -23,54 +23,72 @@ function assert(cond, msg) {
 const gownFrame = {
   style: "gown_static",
   frameType: "tall",
-  border: 15,
-  whitePad: 114,
-  baseBorder: 15,
-  baseWhitePad: 114,
-  basePx: 151,
-  basePy: 151,
-  baseDw: 401,
-  baseDh: 602,
-  baseWhiteX: 15,
-  baseWhiteY: 15,
-  baseWhiteW: 673,
-  baseWhiteH: 994,
-  px: 151,
-  py: 151,
-  dw: 401,
-  dh: 602,
+  border: 18,
+  whitePad: 95,
+  baseBorder: 18,
+  baseWhitePad: 95,
+  basePx: 113,
+  basePy: 113,
+  baseDw: 477,
+  baseDh: 715,
+  baseWhiteX: 18,
+  baseWhiteY: 18,
+  baseWhiteW: 667,
+  baseWhiteH: 988,
+  px: 113,
+  py: 113,
+  dw: 477,
+  dh: 715,
   outerW: 703,
   outerH: 1024,
-  whiteX: 15,
-  whiteY: 15,
-  whiteW: 673,
-  whiteH: 994,
+  whiteX: 18,
+  whiteY: 18,
+  whiteW: 667,
+  whiteH: 988,
   borderThicknessPct: 100,
 };
 
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 15, "100 keeps base border 15");
-assert(gownFrame.px === 151, "100 keeps base px 151");
-assert(gownFrame.dw === 401, "100 keeps base product width");
+assert(gownFrame.border === 18, "100 keeps base teal border");
+assert(gownFrame.dw === 477, "100 keeps product width");
+assert(gownFrame.dh === 715, "100 keeps product height");
+
+gownFrame.borderThicknessPct = 50;
+applyBorderThickness(gownFrame);
+assert(gownFrame.whitePad < 95, "50 thins white mat");
+assert(gownFrame.dw === 477, "50 does not shrink product width");
+assert(gownFrame.dh === 715, "50 does not shrink product height");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border > 15, "500 thickens border beyond default");
-assert(gownFrame.dw <= gownFrame.baseDw, "500 shrinks product to fit thicker frame");
+assert(gownFrame.dw === 477, "500 does not shrink product width");
+assert(gownFrame.dh === 715, "500 does not shrink product height");
 
-gownFrame.borderThicknessPct = 1000;
-applyBorderThickness(gownFrame);
-assert(gownFrame.px >= gownFrame.border, "1000 keeps product inside frame");
+const roomyFrame = {
+  ...gownFrame,
+  baseDw: 400,
+  baseDh: 600,
+  dw: 400,
+  dh: 600,
+  borderThicknessPct: 500,
+};
+applyBorderThickness(roomyFrame);
+assert(roomyFrame.whitePad > 95, "500 thickens mat when product has headroom");
+assert(roomyFrame.dw === 400, "500 keeps roomy product width");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 15, "restore 100 returns exact base border");
-assert(gownFrame.px === 151, "restore 100 returns exact base px");
+assert(gownFrame.border === 18, "restore 100 returns exact base border");
+assert(gownFrame.dw === 477, "restore 100 returns exact product width");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
 const lifestyleCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/livePromoLifestyle.mjs"),
+  "utf8",
+);
+const gownCode = readFileSync(
+  resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
   "utf8",
 );
 
@@ -82,14 +100,9 @@ assert(
   /},\s*\n\s*meta:\s*\{[\s\S]*style:\s*"lifestyle_promo"/.test(lifestyleCode),
   "lifestyle promo keeps top-level meta block",
 );
-
-const gownCode = readFileSync(
-  resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
-  "utf8",
-);
-assert(!gownCode.includes("baseDw: sw"), "gown layers use dw not undefined sw");
-assert(!gownCode.includes("borderPx: tealOuter"), "gown meta uses border not tealOuter");
-assert(gownCode.includes("baseDw: dw"), "gown frame snapshots baseDw from dw");
+assert(!gownCode.includes("GOWN_INNER_PRODUCT_FILL"), "gown fills white mat not double-padded");
+assert(gownCode.includes("whiteW - whitePad * 2"), "gown product sized from white mat");
+assert(gownCode.includes('BORDER_TEAL = "#71cbd3"'), "gown uses reference teal");
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
