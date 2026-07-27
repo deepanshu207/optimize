@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=70";
+      return "/js/liveAnalysisBridge.mjs?v=71";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=70");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=71");
     }
-    return "/js/liveAnalysisBridge.mjs?v=70";
+    return "/js/liveAnalysisBridge.mjs?v=71";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=70";
+      return "/js/staticFrameCompose.mjs?v=71";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=70");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=71");
     }
-    return "/js/staticFrameCompose.mjs?v=70";
+    return "/js/staticFrameCompose.mjs?v=71";
   }
 
   async preloadStaticComposeModule() {
@@ -3381,8 +3381,8 @@ Please share payment details and license key.`;
     }
     if (hSlider) hSlider.disabled = lockH;
     if (vSlider) vSlider.disabled = lockV;
-    if (hWrap) hWrap.style.opacity = lockH ? "0.55" : "1";
-    if (vWrap) vWrap.style.opacity = lockV ? "0.55" : "1";
+    if (hWrap) hWrap.classList.toggle("static-slider-locked", lockH);
+    if (vWrap) vWrap.classList.toggle("static-slider-locked", lockV);
   }
 
   toggleStaticPlacementSizeLock(variantId, placementId) {
@@ -3426,7 +3426,7 @@ Please share payment details and license key.`;
       lockBtn.setAttribute("aria-pressed", lockSize ? "true" : "false");
     }
     if (slider) slider.disabled = lockSize;
-    if (wrap) wrap.style.opacity = lockSize ? "0.55" : "1";
+    if (wrap) wrap.classList.toggle("static-slider-locked", lockSize);
   }
 
   async setStaticBadgeNum(variantId, placementId, badgeNum) {
@@ -3510,7 +3510,7 @@ Please share payment details and license key.`;
       btn.setAttribute("aria-pressed", locked ? "true" : "false");
     }
     if (slider) slider.disabled = locked;
-    if (wrap) wrap.style.opacity = locked ? "0.55" : "1";
+    if (wrap) wrap.classList.toggle("static-slider-locked", locked);
   }
 
   toggleStaticBorderThicknessLock(variantId) {
@@ -3637,7 +3637,7 @@ Please share payment details and license key.`;
     const borderPct = frame.borderThicknessPct ?? 100;
     if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
     const borderLocked = frame.borderThicknessLocked !== false;
-    html += `<div class="static-border-wrap" style="margin-bottom:8px;touch-action:none;${borderLocked ? "opacity:0.55;" : ""}">
+    html += `<div class="static-border-wrap${borderLocked ? " static-slider-locked" : ""}" style="margin-bottom:8px;touch-action:none;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
         <button type="button" id="static-border-lock" aria-pressed="${borderLocked ? "true" : "false"}" title="${borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${borderLocked ? "🔒" : "🔓"}</button>
         <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
@@ -3693,21 +3693,21 @@ Please share payment details and license key.`;
       }
       html += `</select></label>`;
 
-      html += `<div class="static-size-wrap" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;${lockSize ? "opacity:0.55;" : ""}">
+      html += `<div class="static-size-wrap${lockSize ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-size-lock" data-badge-id="${slot.id}" aria-pressed="${lockSize ? "true" : "false"}" title="${lockSize ? "Unlock size to adjust" : "Lock badge size"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockSize ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%</span>
         </div>
         <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;"${lockSize ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-h-wrap" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;${lockH ? "opacity:0.55;" : ""}">
+      html += `<div class="static-pos-h-wrap${lockH ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="h" data-badge-id="${slot.id}" aria-pressed="${lockH ? "true" : "false"}" title="${lockH ? "Unlock horizontal to adjust" : "Lock horizontal"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockH ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%</span>
         </div>
         <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;touch-action:none;"${lockH ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-v-wrap" data-badge-id="${slot.id}" style="touch-action:none;${lockV ? "opacity:0.55;" : ""}">
+      html += `<div class="static-pos-v-wrap${lockV ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="touch-action:none;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="v" data-badge-id="${slot.id}" aria-pressed="${lockV ? "true" : "false"}" title="${lockV ? "Unlock vertical to adjust" : "Lock vertical"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockV ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%</span>
@@ -4060,7 +4060,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "4") {
+    if (panel && panel.dataset.staticEditorV !== "5") {
       panel.remove();
       panel = null;
     }
@@ -4068,54 +4068,78 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "4";
+    panel.dataset.staticEditorV = "5";
     panel.style.cssText =
-      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
+      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
-      <div style="background:#fff;border-radius:12px;max-width:420px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,0.25);">
-        <div style="padding:16px 16px 0;flex-shrink:0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <style>
+        #variant-edit-panel .variant-edit-sheet {
+          background:#fff;border-radius:12px;max-width:440px;width:100%;max-height:94vh;
+          display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,0.25);overflow:hidden;
+        }
+        #variant-edit-panel #variant-edit-scroll {
+          overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
+          padding:0 16px 12px;overscroll-behavior:contain;
+        }
+        #variant-edit-panel #variant-edit-preview {
+          position:sticky;top:0;z-index:2;width:100%;max-height:128px;object-fit:contain;
+          border-radius:8px;background:#fff;margin:0 0 10px;padding:4px 0;
+          box-shadow:0 6px 16px rgba(255,255,255,0.92);
+        }
+        #variant-edit-panel .static-slider-locked input[type="range"]:disabled {
+          opacity:0.5;cursor:not-allowed;
+        }
+        #variant-edit-panel .static-sticker-card input[type="range"],
+        #variant-edit-panel #static-border-thickness {
+          accent-color:#10b981;
+        }
+      </style>
+      <div class="variant-edit-sheet">
+        <div style="padding:14px 16px 0;flex-shrink:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
             <strong id="variant-edit-title" style="font-size:15px;">Variant</strong>
             <button type="button" id="variant-edit-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
           </div>
-          <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
         </div>
-        <div style="overflow-y:auto;padding:0 16px 16px;flex:1;">
-        <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
-        <div id="variant-edit-remove-section" style="margin-bottom:10px;">
-          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
-          <label id="variant-edit-remove-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
-            Remove stickers / badges only
-          </label>
-          <label id="variant-edit-remove-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-border-only" style="width:18px;height:18px;">
-            Remove border only (keep stickers)
-          </label>
-          <label id="variant-edit-remove-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
-            Remove border and stickers (clean product)
-          </label>
+        <div id="variant-edit-scroll">
+          <img id="variant-edit-preview" alt="Preview">
+          <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin:0 0 12px;"></p>
+          <div id="variant-edit-remove-section" style="margin-bottom:10px;">
+            <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
+            <label id="variant-edit-remove-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-no-stickers" style="width:18px;height:18px;">
+              Remove stickers / badges only
+            </label>
+            <label id="variant-edit-remove-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-border-only" style="width:18px;height:18px;">
+              Remove border only (keep stickers)
+            </label>
+            <label id="variant-edit-remove-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-clean-product" style="width:18px;height:18px;">
+              Remove border and stickers (clean product)
+            </label>
+          </div>
+          <div id="variant-edit-static-badges" style="display:none;margin-bottom:10px;"></div>
+          <div id="variant-edit-add-section" style="margin-bottom:10px;">
+            <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Add</div>
+            <label id="variant-edit-add-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-add-stickers" style="width:18px;height:18px;">
+              Add stickers / badges only
+            </label>
+            <label id="variant-edit-add-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-add-border" style="width:18px;height:18px;">
+              Add border only (keep product)
+            </label>
+            <label id="variant-edit-add-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+              <input type="checkbox" id="variant-edit-add-both" style="width:18px;height:18px;">
+              Add border and stickers
+            </label>
+          </div>
+          <p id="variant-edit-footer-note" style="font-size:10px;color:#6b7280;margin:0 0 8px;">6 preview options — edits update save only, not shipping ₹.</p>
         </div>
-        <div id="variant-edit-static-badges" style="display:none;margin-bottom:10px;"></div>
-        <div id="variant-edit-add-section" style="margin-bottom:10px;">
-          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Add</div>
-          <label id="variant-edit-add-stickers-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-add-stickers" style="width:18px;height:18px;">
-            Add stickers / badges only
-          </label>
-          <label id="variant-edit-add-border-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-add-border" style="width:18px;height:18px;">
-            Add border only (keep product)
-          </label>
-          <label id="variant-edit-add-both-wrap" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="variant-edit-add-both" style="width:18px;height:18px;">
-            Add border and stickers
-          </label>
-        </div>
-        <p id="variant-edit-footer-note" style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
-        <button type="button" id="variant-edit-reset" style="display:none;width:100%;padding:10px;margin-bottom:8px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Reset to original</button>
-        <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
+        <div style="flex-shrink:0;padding:10px 16px 14px;border-top:1px solid #f3f4f6;background:#fff;">
+          <button type="button" id="variant-edit-reset" style="display:none;width:100%;padding:10px;margin-bottom:8px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Reset to original</button>
+          <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
         </div>
       </div>
     `;

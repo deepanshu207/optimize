@@ -97,6 +97,10 @@ assert(contentCode.includes("borderThicknessLocked"), "border lock stored on fra
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
+assert(contentCode.includes("staticEditorV = \"5\""), "editor panel layout v5 with scroll fix");
+assert(contentCode.includes("variant-edit-scroll"), "editor has dedicated scroll region");
+assert(contentCode.includes("static-slider-locked"), "locked sliders use class not whole-row fade");
+assert(contentCode.includes("min-height:0"), "flex scroll child can shrink");
 assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");
 assert(contentCode.includes("preview: true"), "editor preview skips targetKb recompress");
 assert(contentCode.includes("pricingImageUrl"), "pricing image kept separate from preview");
