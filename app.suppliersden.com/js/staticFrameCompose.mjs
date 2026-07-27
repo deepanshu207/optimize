@@ -21,6 +21,70 @@ export const GRADIENT_PRESETS = [
   { id: "mint", label: "Mint", top: "#00BFA5", bottom: "#69F0AE" },
 ];
 
+function clampByte(n) {
+  return Math.max(0, Math.min(255, Math.round(Number(n) || 0)));
+}
+
+export function rgbToHex(r, g, b) {
+  const rr = clampByte(r).toString(16).padStart(2, "0");
+  const gg = clampByte(g).toString(16).padStart(2, "0");
+  const bb = clampByte(b).toString(16).padStart(2, "0");
+  return `#${rr}${gg}${bb}`;
+}
+
+function rgbPartsToColor(r, g, b, hex) {
+  return { r: clampByte(r), g: clampByte(g), b: clampByte(b), hex: hex.toLowerCase() };
+}
+
+export function hexToRgb(hex) {
+  const parsed = parseCssColor(hex);
+  if (!parsed) return null;
+  return { r: parsed.r, g: parsed.g, b: parsed.b, hex: parsed.hex };
+}
+
+export function parseCssColor(input) {
+  if (input == null) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  const shortHex = /^#([0-9a-f]{3})$/i.exec(raw);
+  if (shortHex) {
+    const [r, g, b] = shortHex[1].split("");
+    const hex = `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+    const n = parseInt(hex.slice(1), 16);
+    return rgbPartsToColor((n >> 16) & 255, (n >> 8) & 255, n & 255, hex);
+  }
+
+  const longHex = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(raw);
+  if (longHex) {
+    const hex = `#${longHex[1]}`.toLowerCase();
+    const n = parseInt(longHex[1], 16);
+    return rgbPartsToColor((n >> 16) & 255, (n >> 8) & 255, n & 255, hex);
+  }
+
+  const rgb = /^rgba?\(\s*([\d.]+)(?:\s*,\s*|\s+)([\d.]+)(?:\s*,\s*|\s+)([\d.]+)/i.exec(
+    raw,
+  );
+  if (rgb) {
+    return rgbPartsToColor(rgb[1], rgb[2], rgb[3], rgbToHex(rgb[1], rgb[2], rgb[3]));
+  }
+
+  return null;
+}
+
+export function normalizeFrameColor(input, fallback = null) {
+  const parsed = parseCssColor(input);
+  if (parsed) return parsed.hex.toLowerCase();
+  if (fallback != null) return normalizeFrameColor(fallback);
+  return null;
+}
+
+export function formatRgbString(input) {
+  const parsed = parseCssColor(input);
+  if (!parsed) return "";
+  return `${parsed.r}, ${parsed.g}, ${parsed.b}`;
+}
+
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
   { value: "top-right", label: "Top right" },
@@ -1150,11 +1214,23 @@ export function updateFrameAppearance(layers, patch) {
   if (!layers?._staticFrame) return false;
   const frame = layers._staticFrame;
   if (patch.frameType != null) frame.frameType = patch.frameType;
-  if (patch.gradientTop != null) frame.gradientTop = patch.gradientTop;
-  if (patch.gradientBottom != null) frame.gradientBottom = patch.gradientBottom;
-  if (patch.borderColor != null) frame.borderColor = patch.borderColor;
-  if (patch.matColor != null) frame.matColor = patch.matColor;
-  if (patch.gradientPreset !== undefined) frame.gradientPreset = patch.gradientPreset;
+  if (patch.gradientTop != null) {
+    const hex = normalizeFrameColor(patch.gradientTop);
+    if (hex) frame.gradientTop = hex;
+  }
+  if (patch.gradientBottom != null) {
+    const hex = normalizeFrameColor(patch.gradientBottom);
+    if (hex) frame.gradientBottom = hex;
+  }
+  if (patch.borderColor != null) {
+    const hex = normalizeFrameColor(patch.borderColor);
+    if (hex) frame.borderColor = hex;
+  }
+  if (patch.matColor != null) {
+    const hex = normalizeFrameColor(patch.matColor);
+    if (hex) frame.matColor = hex;
+  }
+  if (patch.gradientPreset !== undefined) frame.gradientPreset = patch.gradientPreset || null;
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame);
@@ -1442,6 +1518,11 @@ if (typeof window !== "undefined") {
     setAllPlacementsHidden,
     updateFrameAppearance,
     applyGradientPreset,
+    parseCssColor,
+    normalizeFrameColor,
+    hexToRgb,
+    rgbToHex,
+    formatRgbString,
     bootstrapLiveFrame,
     bootstrapLiveFrameAsync,
     ensureVariantPlacementMeta,
