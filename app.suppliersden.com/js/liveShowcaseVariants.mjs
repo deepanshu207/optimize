@@ -5,9 +5,9 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=59";
-import { compressFramedToKb } from "./lib/encoder.js?v=59";
-import { estimateImageShipping } from "./lib/shipping.js?v=59";
+} from "./lib/canvas-utils.js?v=60";
+import { compressFramedToKb } from "./lib/encoder.js?v=60";
+import { estimateImageShipping } from "./lib/shipping.js?v=60";
 
 /** Fixed badge assets matching the reference screenshot. */
 export const SHOWCASE_BADGES = {
@@ -290,6 +290,10 @@ async function buildShowcaseLayers(img) {
         dw,
         dh,
         border,
+        baseBorder: border,
+        basePx: px,
+        basePy: py,
+        borderThicknessPct: 100,
         outerW,
         outerH,
       },

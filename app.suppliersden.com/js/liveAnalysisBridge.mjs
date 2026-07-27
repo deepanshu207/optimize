@@ -2,21 +2,25 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=59";
-import { loadImage } from "./lib/canvas-utils.js?v=59";
-import { blobToDataUrl } from "./lib/encoder.js?v=59";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=60";
+import { loadImage } from "./lib/canvas-utils.js?v=60";
+import { blobToDataUrl } from "./lib/encoder.js?v=60";
 import {
   buildShowcaseVariants,
   SHOWCASE_VARIANT_COUNT,
-} from "./liveShowcaseVariants.mjs?v=59";
+} from "./liveShowcaseVariants.mjs?v=60";
 import {
   buildPromoLifestyleVariants,
   PROMO_LIFESTYLE_VARIANT_COUNT,
-} from "./livePromoLifestyle.mjs?v=59";
+} from "./livePromoLifestyle.mjs?v=60";
 import {
   buildTallStaticVariants,
   TALL_STATIC_VARIANT_COUNT,
-} from "./liveTallStatic.mjs?v=59";
+} from "./liveTallStatic.mjs?v=60";
+import {
+  buildGownStaticVariants,
+  GOWN_STATIC_VARIANT_COUNT,
+} from "./liveGownStatic.mjs?v=60";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -167,6 +171,29 @@ export async function runTallStaticGeneration(file, options = {}) {
 }
 
 /**
+ * Gown portrait promo — 703×1024 teal frame + gown badges @ ~₹49 band (web only).
+ */
+export async function runGownStaticGeneration(file, options = {}) {
+  const { onProgress = () => {}, count = GOWN_STATIC_VARIANT_COUNT } = options;
+  const img = await loadImage(file);
+  const raw = await buildGownStaticVariants(img, { onProgress, count });
+  const results = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    v.dataUrl = await blobToDataUrl(v.blob);
+    results.push(
+      variantToAnalysisResult(v, i + 90000, {
+        variantStyle: "gown_static",
+        showcase: true,
+        showcasePreset: v.meta?.showcasePreset,
+        variantId: `gown-static-${v.kb}-${i + 90000}`,
+      }),
+    );
+  }
+  return { success: results.length > 0, results };
+}
+
+/**
  * Run static image analysis + ranked local variants (est ₹ only).
  */
 export async function runLiveAnalysis(file, options = {}) {
@@ -227,6 +254,7 @@ if (typeof window !== "undefined") {
     runShowcaseGeneration,
     runPromoLifestyleGeneration,
     runTallStaticGeneration,
+    runGownStaticGeneration,
   };
   window.dispatchEvent(new Event("live-analysis-ready"));
 }

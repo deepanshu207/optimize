@@ -2,8 +2,9 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=59";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=59";
+import { compressFramedToKb } from "./lib/encoder.js?v=60";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=60";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=60";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 
@@ -51,6 +52,14 @@ const STYLE_DEFAULTS = {
     gradientBottom: "#1e88c7",
     gradientPreset: null,
   },
+  gown_static: {
+    frameType: "tall",
+    borderColor: "#5ec4c8",
+    matColor: "#ffffff",
+    gradientTop: "#5ec4c8",
+    gradientBottom: "#3aa8ad",
+    gradientPreset: null,
+  },
   live_standard: {
     frameType: "gradient",
     gradientTop: "#3498db",
@@ -83,6 +92,11 @@ const DEFAULT_ANCHORS = {
     "tall-sale": "top-left",
     "tall-arrow": "top-right",
     "tall-ship": "bottom-left",
+  },
+  gown_static: {
+    "gown-best": "top-left",
+    "gown-flash": "top-right",
+    "gown-popular": "middle-left",
   },
 };
 
@@ -204,12 +218,15 @@ export function isStaticPromoVariant(row) {
     style === "showcase" ||
     style === "lifestyle_promo" ||
     style === "tall_static" ||
+    style === "gown_static" ||
     row.meta?.path === "showcase" ||
     row.meta?.path === "lifestyle_promo" ||
     row.meta?.path === "tall_static" ||
+    row.meta?.path === "gown_static" ||
     frameStyle === "showcase" ||
     frameStyle === "lifestyle_promo" ||
-    frameStyle === "tall_static"
+    frameStyle === "tall_static" ||
+    frameStyle === "gown_static"
   );
 }
 
@@ -256,7 +273,9 @@ export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, outerW, outerH } = frame;
 
   if (
-    (frame.style === "tall_static" || frame.style === "live_framed") &&
+    (frame.style === "tall_static" ||
+      frame.style === "gown_static" ||
+      frame.style === "live_framed") &&
     frame.px != null
   ) {
     const size = Math.max(56, Math.round(Math.min(frame.dw, frame.dh) * 0.14));
@@ -395,6 +414,91 @@ function ensureFrameDefaults(frame) {
   if (frame.gradientPreset === undefined) frame.gradientPreset = defs.gradientPreset;
   if (!frame.borderColor) frame.borderColor = defs.borderColor || frame.gradientTop;
   if (!frame.matColor) frame.matColor = defs.matColor || "#ffffff";
+  ensureFrameBases(frame);
+  applyBorderThickness(frame);
+  return frame;
+}
+
+/** Snapshot base geometry once — default thickness 100% keeps these exact values. */
+export function ensureFrameBases(frame) {
+  if (!frame) return frame;
+  if (frame.borderThicknessPct == null) frame.borderThicknessPct = 100;
+  if (frame.baseBorder == null && frame.border != null) frame.baseBorder = frame.border;
+  if (frame.baseWhitePad == null && frame.whitePad != null) frame.baseWhitePad = frame.whitePad;
+  if (frame.basePx == null && frame.px != null) frame.basePx = frame.px;
+  if (frame.basePy == null && frame.py != null) frame.basePy = frame.py;
+  if (frame.baseWhiteX == null && frame.whiteX != null) frame.baseWhiteX = frame.whiteX;
+  if (frame.baseWhiteY == null && frame.whiteY != null) frame.baseWhiteY = frame.whiteY;
+  if (frame.baseWhiteW == null && frame.whiteW != null) frame.baseWhiteW = frame.whiteW;
+  if (frame.baseWhiteH == null && frame.whiteH != null) frame.baseWhiteH = frame.whiteH;
+  if (frame.baseBorder == null && frame.px != null && frame.frameType !== "tall") {
+    frame.baseBorder = frame.px;
+  }
+  return frame;
+}
+
+/**
+ * Apply border thickness (0–100). At 100% restores exact base geometry — no drift from current frames.
+ */
+export function applyBorderThickness(frame) {
+  if (!frame) return frame;
+  ensureFrameBases(frame);
+  const pct = clamp(frame.borderThicknessPct ?? 100, 0, 100);
+
+  if (pct === 100) {
+    if (frame.baseBorder != null) frame.border = frame.baseBorder;
+    if (frame.baseWhitePad != null) frame.whitePad = frame.baseWhitePad;
+    if (frame.basePx != null) frame.px = frame.basePx;
+    if (frame.basePy != null) frame.py = frame.basePy;
+    if (frame.baseWhiteX != null) frame.whiteX = frame.baseWhiteX;
+    if (frame.baseWhiteY != null) frame.whiteY = frame.baseWhiteY;
+    if (frame.baseWhiteW != null) frame.whiteW = frame.baseWhiteW;
+    if (frame.baseWhiteH != null) frame.whiteH = frame.baseWhiteH;
+    return frame;
+  }
+
+  const scale = pct / 100;
+  const outerW = frame.outerW || 0;
+  const outerH = frame.outerH || 0;
+  const dw = frame.dw || 0;
+  const dh = frame.dh || 0;
+  const baseBorder = frame.baseBorder ?? frame.border ?? 0;
+
+  if (
+    frame.frameType === "tall" ||
+    frame.style === "tall_static" ||
+    frame.style === "gown_static" ||
+    frame.style === "live_framed"
+  ) {
+    const baseWhitePad = frame.baseWhitePad ?? frame.whitePad ?? 0;
+    const effectiveBorder = Math.round(baseBorder * scale);
+    const effectiveWhitePad = Math.round(baseWhitePad * scale);
+    const inset = effectiveBorder + effectiveWhitePad;
+
+    frame.border = effectiveBorder;
+    frame.whitePad = effectiveWhitePad;
+    frame.whiteX = effectiveBorder;
+    frame.whiteY = effectiveBorder;
+    frame.whiteW = outerW - effectiveBorder * 2;
+    frame.whiteH = outerH - effectiveBorder * 2;
+
+    const innerW = Math.max(0, outerW - inset * 2);
+    const innerH = Math.max(0, outerH - inset * 2);
+    frame.px = inset + Math.round((innerW - dw) / 2);
+    frame.py = inset + Math.round((innerH - dh) / 2);
+    return frame;
+  }
+
+  const effectiveBorder = Math.round(baseBorder * scale);
+  frame.border = effectiveBorder;
+  if (outerW > 0 && outerH > 0 && dw > 0 && dh > 0) {
+    frame.px = effectiveBorder + Math.round((outerW - effectiveBorder * 2 - dw) / 2);
+    frame.py = effectiveBorder + Math.round((outerH - effectiveBorder * 2 - dh) / 2);
+  } else if (frame.basePx != null) {
+    const delta = baseBorder - effectiveBorder;
+    frame.px = Math.max(0, frame.basePx - delta);
+    frame.py = Math.max(0, (frame.basePy ?? frame.px) - delta);
+  }
   return frame;
 }
 
@@ -438,6 +542,7 @@ function drawFrameBackground(ctx, frame) {
   } else if (
     frame.frameType === "tall" ||
     style === "tall_static" ||
+    style === "gown_static" ||
     style === "live_framed"
   ) {
     ctx.fillStyle = frame.borderColor || "#45a9e5";
@@ -521,6 +626,9 @@ async function drawPlacementsOnCtx(ctx, placements) {
       } else if (p.id?.startsWith("tall-")) {
         const copy = { ...p, w, h };
         await drawTallBadge(ctx, loadBadge, copy);
+      } else if (p.id?.startsWith("gown-") || p.kind === "gownArt") {
+        const copy = { ...p, w, h };
+        await drawGownBadge(ctx, loadBadge, copy);
       } else if (p.num != null) {
         const badge = await loadBadge(p.num);
         if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
@@ -609,7 +717,15 @@ async function compressToTargetKb(canvas, targetKb, style) {
 
 export function frameAppearanceChanged(frame, defaults) {
   if (!frame || !defaults) return false;
-  const keys = ["frameType", "gradientTop", "gradientBottom", "borderColor", "matColor", "gradientPreset"];
+  const keys = [
+    "frameType",
+    "gradientTop",
+    "gradientBottom",
+    "borderColor",
+    "matColor",
+    "gradientPreset",
+    "borderThicknessPct",
+  ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
 
@@ -888,6 +1004,10 @@ export function updateFrameAppearance(layers, patch) {
   if (patch.borderColor != null) frame.borderColor = patch.borderColor;
   if (patch.matColor != null) frame.matColor = patch.matColor;
   if (patch.gradientPreset !== undefined) frame.gradientPreset = patch.gradientPreset;
+  if (patch.borderThicknessPct != null) {
+    frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, 100);
+    applyBorderThickness(frame);
+  }
   return true;
 }
 
@@ -916,6 +1036,7 @@ function snapshotDefaults(layers, style) {
         borderColor: frame.borderColor,
         matColor: frame.matColor,
         gradientPreset: frame.gradientPreset,
+        borderThicknessPct: frame.borderThicknessPct ?? 100,
       },
       placements: {},
     };
@@ -1066,6 +1187,9 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id === "tall-sale") p.label = "Price tag";
       else if (p.id === "tall-arrow") p.label = "Arrow";
       else if (p.id === "tall-ship") p.label = "Delivery truck";
+      else if (p.id === "gown-best") p.label = "Best PRICE";
+      else if (p.id === "gown-flash") p.label = "FLASH SALE";
+      else if (p.id === "gown-popular") p.label = "MOST POPULAR";
       else if (p.id.startsWith("live-badge-")) p.label = `Badge ${parseInt(p.id.split("-").pop(), 10) + 1}`;
       else p.label = `Badge ${p.num || ""}`.trim();
     }
@@ -1171,5 +1295,7 @@ if (typeof window !== "undefined") {
     resetStaticPlacements,
     needsStaticCompose,
     isStaticEdited,
+    ensureFrameBases,
+    applyBorderThickness,
   };
 }

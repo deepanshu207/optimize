@@ -1,7 +1,6 @@
 /**
- * Tall portrait promo @ 703×1024 — hunt-exact frame + fixed badges 3/2/1.
- * Frame math from buildScreenshotFramedCanvas (low_48_tall).
- * Badge slots from addLowShippingBadges.
+ * Gown portrait promo @ 703×1024 — teal border + white mat + Best/Flash/Popular badges.
+ * Tuned for ~₹49 Meesho shipping band (45–52 KB).
  */
 import {
   imageToWhiteCanvas,
@@ -9,22 +8,16 @@ import {
 } from "./lib/canvas-utils.js?v=60";
 import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=60";
 import { estimateImageShipping } from "./lib/shipping.js?v=60";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=60";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=60";
 
-export const TALL_STATIC_OUTER_W = 703;
-export const TALL_STATIC_OUTER_H = 1024;
-export const TALL_STATIC_VARIANT_COUNT = 25;
+export const GOWN_STATIC_OUTER_W = 703;
+export const GOWN_STATIC_OUTER_H = 1024;
+export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Fixed reference badges — same assets as competitor tall promo. */
-export const TALL_STATIC_BADGES = {
-  tag: 3,
-  arrow: 2,
-  ship: 1,
-};
-
-const TALL_BLUE_PCT = Math.min(0.22, 0.16 * 1.06);
+/** Light teal/cyan outer border — reference gown listing frame. */
+const BORDER_TEAL = "#5ec4c8";
+const TALL_TEAL_PCT = Math.min(0.22, 0.16 * 1.06);
 const TALL_WHITE_PCT = 0.05;
-const BORDER_BLUE = "#45a9e5";
 
 const badgeCache = {};
 
@@ -55,24 +48,14 @@ async function loadBadge(num) {
   });
 }
 
-async function preloadTallBadges() {
-  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.preloadBadges) {
-    await MeeshoAPI.preloadBadges();
-    return;
-  }
-  await Promise.all(
-    Object.values(TALL_STATIC_BADGES).map((n) => loadBadge(n)),
-  );
-}
-
-function prepareTallProduct(img) {
+function prepareGownProduct(img) {
   const white = imageToWhiteCanvas(img, 2400);
   return trimMargins(white, 0.01);
 }
 
-function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
+function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
-  const start = 40;
+  const start = 45;
   const end = 52;
   const tiers = [];
   for (let i = 0; i < n; i++) {
@@ -82,12 +65,12 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
 }
 
 /**
- * 703×1024 edge-to-edge; border thickness from product minDim (hunt tall profile).
+ * 703×1024 edge-to-edge; teal outer + white mat (same geometry as tall promo).
  */
-function buildTallStaticFrameCanvas(img) {
-  const outerW = TALL_STATIC_OUTER_W;
-  const outerH = TALL_STATIC_OUTER_H;
-  const white = prepareTallProduct(img);
+function buildGownStaticFrameCanvas(img) {
+  const outerW = GOWN_STATIC_OUTER_W;
+  const outerH = GOWN_STATIC_OUTER_H;
+  const white = prepareGownProduct(img);
 
   let bestScale = 0.01;
   for (let i = 0; i < 64; i++) {
@@ -95,35 +78,35 @@ function buildTallStaticFrameCanvas(img) {
     const sw = Math.round(white.width * scale);
     const sh = Math.round(white.height * scale);
     const minDim = Math.min(sw, sh);
-    const blueOuter = Math.max(24, Math.round(minDim * TALL_BLUE_PCT));
+    const tealOuter = Math.max(24, Math.round(minDim * TALL_TEAL_PCT));
     const whitePad = Math.max(10, Math.round(minDim * TALL_WHITE_PCT));
-    const inset = blueOuter + whitePad;
+    const inset = tealOuter + whitePad;
     if (sw + inset * 2 <= outerW && sh + inset * 2 <= outerH) bestScale = scale;
   }
 
   const sw = Math.round(white.width * bestScale);
   const sh = Math.round(white.height * bestScale);
   const minDim = Math.min(sw, sh);
-  const blueOuter = Math.max(24, Math.round(minDim * TALL_BLUE_PCT));
+  const tealOuter = Math.max(24, Math.round(minDim * TALL_TEAL_PCT));
   const whitePad = Math.max(10, Math.round(minDim * TALL_WHITE_PCT));
-  const inset = blueOuter + whitePad;
+  const inset = tealOuter + whitePad;
 
   const innerW = outerW - inset * 2;
   const innerH = outerH - inset * 2;
   const px = inset + Math.round((innerW - sw) / 2);
   const py = inset + Math.round((innerH - sh) / 2);
 
-  const whiteX = blueOuter;
-  const whiteY = blueOuter;
-  const whiteW = outerW - blueOuter * 2;
-  const whiteH = outerH - blueOuter * 2;
+  const whiteX = tealOuter;
+  const whiteY = tealOuter;
+  const whiteW = outerW - tealOuter * 2;
+  const whiteH = outerH - tealOuter * 2;
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
   canvas.height = outerH;
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = BORDER_BLUE;
+  ctx.fillStyle = BORDER_TEAL;
   ctx.fillRect(0, 0, outerW, outerH);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
@@ -138,7 +121,7 @@ function buildTallStaticFrameCanvas(img) {
     py,
     dw: sw,
     dh: sh,
-    border: blueOuter,
+    border: tealOuter,
     whitePad,
     whiteX,
     whiteY,
@@ -150,48 +133,52 @@ function buildTallStaticFrameCanvas(img) {
   };
 }
 
-/**
- * Hunt addLowShippingBadges slots — fixed badge3 / badge2 / badge1.
- */
-function tallStaticPlacements(px, py, dw, dh) {
-  const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
-  const inset = Math.max(6, Math.round(size * 0.06));
+/** Reference: Best PRICE top-left · FLASH SALE top-right · MOST POPULAR middle-left. */
+function gownStaticPlacements(px, py, dw, dh) {
+  const ref = Math.min(dw, dh);
+  const bestW = Math.round(ref * 0.34);
+  const bestH = Math.round(bestW * 0.72);
+  const flashW = Math.round(ref * 0.3);
+  const flashH = Math.round(flashW * 0.42);
+  const popW = Math.round(ref * 0.42);
+  const popH = Math.round(popW * 0.28);
+  const inset = Math.max(4, Math.round(ref * 0.02));
 
   return [
     {
-      id: "tall-sale",
-      label: "Price tag",
+      id: "gown-best",
+      label: "Best PRICE",
       anchor: "top-left",
-      kind: "badge",
-      num: TALL_STATIC_BADGES.tag,
-      w: size,
-      h: size,
+      kind: "gownArt",
+      gownSlot: "gown-best",
+      w: bestW,
+      h: bestH,
       x: px + inset,
       y: py + inset,
       drawn: false,
     },
     {
-      id: "tall-arrow",
-      label: "Arrow",
+      id: "gown-flash",
+      label: "FLASH SALE",
       anchor: "top-right",
-      kind: "badge",
-      num: TALL_STATIC_BADGES.arrow,
-      w: size,
-      h: size,
-      x: px + dw - size - inset,
-      y: py + inset,
+      kind: "gownArt",
+      gownSlot: "gown-flash",
+      w: flashW,
+      h: flashH,
+      x: px + dw - flashW - inset,
+      y: py + Math.round(dh * 0.04),
       drawn: false,
     },
     {
-      id: "tall-ship",
-      label: "Delivery truck",
-      anchor: "bottom-left",
-      kind: "badge",
-      num: TALL_STATIC_BADGES.ship,
-      w: size,
-      h: size,
-      x: px + inset,
-      y: py + dh - size - inset,
+      id: "gown-popular",
+      label: "MOST POPULAR",
+      anchor: "middle-left",
+      kind: "gownArt",
+      gownSlot: "gown-popular",
+      w: popW,
+      h: popH,
+      x: px - Math.round(popW * 0.02),
+      y: py + Math.round(dh * 0.46) - Math.round(popH / 2),
       drawn: false,
     },
   ];
@@ -202,7 +189,7 @@ async function drawPlacements(ctx, placements) {
   for (const p of placements) {
     const copy = { ...p };
     try {
-      copy.drawn = await drawTallBadge(ctx, loadBadge, p);
+      copy.drawn = await drawGownBadge(ctx, loadBadge, p);
     } catch (e) {
       copy.drawn = false;
     }
@@ -215,10 +202,8 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-async function buildTallStaticLayers(img) {
-  await preloadTallBadges();
-
-  const built = buildTallStaticFrameCanvas(img);
+async function buildGownStaticLayers(img) {
+  const built = buildGownStaticFrameCanvas(img);
   const {
     canvas,
     px,
@@ -235,7 +220,7 @@ async function buildTallStaticLayers(img) {
     outerW,
     outerH,
   } = built;
-  const placements = tallStaticPlacements(px, py, dw, dh);
+  const placements = gownStaticPlacements(px, py, dw, dh);
 
   const noStickersCanvas = document.createElement("canvas");
   noStickersCanvas.width = canvas.width;
@@ -278,12 +263,12 @@ async function buildTallStaticLayers(img) {
       _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
       _staticFrame: {
-        style: "tall_static",
+        style: "gown_static",
         frameType: "tall",
-        borderColor: BORDER_BLUE,
+        borderColor: BORDER_TEAL,
         matColor: "#ffffff",
-        gradientTop: BORDER_BLUE,
-        gradientBottom: "#1e88c7",
+        gradientTop: BORDER_TEAL,
+        gradientBottom: "#3aa8ad",
         gradientPreset: null,
         px,
         py,
@@ -309,8 +294,8 @@ async function buildTallStaticLayers(img) {
       },
     },
     meta: {
-      style: "tall_static",
-      showcasePreset: "tall-blue-promo",
+      style: "gown_static",
+      showcasePreset: "gown-teal-promo",
       canvasW: outerW,
       canvasH: outerH,
       productW: dw,
@@ -322,21 +307,21 @@ async function buildTallStaticLayers(img) {
   };
 }
 
-export async function buildTallStaticVariants(img, options = {}) {
+export async function buildGownStaticVariants(img, options = {}) {
   const {
     onProgress = () => {},
-    count = TALL_STATIC_VARIANT_COUNT,
+    count = GOWN_STATIC_VARIANT_COUNT,
   } = options;
 
-  onProgress("Building tall promo frames…");
+  onProgress("Building gown promo frames…");
 
-  const { canvas, layers, meta } = await buildTallStaticLayers(img);
-  const kbTiers = tallStaticKbTiers(count);
+  const { canvas, layers, meta } = await buildGownStaticLayers(img);
+  const kbTiers = gownStaticKbTiers(count);
   const variants = [];
 
   for (let i = 0; i < kbTiers.length; i++) {
     const kb = kbTiers[i];
-    onProgress(`Tall promo · ${kb}KB (${i + 1}/${kbTiers.length})`);
+    onProgress(`Gown promo · ${kb}KB (${i + 1}/${kbTiers.length})`);
     const blob = await compressFramedToKb(canvas, kb);
     const dataUrl = await blobToDataUrl(blob);
     const v = {
@@ -345,10 +330,10 @@ export async function buildTallStaticVariants(img, options = {}) {
       bytes: blob.size,
       width: meta.outerW,
       height: meta.outerH,
-      path: "tall_static",
-      mode: "Tall Promo",
-      label: `Tall Promo · ${meta.outerW}×${meta.outerH} · ${kb}KB`,
-      recommended: kb === 48 || kb === 50,
+      path: "gown_static",
+      mode: "Gown Promo",
+      label: `Gown Promo · ${meta.outerW}×${meta.outerH} · ${kb}KB`,
+      recommended: kb === 48 || kb === 49 || kb === 50,
       lowest: i === 0,
       layers,
       meta: { ...meta, targetKb: kb },
