@@ -79,8 +79,8 @@ assert(
   "sticky lifestyle button has data-static-gen",
 );
 assert(
-  indexHtml.includes('data-static-gen="tall"'),
-  "sticky tall button has data-static-gen",
+  indexHtml.includes('data-static-gen="gown"'),
+  "sticky gown button has data-static-gen",
 );
 assert(
   indexHtml.includes('data-static-gen="gown"'),

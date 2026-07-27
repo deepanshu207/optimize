@@ -360,7 +360,7 @@ class MeeshoShippingOptimizer {
       processingArea.innerHTML = `
         <div style="text-align:center;padding:24px 16px;">
           <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building gown promo frames…</div>
-          <div style="font-size:12px;color:#666;">703×1024 teal frame · Best/Flash/Popular badges · ~₹49 band</div>
+          <div style="font-size:12px;color:#666;">703×1024 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
         </div>`;
     }
 
@@ -3460,7 +3460,7 @@ Please share payment details and license key.`;
 
     if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#5ec4c8" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
+        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#64c5d3" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
       </label>`;
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
         <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
