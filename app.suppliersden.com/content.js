@@ -60,22 +60,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=57";
+      return "/js/liveAnalysisBridge.mjs?v=58";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=57");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=58");
     }
-    return "/js/liveAnalysisBridge.mjs?v=57";
+    return "/js/liveAnalysisBridge.mjs?v=58";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=57";
+      return "/js/staticFrameCompose.mjs?v=58";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=57");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=58");
     }
-    return "/js/staticFrameCompose.mjs?v=57";
+    return "/js/staticFrameCompose.mjs?v=58";
   }
 
   async preloadStaticComposeModule() {
@@ -3036,6 +3036,94 @@ Please share payment details and license key.`;
     await this.refreshStaticPreview(variantId);
   }
 
+  async setStaticPlacementSliderAxis(variantId, placementId, axis, value, options = {}) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updatePlacementSliderAxis) return;
+
+    const ok = window.StaticFrameCompose.updatePlacementSliderAxis(
+      row.layers,
+      placementId,
+      axis,
+      value,
+      options,
+    );
+    if (!ok) return;
+
+    row._badgesRepositioned = true;
+    await this.refreshStaticPreview(variantId);
+
+    if (options.autoLock && this._editingVariantId === variantId) {
+      const container = document.querySelector("#variant-edit-static-badges");
+      if (container) {
+        this.updatePlacementAxisLockUI(container, placementId, row.layers);
+      }
+    }
+  }
+
+  toggleStaticPlacementAxisLock(variantId, placementId, axis) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    const p = (row.layers._badgePlacements || []).find((b) => b.id === placementId);
+    if (!p) return;
+
+    const locked = axis === "h" ? p.lockH !== false : p.lockV !== false;
+    if (window.StaticFrameCompose?.setPlacementAxisLock) {
+      window.StaticFrameCompose.setPlacementAxisLock(
+        row.layers,
+        placementId,
+        axis,
+        !locked,
+      );
+    } else {
+      if (axis === "h") p.lockH = !locked;
+      else p.lockV = !locked;
+    }
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updatePlacementAxisLockUI(container, placementId, row.layers);
+  }
+
+  updatePlacementAxisLockUI(container, placementId, layers) {
+    const p = (layers?._badgePlacements || []).find((b) => b.id === placementId);
+    if (!p || !container) return;
+
+    const lockH = p.lockH !== false;
+    const lockV = p.lockV !== false;
+    const hLockBtn = container.querySelector(
+      `.static-axis-lock[data-axis="h"][data-badge-id="${placementId}"]`,
+    );
+    const vLockBtn = container.querySelector(
+      `.static-axis-lock[data-axis="v"][data-badge-id="${placementId}"]`,
+    );
+    const hSlider = container.querySelector(`.static-pos-h[data-badge-id="${placementId}"]`);
+    const vSlider = container.querySelector(`.static-pos-v[data-badge-id="${placementId}"]`);
+    const hWrap = container.querySelector(`.static-pos-h-wrap[data-badge-id="${placementId}"]`);
+    const vWrap = container.querySelector(`.static-pos-v-wrap[data-badge-id="${placementId}"]`);
+
+    if (hLockBtn) {
+      hLockBtn.textContent = lockH ? "🔒" : "🔓";
+      hLockBtn.title = lockH
+        ? "Unlock horizontal to adjust (locks again after change)"
+        : "Lock horizontal position";
+      hLockBtn.setAttribute("aria-pressed", lockH ? "true" : "false");
+    }
+    if (vLockBtn) {
+      vLockBtn.textContent = lockV ? "🔒" : "🔓";
+      vLockBtn.title = lockV
+        ? "Unlock vertical to adjust (locks again after change)"
+        : "Lock vertical position";
+      vLockBtn.setAttribute("aria-pressed", lockV ? "true" : "false");
+    }
+    if (hSlider) hSlider.disabled = lockH;
+    if (vSlider) vSlider.disabled = lockV;
+    if (hWrap) hWrap.style.opacity = lockH ? "0.55" : "1";
+    if (vWrap) vWrap.style.opacity = lockV ? "0.55" : "1";
+  }
+
   async setStaticBadgeNum(variantId, placementId, badgeNum) {
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
@@ -3052,6 +3140,9 @@ Please share payment details and license key.`;
 
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
+    if (this._editingVariantId === variantId) {
+      this.renderVariantEditorPanel(row);
+    }
   }
 
   async setStaticPlacementHidden(variantId, placementId, hidden) {
@@ -3180,8 +3271,15 @@ Please share payment details and license key.`;
       const posH = p?.posH ?? slot.posH ?? 0;
       const posV = p?.posV ?? slot.posV ?? 0;
       const sizePct = p?.sizePct ?? slot.sizePct ?? 100;
-      const isFreeShip = p?.kind === "freeShipping";
-      html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
+      const lockH = p?.lockH !== false;
+      const lockV = p?.lockV !== false;
+      const freeValue =
+        window.StaticFrameCompose?.FREE_SHIPPING_BADGE_VALUE || "free";
+      const showFreeOption = slot.freeShippingSlot || p?._freeShippingSlot;
+      const isFreeShipActive = p?.kind === "freeShipping";
+      const selectedBadge = isFreeShipActive ? freeValue : String(p?.num || slot.num || 1);
+
+      html += `<div class="static-sticker-card" data-badge-id="${slot.id}" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <span style="font-size:12px;font-weight:600;">${slot.label}</span>
           <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;">
@@ -3192,24 +3290,37 @@ Please share payment details and license key.`;
           </label>
         </div>`;
 
-      if (!isFreeShip) {
-        html += `<label style="display:block;font-size:10px;margin-bottom:6px;">Badge
+      html += `<label style="display:block;font-size:10px;margin-bottom:6px;">Sticker
           <select data-badge-id="${slot.id}" class="static-badge-pick opt-select" style="width:100%;margin-top:2px;font-size:11px;padding:4px;">`;
-        for (let n = 1; n <= 25; n++) {
-          html += `<option value="${n}"${(p?.num || slot.num) === n ? " selected" : ""}>Badge ${n}</option>`;
-        }
-        html += `</select></label>`;
+      if (showFreeOption) {
+        html += `<option value="${freeValue}"${
+          isFreeShipActive ? " selected" : ""
+        }>Free shipping (red circle)</option>`;
       }
+      for (let n = 1; n <= 25; n++) {
+        html += `<option value="${n}"${
+          !isFreeShipActive && parseInt(selectedBadge, 10) === n ? " selected" : ""
+        }>Badge ${n}</option>`;
+      }
+      html += `</select></label>`;
 
       html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%
-        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;">
+        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;">
       </label>`;
-      html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%
-        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;">
-      </label>`;
-      html += `<label style="display:block;font-size:10px;margin-bottom:0;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%
-        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;">
-      </label>`;
+      html += `<div class="static-pos-h-wrap" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;${lockH ? "opacity:0.55;" : ""}">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <button type="button" class="static-axis-lock" data-axis="h" data-badge-id="${slot.id}" aria-pressed="${lockH ? "true" : "false"}" title="${lockH ? "Unlock horizontal to adjust" : "Lock horizontal"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockH ? "🔒" : "🔓"}</button>
+          <span style="font-size:10px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%</span>
+        </div>
+        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;touch-action:none;"${lockH ? " disabled" : ""}>
+      </div>`;
+      html += `<div class="static-pos-v-wrap" data-badge-id="${slot.id}" style="touch-action:none;${lockV ? "opacity:0.55;" : ""}">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <button type="button" class="static-axis-lock" data-axis="v" data-badge-id="${slot.id}" aria-pressed="${lockV ? "true" : "false"}" title="${lockV ? "Unlock vertical to adjust" : "Lock vertical"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockV ? "🔒" : "🔓"}</button>
+          <span style="font-size:10px;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%</span>
+        </div>
+        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;touch-action:none;"${lockV ? " disabled" : ""}>
+      </div>`;
       html += `</div>`;
     });
 
@@ -3279,9 +3390,26 @@ Please share payment details and license key.`;
       };
     });
 
-    const bindSliders = (cls, axis) => {
+    container.querySelectorAll(".static-axis-lock").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticPlacementAxisLock(vid, btn.dataset.badgeId, btn.dataset.axis);
+      };
+    });
+
+    const bindAxisSlider = (cls, axis) => {
+      const timers = new Map();
       container.querySelectorAll(cls).forEach((range) => {
+        range.addEventListener(
+          "touchstart",
+          (e) => {
+            if (!range.disabled) e.stopPropagation();
+          },
+          { passive: true },
+        );
         range.oninput = () => {
+          if (range.disabled) return;
           const id = range.dataset.badgeId;
           const valSpan = container.querySelector(
             axis === "h"
@@ -3289,22 +3417,36 @@ Please share payment details and license key.`;
               : `.static-v-val[data-badge-id="${id}"]`,
           );
           if (valSpan) valSpan.textContent = range.value;
-        };
-        range.onchange = () => {
-          const id = range.dataset.badgeId;
-          const hEl = container.querySelector(`.static-pos-h[data-badge-id="${id}"]`);
-          const vEl = container.querySelector(`.static-pos-v[data-badge-id="${id}"]`);
-          void this.setStaticPlacementSliders(
-            vid,
-            id,
-            parseInt(hEl?.value || "0", 10),
-            parseInt(vEl?.value || "0", 10),
+          clearTimeout(timers.get(range));
+          timers.set(
+            range,
+            setTimeout(() => {
+              void this.setStaticPlacementSliderAxis(
+                vid,
+                id,
+                axis,
+                parseInt(range.value, 10),
+              );
+            }, 120),
           );
         };
+        const commit = () => {
+          if (range.disabled) return;
+          clearTimeout(timers.get(range));
+          const id = range.dataset.badgeId;
+          void this.setStaticPlacementSliderAxis(
+            vid,
+            id,
+            axis,
+            parseInt(range.value, 10),
+            { autoLock: true },
+          );
+        };
+        range.onchange = commit;
       });
     };
-    bindSliders(".static-pos-h", "h");
-    bindSliders(".static-pos-v", "v");
+    bindAxisSlider(".static-pos-h", "h");
+    bindAxisSlider(".static-pos-v", "v");
 
     container.querySelectorAll(".static-size-pct").forEach((range) => {
       range.oninput = () => {
@@ -3438,7 +3580,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "3") {
+    if (panel && panel.dataset.staticEditorV !== "4") {
       panel.remove();
       panel = null;
     }
@@ -3446,7 +3588,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "3";
+    panel.dataset.staticEditorV = "4";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
     panel.innerHTML = `

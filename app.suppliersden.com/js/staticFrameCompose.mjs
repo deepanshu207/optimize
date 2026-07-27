@@ -2,8 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=57";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=57";
+import { compressFramedToKb } from "./lib/encoder.js?v=58";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=58";
+
+export const FREE_SHIPPING_BADGE_VALUE = "free";
 
 export const GRADIENT_PRESETS = [
   { id: "showcase", label: "Orange → Green", top: "#FF9800", bottom: "#4CAF50" },
@@ -133,7 +135,13 @@ function ensurePlacementDefaults(p) {
     }
   }
   if (p.sizePct == null) p.sizePct = 100;
+  if (p.lockH == null) p.lockH = true;
+  if (p.lockV == null) p.lockV = true;
   return p;
+}
+
+export function isFreeShippingSlot(p) {
+  return !!(p && (p.kind === "freeShipping" || p._freeShippingSlot));
 }
 
 function placementSize(p) {
@@ -209,13 +217,21 @@ export function getBadgeSlots(row) {
   const placements = row?.layers?._badgePlacements || [];
   return placements.map((p, i) => ({
     id: p.id || `badge-slot-${i}`,
-    label: p.label || (p.kind === "freeShipping" ? "FREE SHIPPING" : `Badge ${p.num || i + 1}`),
+    label:
+      p.label ||
+      (p.kind === "freeShipping"
+        ? "FREE SHIPPING"
+        : `Badge ${p.num || i + 1}`),
     anchor: p.anchor || "top-left",
     num: p.num,
+    kind: p.kind,
+    freeShippingSlot: isFreeShippingSlot(p),
     hidden: !!p.hidden,
     posH: p.posH ?? 0,
     posV: p.posV ?? 0,
     sizePct: p.sizePct ?? 100,
+    lockH: p.lockH !== false,
+    lockV: p.lockV !== false,
   }));
 }
 
@@ -600,6 +616,7 @@ export function frameAppearanceChanged(frame, defaults) {
 export function placementChangedFromDefault(p, def) {
   if (!p || !def) return false;
   if (p.hidden !== def.hidden) return true;
+  if ((p.kind || "badge") !== (def.kind || "badge")) return true;
   if (p.num !== def.num) return true;
   if (Math.abs((p.sizePct ?? 100) - (def.sizePct ?? 100)) > 0.5) return true;
   if (Math.abs((p.posH ?? 0) - (def.posH ?? 0)) > 0.5) return true;
@@ -753,9 +770,42 @@ export function updatePlacementSliders(layers, placementId, posH, posV) {
   if (!layers?._badgePlacements || !layers._staticFrame) return false;
   const p = layers._badgePlacements.find((b) => b.id === placementId);
   if (!p) return false;
+  ensurePlacementDefaults(p);
   p.posH = clamp(posH, 0, 100);
   p.posV = clamp(posV, 0, 100);
   applyPositionToPlacement(p, layers._staticFrame);
+  return true;
+}
+
+export function updatePlacementSliderAxis(layers, placementId, axis, value, options = {}) {
+  if (!layers?._badgePlacements || !layers._staticFrame) return false;
+  const p = layers._badgePlacements.find((b) => b.id === placementId);
+  if (!p) return false;
+  ensurePlacementDefaults(p);
+  const v = clamp(value, 0, 100);
+  if (axis === "h") {
+    if (p.lockH && !options.force) return false;
+    p.posH = v;
+    if (options.autoLock) p.lockH = true;
+  } else if (axis === "v") {
+    if (p.lockV && !options.force) return false;
+    p.posV = v;
+    if (options.autoLock) p.lockV = true;
+  } else {
+    return false;
+  }
+  applyPositionToPlacement(p, layers._staticFrame);
+  return true;
+}
+
+export function setPlacementAxisLock(layers, placementId, axis, locked) {
+  if (!layers?._badgePlacements) return false;
+  const p = layers._badgePlacements.find((b) => b.id === placementId);
+  if (!p) return false;
+  ensurePlacementDefaults(p);
+  if (axis === "h") p.lockH = !!locked;
+  else if (axis === "v") p.lockV = !!locked;
+  else return false;
   return true;
 }
 
@@ -769,13 +819,47 @@ export function updatePlacementSize(layers, placementId, sizePct) {
   return true;
 }
 
-export function updatePlacementBadge(layers, placementId, badgeNum) {
+export function updatePlacementBadge(layers, placementId, badgeValue) {
   if (!layers?._badgePlacements) return false;
   const p = layers._badgePlacements.find((b) => b.id === placementId);
-  if (!p || p.kind === "freeShipping") return false;
-  const num = Math.max(1, Math.min(25, parseInt(badgeNum, 10) || 1));
+  if (!p) return false;
+  ensurePlacementDefaults(p);
+
+  const raw = String(badgeValue ?? "").trim();
+  if (raw === FREE_SHIPPING_BADGE_VALUE) {
+    if (!isFreeShippingSlot(p)) return false;
+    const { w } = placementSize(p);
+    p.kind = "freeShipping";
+    p._freeShippingSlot = true;
+    p.defaultSize = w;
+    p.defaultW = undefined;
+    p.defaultH = undefined;
+    p.size = w;
+    p.num = undefined;
+    p.drawn = true;
+    p.label = "FREE SHIPPING";
+    if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
+    return true;
+  }
+
+  const num = Math.max(1, Math.min(25, parseInt(raw, 10) || 0));
+  if (!num) return false;
+
+  if (p.kind === "freeShipping") {
+    const { w, h } = placementSize(p);
+    p.kind = "badge";
+    p.defaultW = w;
+    p.defaultH = h;
+    p.w = w;
+    p.h = h;
+    p.defaultSize = undefined;
+    p.size = undefined;
+  }
+
   p.num = num;
   p.drawn = true;
+  p.label = `Badge ${num}`;
+  if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
   return true;
 }
 
@@ -838,11 +922,13 @@ function snapshotDefaults(layers, style) {
     for (const p of layers._badgePlacements || []) {
       if (!p.id) continue;
       layers._staticDefaults.placements[p.id] = {
+        kind: p.kind,
         num: p.num,
         hidden: !!p.hidden,
         posH: p.posH,
         posV: p.posV,
         sizePct: p.sizePct ?? 100,
+        freeShippingSlot: isFreeShippingSlot(p),
       };
     }
   }
@@ -973,6 +1059,10 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id === "showcase-satisfaction") p.label = "Satisfaction";
       else if (p.id === "lifestyle-hot") p.label = "HOT SALE";
       else if (p.id === "lifestyle-flash") p.label = "FLASH SALE";
+      else if (p.id === "lifestyle-ship") {
+        p.label = "FREE SHIPPING";
+        p._freeShippingSlot = true;
+      }
       else if (p.id === "tall-sale") p.label = "Price tag";
       else if (p.id === "tall-arrow") p.label = "Arrow";
       else if (p.id === "tall-ship") p.label = "Delivery truck";
@@ -1008,11 +1098,22 @@ export function resetStaticPlacements(layers) {
     if (!p.id) continue;
     const pDef = layers._staticDefaults?.placements?.[p.id];
     if (pDef) {
-      p.num = pDef.num;
+      if (pDef.freeShippingSlot) p._freeShippingSlot = true;
+      if (pDef.kind === "freeShipping") {
+        p.kind = "freeShipping";
+        p.num = undefined;
+        p.label = "FREE SHIPPING";
+      } else {
+        p.kind = pDef.kind || "badge";
+        p.num = pDef.num;
+        if (p.num) p.label = `Badge ${p.num}`;
+      }
       p.hidden = !!pDef.hidden;
       p.posH = pDef.posH;
       p.posV = pDef.posV;
       p.sizePct = pDef.sizePct ?? 100;
+      p.lockH = true;
+      p.lockV = true;
     } else if (anchorMap[p.id]) {
       p.anchor = anchorMap[p.id];
       p.hidden = false;
@@ -1053,8 +1154,12 @@ if (typeof window !== "undefined") {
     composeStaticPreview,
     updatePlacementAnchor,
     updatePlacementSliders,
+    updatePlacementSliderAxis,
+    setPlacementAxisLock,
     updatePlacementSize,
     updatePlacementBadge,
+    FREE_SHIPPING_BADGE_VALUE,
+    isFreeShippingSlot,
     setPlacementHidden,
     setAllPlacementsHidden,
     updateFrameAppearance,

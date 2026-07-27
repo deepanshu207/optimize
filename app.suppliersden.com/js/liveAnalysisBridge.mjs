@@ -2,21 +2,21 @@
  * Live tab static analysis — no Meesho API.
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
-import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=57";
-import { loadImage } from "./lib/canvas-utils.js?v=57";
-import { blobToDataUrl } from "./lib/encoder.js?v=57";
+import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=58";
+import { loadImage } from "./lib/canvas-utils.js?v=58";
+import { blobToDataUrl } from "./lib/encoder.js?v=58";
 import {
   buildShowcaseVariants,
   SHOWCASE_VARIANT_COUNT,
-} from "./liveShowcaseVariants.mjs?v=57";
+} from "./liveShowcaseVariants.mjs?v=58";
 import {
   buildPromoLifestyleVariants,
   PROMO_LIFESTYLE_VARIANT_COUNT,
-} from "./livePromoLifestyle.mjs?v=57";
+} from "./livePromoLifestyle.mjs?v=58";
 import {
   buildTallStaticVariants,
   TALL_STATIC_VARIANT_COUNT,
-} from "./liveTallStatic.mjs?v=57";
+} from "./liveTallStatic.mjs?v=58";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
