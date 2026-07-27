@@ -1,16 +1,35 @@
 /**
- * Tall promo — procedural fallbacks for arrow & truck when PNGs fail.
- * PNG badges load via MeeshoAPI.loadBadge (same as lifestyle/showcase).
+ * Tall promo badge helpers — hunt-exact slots + black-bg PNG compositing.
  */
 
-/** Top-right arrow — curves down toward the model (reference). */
+/** Strip near-pure-black pixels (keeps red seal, gray arrow, dark truck). */
+export function drawBadgeOnWhite(ctx, img, x, y, w, h) {
+  const tw = Math.max(1, Math.round(w));
+  const th = Math.max(1, Math.round(h));
+  const tmp = document.createElement("canvas");
+  tmp.width = tw;
+  tmp.height = th;
+  const tc = tmp.getContext("2d");
+  tc.drawImage(img, 0, 0, tw, th);
+  try {
+    const id = tc.getImageData(0, 0, tw, th);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] <= 18 && d[i + 1] <= 18 && d[i + 2] <= 18) d[i + 3] = 0;
+    }
+    tc.putImageData(id, 0, 0);
+    ctx.drawImage(tmp, x, y);
+  } catch (e) {
+    ctx.drawImage(img, x, y, tw, th);
+  }
+}
+
 export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.save();
   ctx.strokeStyle = "#111111";
   ctx.fillStyle = "#111111";
   ctx.lineWidth = Math.max(1.4, w * 0.028);
   ctx.lineCap = "round";
-  ctx.lineJoin = "round";
   const x0 = x + w * 0.9;
   const y0 = y + h * 0.1;
   const x1 = x + w * 0.18;
@@ -32,7 +51,6 @@ export function drawCurvedArrow(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/** Red scalloped seal fallback (badge3). */
 export function drawPriceTag(ctx, x, y, size) {
   const cx = x + size * 0.5;
   const cy = y + size * 0.58;
@@ -66,7 +84,6 @@ export function drawPriceTag(ctx, x, y, size) {
   ctx.restore();
 }
 
-/** Truck + motion lines fallback (badge1). */
 export function drawDeliveryTruck(ctx, x, y, size) {
   ctx.save();
   ctx.strokeStyle = "#111111";
@@ -93,4 +110,37 @@ export function drawDeliveryTruck(ctx, x, y, size) {
   ctx.arc(bx + bw * 0.72, by + bh * 0.94, wr, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+/** Draw one tall badge — badge3 direct, badge1/2 strip black bg. */
+export async function drawTallBadge(ctx, loadBadge, p) {
+  if (!p) return false;
+  const w = p.w || p.size;
+  const h = p.h || p.size;
+
+  if (p.num != null && loadBadge) {
+    const badge = await loadBadge(p.num);
+    if (badge) {
+      if (p.num === 3) {
+        ctx.drawImage(badge, p.x, p.y, w, h);
+      } else {
+        drawBadgeOnWhite(ctx, badge, p.x, p.y, w, h);
+      }
+      return true;
+    }
+  }
+
+  if (p.id === "tall-sale" || p.num === 3) {
+    drawPriceTag(ctx, p.x, p.y, w);
+    return true;
+  }
+  if (p.id === "tall-arrow" || p.num === 2) {
+    drawCurvedArrow(ctx, p.x, p.y, w, h);
+    return true;
+  }
+  if (p.id === "tall-ship" || p.num === 1) {
+    drawDeliveryTruck(ctx, p.x, p.y, w);
+    return true;
+  }
+  return false;
 }
