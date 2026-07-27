@@ -17,6 +17,8 @@ const {
   updatePlacementBadge,
   updatePlacementSliderAxis,
   setPlacementAxisLock,
+  setPlacementSizeLock,
+  updatePlacementSize,
   FREE_SHIPPING_BADGE_VALUE,
   placementChangedFromDefault,
 } = SFC;
@@ -87,6 +89,17 @@ assert(
 );
 assert(ship().posH === 55 && ship().lockH === true, "H auto-locks after change");
 assert(ship().posV === 60, "V unchanged when only H moved");
+
+assert(
+  !updatePlacementSize(layers, "lifestyle-ship", 150),
+  "locked size ignores update",
+);
+assert(setPlacementSizeLock(layers, "lifestyle-ship", false), "unlock size");
+assert(
+  updatePlacementSize(layers, "lifestyle-ship", 150, { autoLock: true }),
+  "unlocked size updates",
+);
+assert(ship().sizePct === 150 && ship().lockSize === true, "size auto-locks after change");
 
 assert(
   placementChangedFromDefault(ship(), layers._staticDefaults.placements["lifestyle-ship"]),

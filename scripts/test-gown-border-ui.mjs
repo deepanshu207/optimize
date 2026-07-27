@@ -19,7 +19,7 @@ await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 await page.waitForFunction(() => window.meeshoOptimizer, { timeout: 15000 });
 
 const injected = await page.evaluate(async () => {
-  await import("/js/staticFrameCompose.mjs?v=69");
+  await import("/js/staticFrameCompose.mjs?v=70");
 
   const productCanvas = document.createElement("canvas");
   productCanvas.width = 477;

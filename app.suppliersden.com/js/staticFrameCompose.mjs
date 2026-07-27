@@ -153,6 +153,7 @@ function ensurePlacementDefaults(p) {
   if (p.sizePct == null) p.sizePct = 100;
   if (p.lockH == null) p.lockH = true;
   if (p.lockV == null) p.lockV = true;
+  if (p.lockSize == null) p.lockSize = true;
   return p;
 }
 
@@ -251,6 +252,7 @@ export function getBadgeSlots(row) {
     sizePct: p.sizePct ?? 100,
     lockH: p.lockH !== false,
     lockV: p.lockV !== false,
+    lockSize: p.lockSize !== false,
   }));
 }
 
@@ -1063,12 +1065,23 @@ export function setPlacementAxisLock(layers, placementId, axis, locked) {
   return true;
 }
 
-export function updatePlacementSize(layers, placementId, sizePct) {
+export function setPlacementSizeLock(layers, placementId, locked) {
   if (!layers?._badgePlacements) return false;
   const p = layers._badgePlacements.find((b) => b.id === placementId);
   if (!p) return false;
   ensurePlacementDefaults(p);
+  p.lockSize = !!locked;
+  return true;
+}
+
+export function updatePlacementSize(layers, placementId, sizePct, options = {}) {
+  if (!layers?._badgePlacements) return false;
+  const p = layers._badgePlacements.find((b) => b.id === placementId);
+  if (!p) return false;
+  ensurePlacementDefaults(p);
+  if (p.lockSize && !options.force) return false;
   p.sizePct = clamp(sizePct, 25, 200);
+  if (options.autoLock) p.lockSize = true;
   if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
   return true;
 }
@@ -1377,6 +1390,7 @@ export function resetStaticPlacements(layers) {
       p.sizePct = pDef.sizePct ?? 100;
       p.lockH = true;
       p.lockV = true;
+      p.lockSize = true;
     } else if (anchorMap[p.id]) {
       p.anchor = anchorMap[p.id];
       p.hidden = false;
@@ -1419,6 +1433,7 @@ if (typeof window !== "undefined") {
     updatePlacementSliders,
     updatePlacementSliderAxis,
     setPlacementAxisLock,
+    setPlacementSizeLock,
     updatePlacementSize,
     updatePlacementBadge,
     FREE_SHIPPING_BADGE_VALUE,
