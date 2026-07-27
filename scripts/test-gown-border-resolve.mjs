@@ -15,7 +15,7 @@ const page = await browser.newPage();
 await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 
 const result = await page.evaluate(async () => {
-  await import("/js/staticFrameCompose.mjs?v=67");
+  await import("/js/staticFrameCompose.mjs?v=68");
 
   const productCanvas = document.createElement("canvas");
   productCanvas.width = 477;

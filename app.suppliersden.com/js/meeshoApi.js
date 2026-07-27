@@ -2183,6 +2183,7 @@ const MeeshoAPI = {
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
+          const appearanceEdited = !!result._staticAppearanceEdited;
           const preserveKb = result.meta?.targetKb
             ? 0
             : result.blob?.size
@@ -2192,11 +2193,14 @@ const MeeshoAPI = {
             result.layers,
             result.editFlags || {},
             {
-              targetKb: result.meta?.targetKb || 0,
-              preserveKb,
-              jpegQuality: result.meta?.jpegQuality,
+              targetKb: appearanceEdited ? 0 : result.meta?.targetKb || 0,
+              preserveKb: appearanceEdited ? 0 : preserveKb,
+              jpegQuality: appearanceEdited
+                ? result.meta?.jpegQuality || 0.82
+                : result.meta?.jpegQuality,
               style: staticFrame?.style,
-              staticAppearanceEdited: !!result._staticAppearanceEdited,
+              staticAppearanceEdited: appearanceEdited,
+              preview: appearanceEdited,
             },
           );
         } catch (e) {

@@ -92,6 +92,9 @@ assert(
 );
 assert(!gownCode.includes("GOWN_INNER_PRODUCT_FILL"), "gown fills white mat not double-padded");
 assert(gownCode.includes("whiteW - whitePad * 2"), "gown product sized from white mat");
+assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");
+assert(contentCode.includes("preview: true"), "editor preview skips targetKb recompress");
+assert(contentCode.includes("pricingImageUrl"), "pricing image kept separate from preview");
 assert(gownCode.includes('BORDER_TEAL = "#71cbd3"'), "gown uses reference teal");
 
 if (failed) {
