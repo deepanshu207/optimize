@@ -1930,13 +1930,7 @@ const MeeshoAPI = {
         if (!eff.hasBorder && eff.hasStickers) {
           return layers.noBorder || layers.full || result.pricingImageUrl || "";
         }
-        return (
-          result.imageUrl ||
-          layers.full ||
-          result.pricingImageUrl ||
-          result.dataUrl ||
-          ""
-        );
+        return layers.full || result.pricingImageUrl || result.dataUrl || "";
       }
       if (cleanProduct) {
         return layers.productOnly || layers.full || result.pricingImageUrl || "";
@@ -2092,22 +2086,25 @@ const MeeshoAPI = {
           hasBorder = true;
         }
       }
+      const hasFull = !!layers.full;
+      const hasNoStickersLayer = !!layers.noStickers;
+      const hasNoBorderLayer = !!layers.noBorder;
+      const hasProductOnly = !!layers.productOnly;
+
       return {
         hasStickers,
         hasBorder,
-        canRemoveStickers: hasStickers,
-        canRemoveBorder: isStaticPromo ? hasBorder && !!layers.noBorder : hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
+        canRemoveStickers: base.hasStickers && !flags.cleanProduct,
+        canRemoveBorder:
+          base.hasBorder && hasNoBorderLayer && !flags.cleanProduct,
         canRemoveBoth:
-          (hasStickers || hasBorder) && !!layers.productOnly,
-        canAddStickers: isStaticPromo
-          ? false
-          : !hasStickers && !!(layers.noStickers || layers.noBorder || layers.full),
-        canAddBorder: isStaticPromo
-          ? false
-          : !hasBorder && !!(layers.noStickers || layers.full),
-        canAddBoth: isStaticPromo
-          ? false
-          : !(hasStickers && hasBorder) && !!layers.full,
+          (base.hasStickers || base.hasBorder) && hasProductOnly,
+        canAddStickers:
+          !hasStickers &&
+          !!(hasFull || hasNoBorderLayer || hasNoStickersLayer),
+        canAddBorder:
+          !hasBorder && !!(hasFull || hasNoStickersLayer),
+        canAddBoth: !(hasStickers && hasBorder) && hasFull,
         isStaticPromo,
         canAdjustBadges: base.canAdjustBadges && hasStickers,
       };
@@ -2130,21 +2127,24 @@ const MeeshoAPI = {
       }
     }
 
+    const hasFull = !!layers.full;
+    const hasNoStickersLayer = !!layers.noStickers;
+    const hasNoBorderLayer = !!layers.noBorder;
+
     return {
       hasStickers,
       hasBorder,
-      canRemoveStickers:
-        base.hasStickers && !flags.stickersRemoved && !flags.cleanProduct,
+      canRemoveStickers: base.hasStickers && !flags.cleanProduct,
       canRemoveBorder:
-        base.hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
+        base.hasBorder && hasNoBorderLayer && !flags.cleanProduct,
       canRemoveBoth: base.canRemoveBoth && !flags.cleanProduct,
       canAddStickers:
-        !hasStickers && !!(layers.full || layers.noBorder),
-      canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
-      canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
+        !hasStickers && !!(hasFull || hasNoBorderLayer || hasNoStickersLayer),
+      canAddBorder:
+        !hasBorder && !!(hasFull || hasNoStickersLayer),
+      canAddBoth: !(hasStickers && hasBorder) && hasFull,
       isStaticPromo: false,
-      canAdjustBadges:
-        base.canAdjustBadges && hasStickers,
+      canAdjustBadges: base.canAdjustBadges && hasStickers,
     };
   },
 

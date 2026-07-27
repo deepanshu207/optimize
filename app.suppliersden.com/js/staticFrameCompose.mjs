@@ -2,8 +2,8 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=56";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=56";
+import { compressFramedToKb } from "./lib/encoder.js?v=57";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=57";
 
 export const GRADIENT_PRESETS = [
   { id: "showcase", label: "Orange → Green", top: "#FF9800", bottom: "#4CAF50" },
