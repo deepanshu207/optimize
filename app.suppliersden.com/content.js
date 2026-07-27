@@ -63,22 +63,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=62";
+      return "/js/liveAnalysisBridge.mjs?v=63";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=62");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=63");
     }
-    return "/js/liveAnalysisBridge.mjs?v=62";
+    return "/js/liveAnalysisBridge.mjs?v=63";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=62";
+      return "/js/staticFrameCompose.mjs?v=63";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=62");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=63");
     }
-    return "/js/staticFrameCompose.mjs?v=62";
+    return "/js/staticFrameCompose.mjs?v=63";
   }
 
   async preloadStaticComposeModule() {
@@ -3397,6 +3397,9 @@ Please share payment details and license key.`;
     window.StaticFrameCompose.updateFrameAppearance(row.layers, {
       borderThicknessPct: pct,
     });
+    if (window.StaticFrameCompose.reanchorPlacements) {
+      window.StaticFrameCompose.reanchorPlacements(row.layers);
+    }
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
   }
@@ -3460,7 +3463,7 @@ Please share payment details and license key.`;
 
     if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#64c5d3" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
+        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#A0E6E6" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
       </label>`;
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
         <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
@@ -3468,8 +3471,8 @@ Please share payment details and license key.`;
     }
 
     const borderPct = frame.borderThicknessPct ?? 100;
-    html += `<label style="display:block;font-size:10px;margin-bottom:8px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span>% (100 = default)
-      <input type="range" id="static-border-thickness" min="0" max="100" value="${borderPct}" style="width:100%;touch-action:none;">
+    html += `<label style="display:block;font-size:10px;margin-bottom:8px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)
+      <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;">
     </label>`;
     }
 

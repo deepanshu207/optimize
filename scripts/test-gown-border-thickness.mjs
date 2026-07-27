@@ -23,43 +23,49 @@ function assert(cond, msg) {
 const gownFrame = {
   style: "gown_static",
   frameType: "tall",
-  border: 28,
-  whitePad: 12,
-  baseBorder: 28,
-  baseWhitePad: 12,
-  basePx: 40,
-  basePy: 40,
-  baseWhiteX: 28,
-  baseWhiteY: 28,
-  baseWhiteW: 647,
-  baseWhiteH: 968,
-  px: 40,
-  py: 40,
-  dw: 623,
-  dh: 944,
+  border: 15,
+  whitePad: 114,
+  baseBorder: 15,
+  baseWhitePad: 114,
+  basePx: 151,
+  basePy: 151,
+  baseDw: 401,
+  baseDh: 602,
+  baseWhiteX: 15,
+  baseWhiteY: 15,
+  baseWhiteW: 673,
+  baseWhiteH: 994,
+  px: 151,
+  py: 151,
+  dw: 401,
+  dh: 602,
   outerW: 703,
   outerH: 1024,
-  whiteX: 28,
-  whiteY: 28,
-  whiteW: 647,
-  whiteH: 968,
+  whiteX: 15,
+  whiteY: 15,
+  whiteW: 673,
+  whiteH: 994,
   borderThicknessPct: 100,
 };
 
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 28, "100% keeps base border 28");
-assert(gownFrame.px === 40, "100% keeps base px 40");
-assert(gownFrame.whiteX === 28, "100% keeps base whiteX 28");
+assert(gownFrame.border === 15, "100 keeps base border 15");
+assert(gownFrame.px === 151, "100 keeps base px 151");
+assert(gownFrame.dw === 401, "100 keeps base product width");
 
-gownFrame.borderThicknessPct = 50;
+gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 14, "50% scales border to 14");
-assert(gownFrame.whiteX === 14, "50% scales white mat inset");
+assert(gownFrame.border > 15, "500 thickens border beyond default");
+assert(gownFrame.dw <= gownFrame.baseDw, "500 shrinks product to fit thicker frame");
+
+gownFrame.borderThicknessPct = 1000;
+applyBorderThickness(gownFrame);
+assert(gownFrame.px >= gownFrame.border, "1000 keeps product inside frame");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 28, "restore 100% returns exact base border");
-assert(gownFrame.px === 40, "restore 100% returns exact base px");
+assert(gownFrame.border === 15, "restore 100 returns exact base border");
+assert(gownFrame.px === 151, "restore 100 returns exact base px");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
@@ -71,7 +77,7 @@ const lifestyleCode = readFileSync(
 assert(uiCode.includes("renderGownStaticSection"), "ui has gown section");
 assert(uiCode.includes('data-static-gen="gown"'), "hub has gown button");
 assert(contentCode.includes("generateGownStaticFrames"), "content has gown generator");
-assert(contentCode.includes("static-border-thickness"), "editor has border thickness slider");
+assert(contentCode.includes('max="1000"'), "editor border slider goes to 1000");
 assert(
   /},\s*\n\s*meta:\s*\{[\s\S]*style:\s*"lifestyle_promo"/.test(lifestyleCode),
   "lifestyle promo keeps top-level meta block",
