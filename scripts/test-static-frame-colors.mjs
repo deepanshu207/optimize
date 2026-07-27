@@ -61,7 +61,10 @@ const contentCode = readFileSync(
   "utf8",
 );
 assert(contentCode.includes("buildStaticColorFieldHtml"), "editor builds RGB rows");
+assert(parseCssColor("113, 203, 211")?.hex === "#71cbd3", "comma-separated RGB triplet");
 assert(contentCode.includes("static-color-r"), "editor has R inputs");
+assert(contentCode.includes("static-color-rgb"), "editor has RGB paste field");
+assert(!contentCode.includes("static-color-hex"), "hex code not shown for manual entry");
 assert(contentCode.includes("bindStaticColorFields"), "editor wires RGB sync");
 assert(contentCode.includes("readStaticColorField"), "editor reads RGB values");
 
