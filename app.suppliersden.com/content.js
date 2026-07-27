@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=72";
+      return "/js/liveAnalysisBridge.mjs?v=73";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=72");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=73");
     }
-    return "/js/liveAnalysisBridge.mjs?v=72";
+    return "/js/liveAnalysisBridge.mjs?v=73";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=72";
+      return "/js/staticFrameCompose.mjs?v=73";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=72");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=73");
     }
-    return "/js/staticFrameCompose.mjs?v=72";
+    return "/js/staticFrameCompose.mjs?v=73";
   }
 
   async preloadStaticComposeModule() {
@@ -3589,19 +3589,47 @@ Please share payment details and license key.`;
     const SFC = window.StaticFrameCompose;
     const hex = SFC?.normalizeFrameColor?.(colorValue, fallback) || fallback;
     const rgb = SFC?.hexToRgb?.(hex) || { r: 0, g: 0, b: 0 };
-    return `<div class="static-color-row" data-color-id="${id}" style="margin-bottom:8px;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <span style="font-size:11px;min-width:52px;">${label}</span>
-        <input type="color" class="static-color-pick" id="${id}" value="${hex}" style="width:40px;height:28px;border:1px solid #e5e7eb;border-radius:4px;padding:0;flex-shrink:0;">
-        <span class="static-color-hex" id="${id}-hex" style="font-size:10px;color:#4b5563;font-family:monospace;">${hex}</span>
+    const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+    return `<div class="static-color-row" data-color-id="${id}" style="margin-bottom:10px;padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:12px;font-weight:600;min-width:52px;">${label}</span>
+        <span class="static-color-swatch" id="${id}-swatch" title="Preview" style="width:34px;height:34px;border-radius:6px;border:1px solid #d1d5db;background:${hex};flex-shrink:0;"></span>
+        <input type="color" class="static-color-pick" id="${id}" value="${hex}" tabindex="-1" aria-hidden="true" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;">
       </div>
-      <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b7280;">
-        <span style="min-width:24px;">RGB</span>
-        <input type="number" class="static-color-r" id="${id}-r" min="0" max="255" value="${rgb.r}" inputmode="numeric" aria-label="${label} red" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
-        <input type="number" class="static-color-g" id="${id}-g" min="0" max="255" value="${rgb.g}" inputmode="numeric" aria-label="${label} green" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
-        <input type="number" class="static-color-b" id="${id}-b" min="0" max="255" value="${rgb.b}" inputmode="numeric" aria-label="${label} blue" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;">
+        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">R
+          <input type="number" class="static-color-r" id="${id}-r" min="0" max="255" value="${rgb.r}" inputmode="numeric" aria-label="${label} red" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
+        </label>
+        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">G
+          <input type="number" class="static-color-g" id="${id}-g" min="0" max="255" value="${rgb.g}" inputmode="numeric" aria-label="${label} green" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
+        </label>
+        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">B
+          <input type="number" class="static-color-b" id="${id}-b" min="0" max="255" value="${rgb.b}" inputmode="numeric" aria-label="${label} blue" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
+        </label>
       </div>
+      <label style="font-size:10px;color:#4b5563;display:block;">RGB (paste)
+        <input type="text" class="static-color-rgb" id="${id}-rgb" value="${rgbText}" placeholder="e.g. 113, 203, 211" inputmode="numeric" autocomplete="off" style="width:100%;margin-top:4px;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
+      </label>
     </div>`;
+  }
+
+  updateStaticColorRowDisplay(container, id, hex) {
+    const SFC = window.StaticFrameCompose;
+    if (!SFC || !hex) return;
+    const rgb = SFC.hexToRgb(hex);
+    if (!rgb) return;
+    const swatch = container.querySelector(`#${id}-swatch`);
+    const pick = container.querySelector(`#${id}`);
+    const r = container.querySelector(`#${id}-r`);
+    const g = container.querySelector(`#${id}-g`);
+    const b = container.querySelector(`#${id}-b`);
+    const rgbField = container.querySelector(`#${id}-rgb`);
+    if (swatch) swatch.style.background = hex;
+    if (pick) pick.value = hex;
+    if (r) r.value = String(rgb.r);
+    if (g) g.value = String(rgb.g);
+    if (b) b.value = String(rgb.b);
+    if (rgbField) rgbField.value = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
   }
 
   syncStaticColorRowFromPicker(container, id) {
@@ -3610,16 +3638,7 @@ Please share payment details and license key.`;
     if (!pick || !SFC?.hexToRgb) return;
     const hex = SFC.normalizeFrameColor(pick.value);
     if (!hex) return;
-    const rgb = SFC.hexToRgb(hex);
-    const hexEl = container.querySelector(`#${id}-hex`);
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    if (hexEl) hexEl.textContent = hex;
-    if (r) r.value = String(rgb.r);
-    if (g) g.value = String(rgb.g);
-    if (b) b.value = String(rgb.b);
-    pick.value = hex;
+    this.updateStaticColorRowDisplay(container, id, hex);
   }
 
   readStaticColorField(container, id) {
@@ -3632,6 +3651,11 @@ Please share payment details and license key.`;
       const hex = SFC.rgbToHex(r.value, g.value, b.value);
       return SFC.normalizeFrameColor(hex);
     }
+    const rgbField = container.querySelector(`#${id}-rgb`);
+    if (rgbField?.value?.trim()) {
+      const fromList = SFC.parseRgbTriplet?.(rgbField.value) || SFC.parseCssColor(rgbField.value);
+      if (fromList?.hex) return fromList.hex;
+    }
     const pick = container.querySelector(`#${id}`);
     return SFC.normalizeFrameColor(pick?.value);
   }
@@ -3641,14 +3665,23 @@ Please share payment details and license key.`;
     const r = container.querySelector(`#${id}-r`);
     const g = container.querySelector(`#${id}-g`);
     const b = container.querySelector(`#${id}-b`);
-    const pick = container.querySelector(`#${id}`);
-    const hexEl = container.querySelector(`#${id}-hex`);
     if (!r || !g || !b || !SFC) return false;
     if (r.value === "" || g.value === "" || b.value === "") return false;
     const hex = SFC.normalizeFrameColor(SFC.rgbToHex(r.value, g.value, b.value));
     if (!hex) return false;
-    if (pick) pick.value = hex;
-    if (hexEl) hexEl.textContent = hex;
+    this.updateStaticColorRowDisplay(container, id, hex);
+    return true;
+  }
+
+  syncStaticColorRowFromRgbText(container, id) {
+    const SFC = window.StaticFrameCompose;
+    const rgbField = container.querySelector(`#${id}-rgb`);
+    if (!rgbField || !SFC) return false;
+    const raw = rgbField.value.trim();
+    if (!raw) return false;
+    const parsed = SFC.parseRgbTriplet?.(raw) || SFC.parseCssColor(raw);
+    if (!parsed?.hex) return false;
+    this.updateStaticColorRowDisplay(container, id, parsed.hex);
     return true;
   }
 
@@ -3681,12 +3714,7 @@ Please share payment details and license key.`;
 
     const rgbTimers = new Map();
     for (const id of Object.keys(colorMap)) {
-      const pick = container.querySelector(`#${id}`);
-      if (!pick) continue;
-      pick.oninput = () => {
-        this.syncStaticColorRowFromPicker(container, id);
-        applyColors();
-      };
+      if (!container.querySelector(`#${id}`)) continue;
       for (const ch of ["r", "g", "b"]) {
         const input = container.querySelector(`#${id}-${ch}`);
         if (!input) continue;
@@ -3702,6 +3730,22 @@ Please share payment details and license key.`;
         input.onchange = () => {
           clearTimeout(rgbTimers.get(input));
           if (this.syncStaticColorRowFromRgb(container, id)) applyColors();
+        };
+      }
+      const rgbField = container.querySelector(`#${id}-rgb`);
+      if (rgbField) {
+        rgbField.oninput = () => {
+          clearTimeout(rgbTimers.get(rgbField));
+          rgbTimers.set(
+            rgbField,
+            setTimeout(() => {
+              if (this.syncStaticColorRowFromRgbText(container, id)) applyColors();
+            }, 220),
+          );
+        };
+        rgbField.onchange = () => {
+          clearTimeout(rgbTimers.get(rgbField));
+          if (this.syncStaticColorRowFromRgbText(container, id)) applyColors();
         };
       }
     }

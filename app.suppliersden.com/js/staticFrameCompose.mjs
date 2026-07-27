@@ -69,7 +69,16 @@ export function parseCssColor(input) {
     return rgbPartsToColor(rgb[1], rgb[2], rgb[3], rgbToHex(rgb[1], rgb[2], rgb[3]));
   }
 
+  const parts = raw.split(/[\s,;/]+/).filter(Boolean);
+  if (parts.length >= 3 && parts.slice(0, 3).every((p) => /^[\d.]+$/.test(p))) {
+    return rgbPartsToColor(parts[0], parts[1], parts[2], rgbToHex(parts[0], parts[1], parts[2]));
+  }
+
   return null;
+}
+
+export function parseRgbTriplet(input) {
+  return parseCssColor(input);
 }
 
 export function normalizeFrameColor(input, fallback = null) {
@@ -1522,6 +1531,7 @@ if (typeof window !== "undefined") {
     normalizeFrameColor,
     hexToRgb,
     rgbToHex,
+    parseRgbTriplet,
     formatRgbString,
     bootstrapLiveFrame,
     bootstrapLiveFrameAsync,
