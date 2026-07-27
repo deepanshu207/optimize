@@ -2,9 +2,9 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=60";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=60";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=60";
+import { compressFramedToKb } from "./lib/encoder.js?v=61";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=61";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=61";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 
@@ -54,10 +54,10 @@ const STYLE_DEFAULTS = {
   },
   gown_static: {
     frameType: "tall",
-    borderColor: "#5ec4c8",
+    borderColor: "#64c5d3",
     matColor: "#ffffff",
-    gradientTop: "#5ec4c8",
-    gradientBottom: "#3aa8ad",
+    gradientTop: "#64c5d3",
+    gradientBottom: "#4aafb5",
     gradientPreset: null,
   },
   live_standard: {
