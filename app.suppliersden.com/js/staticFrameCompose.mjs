@@ -1,9 +1,9 @@
 /**
- * Compose / reposition badges on static showcase, lifestyle promo & tall frames.
- * Web-only static variants — does not affect Live Meesho hunt.
+ * Compose / reposition badges on static promo & live hunt variants.
+ * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=54";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=54";
+import { compressFramedToKb } from "./lib/encoder.js?v=55";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=55";
 
 export const GRADIENT_PRESETS = [
   { id: "showcase", label: "Orange → Green", top: "#FF9800", bottom: "#4CAF50" },
@@ -47,6 +47,21 @@ const STYLE_DEFAULTS = {
     matColor: "#ffffff",
     gradientTop: "#45a9e5",
     gradientBottom: "#1e88c7",
+    gradientPreset: null,
+  },
+  live_standard: {
+    frameType: "gradient",
+    gradientTop: "#3498db",
+    gradientBottom: "#2ecc71",
+    borderColor: "#3498db",
+    gradientPreset: null,
+  },
+  live_framed: {
+    frameType: "tall",
+    borderColor: "#add8e6",
+    matColor: "#ffffff",
+    gradientTop: "#add8e6",
+    gradientBottom: "#7ec8e3",
     gradientPreset: null,
   },
 };
@@ -107,10 +122,32 @@ function loadImage(url) {
   });
 }
 
+function ensurePlacementDefaults(p) {
+  if (!p) return p;
+  if (p.defaultW == null && p.defaultH == null && p.defaultSize == null) {
+    if (p.w != null && p.h != null) {
+      p.defaultW = p.w;
+      p.defaultH = p.h;
+    } else {
+      p.defaultSize = p.size || p.w || p.h || 48;
+    }
+  }
+  if (p.sizePct == null) p.sizePct = 100;
+  return p;
+}
+
 function placementSize(p) {
-  const w = p.w || p.size || 48;
-  const h = p.h || p.size || 48;
-  return { w, h };
+  ensurePlacementDefaults(p);
+  const pct = clamp(p.sizePct ?? 100, 25, 200) / 100;
+  if (p.defaultW != null) {
+    return {
+      w: Math.max(8, Math.round(p.defaultW * pct)),
+      h: Math.max(8, Math.round((p.defaultH ?? p.defaultW) * pct)),
+    };
+  }
+  const base = p.defaultSize || p.size || p.w || 48;
+  const s = Math.max(8, Math.round(base * pct));
+  return { w: s, h: s };
 }
 
 function clamp(n, lo, hi) {
@@ -142,8 +179,18 @@ export function getStaticEffectiveFlags(flags = {}) {
   return { hasStickers, hasBorder };
 }
 
+export function isEditableVariant(row) {
+  if (!row?.layers) return false;
+  return !!(
+    row.layers._staticFrame ||
+    (row.layers._badgePlacements || []).length
+  );
+}
+
 export function isStaticPromoVariant(row) {
   if (!row) return false;
+  const frameStyle = row.layers?._staticFrame?.style;
+  if (frameStyle === "live_standard" || frameStyle === "live_framed") return false;
   const style = row.variantStyle || row.meta?.style || row.meta?.path || "";
   return (
     style === "showcase" ||
@@ -152,23 +199,24 @@ export function isStaticPromoVariant(row) {
     row.meta?.path === "showcase" ||
     row.meta?.path === "lifestyle_promo" ||
     row.meta?.path === "tall_static" ||
-    !!row.layers?._staticFrame
+    frameStyle === "showcase" ||
+    frameStyle === "lifestyle_promo" ||
+    frameStyle === "tall_static"
   );
 }
 
 export function getBadgeSlots(row) {
   const placements = row?.layers?._badgePlacements || [];
-  return placements
-    .filter((p) => p.id)
-    .map((p) => ({
-      id: p.id,
-      label: p.label || (p.kind === "freeShipping" ? "FREE SHIPPING" : `Badge ${p.num}`),
-      anchor: p.anchor || "top-left",
-      num: p.num,
-      hidden: !!p.hidden,
-      posH: p.posH ?? 0,
-      posV: p.posV ?? 0,
-    }));
+  return placements.map((p, i) => ({
+    id: p.id || `badge-slot-${i}`,
+    label: p.label || (p.kind === "freeShipping" ? "FREE SHIPPING" : `Badge ${p.num || i + 1}`),
+    anchor: p.anchor || "top-left",
+    num: p.num,
+    hidden: !!p.hidden,
+    posH: p.posH ?? 0,
+    posV: p.posV ?? 0,
+    sizePct: p.sizePct ?? 100,
+  }));
 }
 
 export function slidersToXY(posH, posV, outerW, outerH, w, h) {
@@ -191,7 +239,10 @@ export function xyToSliders(x, y, outerW, outerH, w, h) {
 export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, outerW, outerH } = frame;
 
-  if (frame.style === "tall_static" && frame.px != null) {
+  if (
+    (frame.style === "tall_static" || frame.style === "live_framed") &&
+    frame.px != null
+  ) {
     const size = Math.max(56, Math.round(Math.min(frame.dw, frame.dh) * 0.14));
     const inset = Math.max(6, Math.round(size * 0.06));
     const fx = frame.px;
@@ -331,9 +382,32 @@ function ensureFrameDefaults(frame) {
   return frame;
 }
 
+function drawLiveStandardBackground(ctx, frame) {
+  const { outerW, outerH } = frame;
+  if (frame.frameType === "solid" || frame.gradientAxis === "solid") {
+    ctx.fillStyle = frame.gradientTop || frame.borderColor || "#3498db";
+    ctx.fillRect(0, 0, outerW, outerH);
+    return;
+  }
+  let grad;
+  const axis = frame.gradientAxis || "vertical";
+  if (axis === "horizontal") grad = ctx.createLinearGradient(0, 0, outerW, 0);
+  else if (axis === "diagonal") grad = ctx.createLinearGradient(0, 0, outerW, outerH);
+  else grad = ctx.createLinearGradient(0, 0, 0, outerH);
+  grad.addColorStop(0, frame.gradientTop || "#3498db");
+  grad.addColorStop(1, frame.gradientBottom || "#2ecc71");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, outerW, outerH);
+}
+
 function drawFrameBackground(ctx, frame) {
   const { outerW, outerH, px, py, dw, dh, style } = frame;
   ensureFrameDefaults(frame);
+
+  if (style === "live_standard") {
+    drawLiveStandardBackground(ctx, frame);
+    return;
+  }
 
   if (frame.frameType === "gradient" || (style === "showcase" && frame.frameType !== "solid")) {
     const grad = ctx.createLinearGradient(0, 0, 0, outerH);
@@ -345,7 +419,11 @@ function drawFrameBackground(ctx, frame) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(px, py, dw, dh);
     }
-  } else if (frame.frameType === "tall" || style === "tall_static") {
+  } else if (
+    frame.frameType === "tall" ||
+    style === "tall_static" ||
+    style === "live_framed"
+  ) {
     ctx.fillStyle = frame.borderColor || "#45a9e5";
     ctx.fillRect(0, 0, outerW, outerH);
     ctx.fillStyle = frame.matColor || "#ffffff";
@@ -420,17 +498,16 @@ function drawFreeShippingCircle(ctx, x, y, size) {
 async function drawPlacementsOnCtx(ctx, placements) {
   for (const p of placements) {
     if (!p || p.drawn === false || p.hidden) continue;
+    const { w, h } = placementSize(p);
     try {
       if (p.kind === "freeShipping") {
-        drawFreeShippingCircle(ctx, p.x, p.y, p.size);
+        drawFreeShippingCircle(ctx, p.x, p.y, w);
       } else if (p.id?.startsWith("tall-")) {
-        await drawTallBadge(ctx, loadBadge, p);
+        const copy = { ...p, w, h };
+        await drawTallBadge(ctx, loadBadge, copy);
       } else if (p.num != null) {
         const badge = await loadBadge(p.num);
-        if (badge) {
-          const sz = p.size || p.w || 48;
-          ctx.drawImage(badge, p.x, p.y, p.w || sz, p.h || sz);
-        }
+        if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
       }
     } catch (e) {}
   }
@@ -484,6 +561,20 @@ async function compressLifestyleToKb(canvas, targetKb) {
   return bestBlob || (await encodeJpeg(canvas, 14));
 }
 
+async function compressPreview(canvas, options = {}) {
+  const targetKb = options.targetKb || options.preserveKb || 0;
+  const style = options.style || "";
+  const jpegQuality = options.jpegQuality;
+
+  if (targetKb > 0) {
+    return compressToTargetKb(canvas, targetKb, style);
+  }
+  if (jpegQuality > 0 && jpegQuality <= 1) {
+    return canvas.toDataURL("image/jpeg", jpegQuality);
+  }
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 async function compressToTargetKb(canvas, targetKb, style) {
   if (!targetKb || targetKb <= 0) {
     return canvas.toDataURL("image/jpeg", 0.82);
@@ -510,23 +601,27 @@ export function placementChangedFromDefault(p, def) {
   if (!p || !def) return false;
   if (p.hidden !== def.hidden) return true;
   if (p.num !== def.num) return true;
+  if (Math.abs((p.sizePct ?? 100) - (def.sizePct ?? 100)) > 0.5) return true;
   if (Math.abs((p.posH ?? 0) - (def.posH ?? 0)) > 0.5) return true;
   if (Math.abs((p.posV ?? 0) - (def.posV ?? 0)) > 0.5) return true;
   return false;
 }
 
 export function needsStaticCompose(result) {
-  if (!result?.layers?._staticFrame) return false;
+  if (!result?.layers) return false;
+  const layers = result.layers;
+  if (!layers._staticFrame && !(layers._badgePlacements || []).length) return false;
   if (result._badgesRepositioned || result._staticAppearanceEdited) return true;
   const flags = result.editFlags || {};
   if (isStaticEdited(flags, false)) return true;
 
-  const frame = result.layers._staticFrame;
-  const frameDef = result.layers._staticDefaults?.frame;
+  const frame = layers._staticFrame;
+  if (!frame) return false;
+  const frameDef = layers._staticDefaults?.frame;
   if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
 
-  const placements = result.layers._badgePlacements || [];
-  const placementDefs = result.layers._staticDefaults?.placements || {};
+  const placements = layers._badgePlacements || [];
+  const placementDefs = layers._staticDefaults?.placements || {};
   for (const p of placements) {
     if (placementChangedFromDefault(p, placementDefs[p.id])) return true;
   }
@@ -605,22 +700,44 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   }
 
   if (!hasStickers) {
-    return compressToTargetKb(canvas, targetKb, style);
+    return compressPreview(canvas, {
+      targetKb,
+      preserveKb: options.preserveKb,
+      jpegQuality: options.jpegQuality,
+      style,
+    });
   }
 
   const placements = (layers._badgePlacements || []).filter((p) => !p.hidden && p.drawn !== false);
   if (!placements.length) {
-    return compressToTargetKb(canvas, targetKb, style);
+    return compressPreview(canvas, {
+      targetKb,
+      preserveKb: options.preserveKb,
+      jpegQuality: options.jpegQuality,
+      style,
+    });
   }
 
   for (const p of placements) {
     applyPositionToPlacement(p, frame);
+    const { w, h } = placementSize(p);
+    if (p.kind === "freeShipping") p.size = w;
+    else {
+      p.w = w;
+      p.h = h;
+      if (!p.defaultW) p.size = w;
+    }
   }
 
   const ctx = canvas.getContext("2d");
   await drawPlacementsOnCtx(ctx, placements);
 
-  return compressToTargetKb(canvas, targetKb, style);
+  return compressPreview(canvas, {
+    targetKb,
+    preserveKb: options.preserveKb,
+    jpegQuality: options.jpegQuality,
+    style,
+  });
 }
 
 export function updatePlacementAnchor(layers, placementId, anchor) {
@@ -639,6 +756,16 @@ export function updatePlacementSliders(layers, placementId, posH, posV) {
   p.posH = clamp(posH, 0, 100);
   p.posV = clamp(posV, 0, 100);
   applyPositionToPlacement(p, layers._staticFrame);
+  return true;
+}
+
+export function updatePlacementSize(layers, placementId, sizePct) {
+  if (!layers?._badgePlacements) return false;
+  const p = layers._badgePlacements.find((b) => b.id === placementId);
+  if (!p) return false;
+  ensurePlacementDefaults(p);
+  p.sizePct = clamp(sizePct, 25, 200);
+  if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
   return true;
 }
 
@@ -663,7 +790,7 @@ export function setPlacementHidden(layers, placementId, hidden) {
 export function setAllPlacementsHidden(layers, hidden) {
   if (!layers?._badgePlacements) return false;
   for (const p of layers._badgePlacements) {
-    if (p.id) p.hidden = !!hidden;
+    p.hidden = !!hidden;
   }
   return true;
 }
@@ -715,27 +842,130 @@ function snapshotDefaults(layers, style) {
         hidden: !!p.hidden,
         posH: p.posH,
         posV: p.posV,
+        sizePct: p.sizePct ?? 100,
       };
     }
   }
 }
 
+export async function bootstrapLiveFrameAsync(row) {
+  const layers = row?.layers;
+  if (!layers || layers._staticFrame) return layers;
+  if (!(layers._badgePlacements || []).length) return layers;
+
+  const meta = row.meta || {};
+  if (!meta.canvasW || !meta.canvasH) {
+    const url = layers.noStickers || layers.full;
+    if (url) {
+      try {
+        const img = await loadImage(url);
+        meta.canvasW = img.width;
+        meta.canvasH = img.height;
+        if (!meta.borderPx && layers._staticFrame === undefined) {
+          const p0 = layers._badgePlacements[0];
+          if (p0?.x != null && p0?.y != null) {
+            meta.borderPx = Math.max(8, Math.min(p0.x, p0.y));
+          }
+        }
+        row.meta = meta;
+      } catch (e) {}
+    }
+  }
+  return bootstrapLiveFrame(row);
+}
+
+export function bootstrapLiveFrame(row) {
+  const layers = row?.layers;
+  const meta = row?.meta || {};
+  if (!layers || layers._staticFrame) return layers;
+  if (!(layers._badgePlacements || []).length) return layers;
+
+  const outerW = meta.canvasW || meta.outerW;
+  const outerH = meta.canvasH || meta.outerH;
+  if (!outerW || !outerH) return layers;
+
+  const isFramed = meta.style === "framed_low" || row.variantStyle === "framed";
+  const border = meta.borderPx || Math.max(16, Math.round(Math.min(outerW, outerH) * 0.05));
+  const dw = meta.productW || outerW - border * 2;
+  const dh = meta.productH || outerH - border * 2;
+  const px = isFramed ? border : border;
+  const py = isFramed ? border : border;
+
+  if (isFramed) {
+    const blueOuter = meta.blueOuter || border;
+    layers._staticFrame = {
+      style: "live_framed",
+      frameType: "tall",
+      borderColor: meta.borderColor || "#add8e6",
+      matColor: "#ffffff",
+      gradientTop: meta.borderColor || "#add8e6",
+      gradientBottom: "#7ec8e3",
+      px,
+      py,
+      dw,
+      dh,
+      border: blueOuter,
+      outerW,
+      outerH,
+      whiteX: blueOuter,
+      whiteY: blueOuter,
+      whiteW: outerW - blueOuter * 2,
+      whiteH: outerH - blueOuter * 2,
+    };
+  } else {
+    const gradType = meta.gradType ?? 2;
+    layers._staticFrame = {
+      style: "live_standard",
+      frameType: gradType === 0 ? "solid" : "gradient",
+      gradientTop: meta.gradientTop || meta.borderColor || "#3498db",
+      gradientBottom: meta.gradientBottom || "#2ecc71",
+      gradientAxis:
+        gradType === 1 ? "horizontal" : gradType === 3 ? "diagonal" : gradType === 0 ? "solid" : "vertical",
+      borderColor: meta.gradientTop || "#3498db",
+      px: border,
+      py: border,
+      dw,
+      dh,
+      border,
+      outerW,
+      outerH,
+    };
+  }
+
+  layers._badgePlacements.forEach((p, i) => {
+    if (!p.id) p.id = `live-badge-${i}`;
+    if (!p.label) p.label = p.kind === "freeShipping" ? "FREE SHIPPING" : `Badge ${i + 1}`;
+    if (p.drawn == null) p.drawn = true;
+    ensurePlacementDefaults(p);
+  });
+
+  return layers;
+}
+
+export async function ensureVariantPlacementMeta(row) {
+  const layers = row?.layers;
+  if (!layers) return layers;
+  await bootstrapLiveFrameAsync(row);
+  if (layers._staticFrame && (layers._badgePlacements || []).length) {
+    ensureStaticPlacementMeta(layers, layers._staticFrame.style);
+  }
+  return layers;
+}
+
 export function ensureStaticPlacementMeta(layers, style) {
-  if (!layers?._badgePlacements?.length || !layers._staticFrame) return layers;
+  if (!layers?._badgePlacements?.length) return layers;
+  if (!layers._staticFrame) return layers;
 
   ensureFrameDefaults(layers._staticFrame);
   snapshotDefaults(layers, style);
 
-  const defaults =
-    style === "lifestyle_promo"
-      ? DEFAULT_ANCHORS.lifestyle_promo
-      : style === "tall_static"
-      ? DEFAULT_ANCHORS.tall_static
-      : DEFAULT_ANCHORS.showcase;
+  const anchorMap = DEFAULT_ANCHORS[style] || {};
 
-  for (const p of layers._badgePlacements) {
-    if (!p.id) continue;
-    if (!p.anchor) p.anchor = defaults[p.id] || "top-left";
+  for (let i = 0; i < layers._badgePlacements.length; i++) {
+    const p = layers._badgePlacements[i];
+    if (!p.id) p.id = `badge-slot-${i}`;
+    ensurePlacementDefaults(p);
+    if (!p.anchor && anchorMap[p.id]) p.anchor = anchorMap[p.id];
     if (!p.label) {
       if (p.kind === "freeShipping") p.label = "FREE SHIPPING";
       else if (p.id === "showcase-quality") p.label = "100% Quality";
@@ -746,8 +976,17 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id === "tall-sale") p.label = "Price tag";
       else if (p.id === "tall-arrow") p.label = "Arrow";
       else if (p.id === "tall-ship") p.label = "Delivery truck";
+      else if (p.id.startsWith("live-badge-")) p.label = `Badge ${parseInt(p.id.split("-").pop(), 10) + 1}`;
+      else p.label = `Badge ${p.num || ""}`.trim();
     }
-    applyPositionToPlacement(p, layers._staticFrame);
+    if (p.posH == null || p.posV == null) {
+      const { w, h } = placementSize(p);
+      const sliders = xyToSliders(p.x || 0, p.y || 0, layers._staticFrame.outerW, layers._staticFrame.outerH, w, h);
+      p.posH = sliders.posH;
+      p.posV = sliders.posV;
+    } else {
+      applyPositionToPlacement(p, layers._staticFrame);
+    }
   }
   return layers;
 }
@@ -755,12 +994,7 @@ export function ensureStaticPlacementMeta(layers, style) {
 export function resetStaticPlacements(layers) {
   if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
   const style = layers._staticFrame.style;
-  const defaults =
-    style === "lifestyle_promo"
-      ? DEFAULT_ANCHORS.lifestyle_promo
-      : style === "tall_static"
-      ? DEFAULT_ANCHORS.tall_static
-      : DEFAULT_ANCHORS.showcase;
+  const anchorMap = DEFAULT_ANCHORS[style] || {};
 
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef) {
@@ -778,8 +1012,9 @@ export function resetStaticPlacements(layers) {
       p.hidden = !!pDef.hidden;
       p.posH = pDef.posH;
       p.posV = pDef.posV;
-    } else {
-      p.anchor = defaults[p.id] || "top-left";
+      p.sizePct = pDef.sizePct ?? 100;
+    } else if (anchorMap[p.id]) {
+      p.anchor = anchorMap[p.id];
       p.hidden = false;
       applyAnchorToPlacement(p, layers._staticFrame);
     }
@@ -804,6 +1039,7 @@ export function isStaticEdited(flags, badgesRepositioned, staticAppearanceEdited
 if (typeof window !== "undefined") {
   window.StaticFrameCompose = {
     isStaticPromoVariant,
+    isEditableVariant,
     getBadgeSlots,
     BADGE_ANCHOR_OPTIONS,
     GRADIENT_PRESETS,
@@ -817,11 +1053,15 @@ if (typeof window !== "undefined") {
     composeStaticPreview,
     updatePlacementAnchor,
     updatePlacementSliders,
+    updatePlacementSize,
     updatePlacementBadge,
     setPlacementHidden,
     setAllPlacementsHidden,
     updateFrameAppearance,
     applyGradientPreset,
+    bootstrapLiveFrame,
+    bootstrapLiveFrameAsync,
+    ensureVariantPlacementMeta,
     ensureStaticPlacementMeta,
     resetStaticPlacements,
     needsStaticCompose,
