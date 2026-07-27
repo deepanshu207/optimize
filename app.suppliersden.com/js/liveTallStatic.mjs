@@ -5,10 +5,10 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=50";
-import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=50";
-import { estimateImageShipping } from "./lib/shipping.js?v=50";
-import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=50";
+} from "./lib/canvas-utils.js?v=51";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=51";
+import { estimateImageShipping } from "./lib/shipping.js?v=51";
+import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=51";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
@@ -20,11 +20,9 @@ export const TALL_STATIC_BADGES = {
   ship: 1,
 };
 
-/** low_48_tall — same profile as Live hunt tall frames. */
-const TALL_PROFILE = {
-  bluePct: 0.16,
-  whitePct: 0.05,
-};
+/** Reference #2: blue ~10% of canvas, white mat ~half of blue band. */
+const BORDER_BLUE_RATIO = 0.10;
+const WHITE_MAT_RATIO = 0.05;
 
 /** Sky blue from reference (#45a9e5). */
 const BORDER_BLUE = "#45a9e5";
@@ -46,48 +44,31 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
 }
 
 /**
- * Build 703×1024 — border thickness from product minDim (hunt math), not canvas width.
+ * Build 703×1024 edge-to-edge — fixed border % of canvas (reference #2).
+ * No centering gap (that was causing extra-thick blue bars on the sides).
  */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
 
   const white = prepareTallProduct(img);
-  const bluePct = Math.min(0.22, TALL_PROFILE.bluePct * 1.06);
-  const whitePct = TALL_PROFILE.whitePct;
-
-  let bestScale = 0.01;
-  for (let i = 0; i < 64; i++) {
-    const scale = 0.01 + (i / 63) * 2;
-    const sw = Math.round(white.width * scale);
-    const sh = Math.round(white.height * scale);
-    const minDim = Math.min(sw, sh);
-    const blueOuter = Math.max(24, Math.round(minDim * bluePct));
-    const whitePad = Math.max(10, Math.round(minDim * whitePct));
-    const inset = blueOuter + whitePad;
-    const fw = sw + inset * 2;
-    const fh = sh + inset * 2;
-    if (fw <= outerW && fh <= outerH) bestScale = scale;
-  }
-
-  const sw = Math.round(white.width * bestScale);
-  const sh = Math.round(white.height * bestScale);
-  const minDim = Math.min(sw, sh);
-  const blueOuter = Math.max(24, Math.round(minDim * bluePct));
-  const whitePad = Math.max(10, Math.round(minDim * whitePct));
+  const ref = Math.min(outerW, outerH);
+  const blueOuter = Math.max(22, Math.round(ref * BORDER_BLUE_RATIO));
+  const whitePad = Math.max(8, Math.round(ref * WHITE_MAT_RATIO));
   const inset = blueOuter + whitePad;
-  const framedW = sw + inset * 2;
-  const framedH = sh + inset * 2;
 
-  const ox = Math.round((outerW - framedW) / 2);
-  const oy = Math.round((outerH - framedH) / 2);
-  const px = ox + inset;
-  const py = oy + inset;
+  const innerW = outerW - inset * 2;
+  const innerH = outerH - inset * 2;
+  const scale = Math.min(innerW / white.width, innerH / white.height);
+  const sw = Math.round(white.width * scale);
+  const sh = Math.round(white.height * scale);
+  const px = inset + Math.round((innerW - sw) / 2);
+  const py = inset + Math.round((innerH - sh) / 2);
 
-  const whiteX = ox + blueOuter;
-  const whiteY = oy + blueOuter;
-  const whiteW = framedW - blueOuter * 2;
-  const whiteH = framedH - blueOuter * 2;
+  const whiteX = blueOuter;
+  const whiteY = blueOuter;
+  const whiteW = outerW - blueOuter * 2;
+  const whiteH = outerH - blueOuter * 2;
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -96,9 +77,6 @@ function buildTallStaticFrameCanvas(img) {
 
   ctx.fillStyle = BORDER_BLUE;
   ctx.fillRect(0, 0, outerW, outerH);
-
-  ctx.fillStyle = BORDER_BLUE;
-  ctx.fillRect(ox, oy, framedW, framedH);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
 
