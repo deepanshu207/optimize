@@ -455,7 +455,7 @@ function restoreBaseGeometry(frame) {
   if (frame.baseWhiteH != null) frame.whiteH = frame.baseWhiteH;
 }
 
-/** Gown: border slider changes mat only — product pixels stay fixed size. */
+/** Gown: scale teal border + white mat together; product pixels stay fixed size. */
 function applyGownBorderThickness(frame, pct) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -463,38 +463,42 @@ function applyGownBorderThickness(frame, pct) {
   const baseDh = frame.baseDh ?? frame.dh ?? 0;
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
   const baseWhitePad = frame.baseWhitePad ?? frame.whitePad ?? 0;
-  const whiteW = frame.baseWhiteW ?? outerW - baseBorder * 2;
-  const whiteH = frame.baseWhiteH ?? outerH - baseBorder * 2;
+  const baseInset = baseBorder + baseWhitePad;
 
   frame.dw = baseDw;
   frame.dh = baseDh;
-  frame.border = baseBorder;
-  frame.whiteX = baseBorder;
-  frame.whiteY = baseBorder;
-  frame.whiteW = whiteW;
-  frame.whiteH = whiteH;
 
   const t = pct / BORDER_THICKNESS_DEFAULT;
-  const maxWhitePad = Math.max(
-    0,
-    Math.floor((Math.min(whiteW, whiteH) - Math.min(baseDw, baseDh)) / 2),
+  const minBorder = 2;
+  const minInset = minBorder;
+  const minProduct = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.22));
+  const maxInset = Math.max(
+    baseInset + 1,
+    Math.floor((Math.min(outerW, outerH) - minProduct) / 2),
   );
 
-  let whitePad;
+  let targetInset;
   if (t <= 1) {
-    whitePad = Math.round(baseWhitePad * t);
+    targetInset = Math.round(minInset + (baseInset - minInset) * t);
   } else {
     const hi = BORDER_THICKNESS_MAX / BORDER_THICKNESS_DEFAULT;
     const u = (t - 1) / (hi - 1);
-    whitePad = Math.round(baseWhitePad + (maxWhitePad - baseWhitePad) * u);
+    targetInset = Math.round(baseInset + (maxInset - baseInset) * u);
   }
-  whitePad = clamp(whitePad, 0, maxWhitePad);
-  frame.whitePad = whitePad;
+  targetInset = clamp(targetInset, minInset, maxInset);
 
-  const prodAreaW = whiteW - whitePad * 2;
-  const prodAreaH = whiteH - whitePad * 2;
-  frame.px = baseBorder + whitePad + Math.round((prodAreaW - baseDw) / 2);
-  frame.py = baseBorder + whitePad + Math.round((prodAreaH - baseDh) / 2);
+  const borderRatio = baseInset > 0 ? baseBorder / baseInset : 0.16;
+  frame.border = Math.max(minBorder, Math.round(targetInset * borderRatio));
+  frame.whitePad = Math.max(0, targetInset - frame.border);
+  frame.whiteX = frame.border;
+  frame.whiteY = frame.border;
+  frame.whiteW = outerW - frame.border * 2;
+  frame.whiteH = outerH - frame.border * 2;
+
+  const innerW = frame.whiteW - frame.whitePad * 2;
+  const innerH = frame.whiteH - frame.whitePad * 2;
+  frame.px = frame.border + frame.whitePad + Math.round((innerW - baseDw) / 2);
+  frame.py = frame.border + frame.whitePad + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 
@@ -886,9 +890,11 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     return layers.productOnly || layers.full || "";
   }
 
+  const borderPct = layers._staticFrame?.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT;
   const frameEdited =
     layers._staticFrame &&
-    frameAppearanceChanged(layers._staticFrame, layers._staticDefaults?.frame);
+    (borderPct !== BORDER_THICKNESS_DEFAULT ||
+      frameAppearanceChanged(layers._staticFrame, layers._staticDefaults?.frame));
 
   let canvas = null;
   let frame = layers._staticFrame;
