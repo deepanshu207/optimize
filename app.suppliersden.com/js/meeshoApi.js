@@ -2052,15 +2052,19 @@ const MeeshoAPI = {
     if (!result?.layers) return this.resolveDisplayUrl(result);
 
     if (result.layers._staticFrame) {
-      const flags = result.editFlags || {};
+      const needsCompose =
+        typeof window !== "undefined" &&
+        window.StaticFrameCompose?.needsStaticCompose?.(result);
       if (
+        needsCompose &&
         typeof window !== "undefined" &&
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
           return await window.StaticFrameCompose.composeStaticPreview(
             result.layers,
-            flags,
+            result.editFlags || {},
+            { targetKb: result.meta?.targetKb || 0 },
           );
         } catch (e) {}
       }

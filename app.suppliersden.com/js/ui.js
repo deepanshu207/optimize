@@ -411,6 +411,7 @@ const OptimizerUI = {
     const canEdit = !testLabMode && !!(r.layers && r.layers.full);
     const edited =
       r._badgesRepositioned ||
+      r._staticAppearanceEdited ||
       r.editFlags?.stickersRemoved ||
       r.editFlags?.borderOnlyRemoved ||
       r.editFlags?.cleanProduct ||

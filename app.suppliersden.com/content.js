@@ -60,22 +60,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=53";
+      return "/js/liveAnalysisBridge.mjs?v=54";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=53");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=54");
     }
-    return "/js/liveAnalysisBridge.mjs?v=53";
+    return "/js/liveAnalysisBridge.mjs?v=54";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=53";
+      return "/js/staticFrameCompose.mjs?v=54";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=53");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=54");
     }
-    return "/js/staticFrameCompose.mjs?v=53";
+    return "/js/staticFrameCompose.mjs?v=54";
   }
 
   async preloadStaticComposeModule() {
@@ -2651,8 +2651,9 @@ Please share payment details and license key.`;
   }
 
   isVariantEdited(editFlags, layers, row) {
-    if (!editFlags && !row?._badgesRepositioned) return false;
-    if (row?._badgesRepositioned) return true;
+    if (!editFlags && !row?._badgesRepositioned && !row?._staticAppearanceEdited)
+      return false;
+    if (row?._badgesRepositioned || row?._staticAppearanceEdited) return true;
     if (
       layers?._staticFrame &&
       typeof window.StaticFrameCompose?.isStaticEdited === "function"
@@ -2898,6 +2899,7 @@ Please share payment details and license key.`;
 
     row.editFlags = this.normalizeEditFlags({});
     row._badgesRepositioned = false;
+    row._staticAppearanceEdited = false;
     row.imageUrl =
       row.layers.full ||
       row.pricingImageUrl ||
@@ -2909,6 +2911,33 @@ Please share payment details and license key.`;
     } else {
       this.refreshVariantCard(row);
     }
+  }
+
+  async refreshStaticPreview(variantId) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+      try {
+        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
+      } catch (e) {
+        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      }
+    } else if (window.StaticFrameCompose?.composeStaticPreview) {
+      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
+        row.layers,
+        row.editFlags || {},
+        { targetKb: row.meta?.targetKb || 0 },
+      );
+    }
+
+    if (this._editingVariantId === variantId) {
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview) preview.src = row.imageUrl;
+    }
+    this.refreshVariantCard(row);
   }
 
   async setStaticBadgeAnchor(variantId, placementId, anchor) {
@@ -2926,25 +2955,105 @@ Please share payment details and license key.`;
     if (!ok) return;
 
     row._badgesRepositioned = true;
-    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
-      try {
-        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
-      } catch (e) {
-        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
-      }
-    } else {
-      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-        row.layers,
-        row.editFlags || {},
-      );
-    }
+    await this.refreshStaticPreview(variantId);
+  }
+
+  async setStaticPlacementSliders(variantId, placementId, posH, posV) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updatePlacementSliders) return;
+
+    const ok = window.StaticFrameCompose.updatePlacementSliders(
+      row.layers,
+      placementId,
+      posH,
+      posV,
+    );
+    if (!ok) return;
+
+    row._badgesRepositioned = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
+  async setStaticBadgeNum(variantId, placementId, badgeNum) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updatePlacementBadge) return;
+
+    const ok = window.StaticFrameCompose.updatePlacementBadge(
+      row.layers,
+      placementId,
+      badgeNum,
+    );
+    if (!ok) return;
+
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
+  async setStaticPlacementHidden(variantId, placementId, hidden) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.setPlacementHidden) return;
+
+    const ok = window.StaticFrameCompose.setPlacementHidden(
+      row.layers,
+      placementId,
+      hidden,
+    );
+    if (!ok) return;
+
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
+  async setStaticAllStickersHidden(variantId, hidden) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.setAllPlacementsHidden) return;
+
+    window.StaticFrameCompose.setAllPlacementsHidden(row.layers, hidden);
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
 
     if (this._editingVariantId === variantId) {
-      const preview = document.getElementById("variant-edit-preview");
-      if (preview) preview.src = row.imageUrl;
-      this.refreshVariantCard(row);
-    } else {
-      this.refreshVariantCard(row);
+      this.renderVariantEditorPanel(row);
+    }
+  }
+
+  async setStaticFrameColors(variantId, patch) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, patch);
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
+  async setStaticGradientPreset(variantId, presetId) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.applyGradientPreset) return;
+
+    window.StaticFrameCompose.applyGradientPreset(row.layers, presetId);
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
+
+    if (this._editingVariantId === variantId) {
+      this.renderVariantEditorPanel(row);
     }
   }
 
@@ -2952,35 +3061,177 @@ Please share payment details and license key.`;
     const SFC = window.StaticFrameCompose;
     if (!SFC || !container) return;
 
+    const frame = row.layers._staticFrame || {};
+    const style = frame.style || row.meta?.path || "";
     const slots = SFC.getBadgeSlots(row);
-    const options = SFC.BADGE_ANCHOR_OPTIONS;
     const placements = row.layers._badgePlacements || [];
+    const presets = SFC.GRADIENT_PRESETS || [];
+    const allHidden = slots.length > 0 && slots.every((s) => s.hidden);
 
-    let html = `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Badge placement</div>`;
+    let html = "";
+    html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
+
+    html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
+      <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
+    html += `<option value="">— Custom / solid —</option>`;
+    presets.forEach((g) => {
+      html += `<option value="${g.id}"${
+        frame.gradientPreset === g.id ? " selected" : ""
+      }>${g.label}</option>`;
+    });
+    html += `</select></label>`;
+
+    if (style === "showcase" || frame.frameType === "gradient" || frame.gradientPreset) {
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Top
+        <input type="color" id="static-color-top" value="${frame.gradientTop || "#FF9800"}" style="flex:1;height:28px;border:none;">
+      </label>`;
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Bottom
+        <input type="color" id="static-color-bottom" value="${frame.gradientBottom || "#4CAF50"}" style="flex:1;height:28px;border:none;">
+      </label>`;
+    }
+
+    if (style === "lifestyle_promo") {
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Border
+        <input type="color" id="static-color-border" value="${frame.borderColor || "#32d74b"}" style="flex:1;height:28px;border:none;">
+      </label>`;
+    }
+
+    if (style === "tall_static") {
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
+        <input type="color" id="static-color-border" value="${frame.borderColor || "#45a9e5"}" style="flex:1;height:28px;border:none;">
+      </label>`;
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
+        <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
+      </label>`;
+    }
+
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
+      <span style="font-size:11px;font-weight:600;color:#6b7280;">Stickers</span>
+      <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="checkbox" id="static-hide-all-stickers"${allHidden ? " checked" : ""} style="width:14px;height:14px;">
+        Hide all
+      </label>
+    </div>`;
+
     slots.forEach((slot) => {
       const p = placements.find((b) => b.id === slot.id);
-      const anchor = p?.anchor || slot.anchor;
-      html += `<label style="display:block;font-size:12px;margin-bottom:8px;">${slot.label}
-        <select data-badge-id="${slot.id}" class="static-badge-anchor opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:8px;">`;
-      options.forEach((opt) => {
-        html += `<option value="${opt.value}"${
-          opt.value === anchor ? " selected" : ""
-        }>${opt.label}</option>`;
-      });
-      html += `</select></label>`;
+      const posH = p?.posH ?? slot.posH ?? 0;
+      const posV = p?.posV ?? slot.posV ?? 0;
+      const isFreeShip = p?.kind === "freeShipping";
+      html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:600;">${slot.label}</span>
+          <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" class="static-sticker-hide" data-badge-id="${slot.id}"${
+        p?.hidden ? " checked" : ""
+      } style="width:14px;height:14px;">
+            Hide
+          </label>
+        </div>`;
+
+      if (!isFreeShip) {
+        html += `<label style="display:block;font-size:10px;margin-bottom:6px;">Badge
+          <select data-badge-id="${slot.id}" class="static-badge-pick opt-select" style="width:100%;margin-top:2px;font-size:11px;padding:4px;">`;
+        for (let n = 1; n <= 25; n++) {
+          html += `<option value="${n}"${(p?.num || slot.num) === n ? " selected" : ""}>Badge ${n}</option>`;
+        }
+        html += `</select></label>`;
+      }
+
+      html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%
+        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;">
+      </label>`;
+      html += `<label style="display:block;font-size:10px;margin-bottom:0;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%
+        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;">
+      </label>`;
+      html += `</div>`;
     });
-    html += `<p style="font-size:10px;color:#6b7280;margin:0;">Pick a position per badge. Shipping ₹ unchanged.</p>`;
+
+    html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep est ₹ at ${row.meta?.targetKb || "?"}KB — shipping unchanged.</p>`;
     container.innerHTML = html;
 
-    container.querySelectorAll(".static-badge-anchor").forEach((sel) => {
-      sel.onchange = () => {
-        void this.setStaticBadgeAnchor(
-          row.variantId,
-          sel.dataset.badgeId,
-          sel.value,
-        );
+    const vid = row.variantId;
+    const presetSel = container.querySelector("#static-gradient-preset");
+    if (presetSel) {
+      presetSel.onchange = () => {
+        if (presetSel.value) void this.setStaticGradientPreset(vid, presetSel.value);
+      };
+    }
+
+    const applyColors = () => {
+      const patch = {};
+      const top = container.querySelector("#static-color-top");
+      const bottom = container.querySelector("#static-color-bottom");
+      const border = container.querySelector("#static-color-border");
+      const mat = container.querySelector("#static-color-mat");
+      if (top?.value) {
+        patch.gradientTop = top.value;
+        patch.frameType = "gradient";
+      }
+      if (bottom?.value) {
+        patch.gradientBottom = bottom.value;
+        patch.frameType = "gradient";
+      }
+      if (border?.value) {
+        patch.borderColor = border.value;
+        if (style === "lifestyle_promo") patch.frameType = "solid";
+      }
+      if (mat?.value) patch.matColor = mat.value;
+      if (Object.keys(patch).length) void this.setStaticFrameColors(vid, patch);
+    };
+
+    ["#static-color-top", "#static-color-bottom", "#static-color-border", "#static-color-mat"].forEach(
+      (sel) => {
+        const el = container.querySelector(sel);
+        if (el) el.oninput = applyColors;
+      },
+    );
+
+    const hideAll = container.querySelector("#static-hide-all-stickers");
+    if (hideAll) {
+      hideAll.onchange = () => {
+        void this.setStaticAllStickersHidden(vid, hideAll.checked);
+      };
+    }
+
+    container.querySelectorAll(".static-sticker-hide").forEach((cb) => {
+      cb.onchange = () => {
+        void this.setStaticPlacementHidden(vid, cb.dataset.badgeId, cb.checked);
       };
     });
+
+    container.querySelectorAll(".static-badge-pick").forEach((sel) => {
+      sel.onchange = () => {
+        void this.setStaticBadgeNum(vid, sel.dataset.badgeId, sel.value);
+      };
+    });
+
+    const bindSliders = (cls, axis) => {
+      container.querySelectorAll(cls).forEach((range) => {
+        range.oninput = () => {
+          const id = range.dataset.badgeId;
+          const valSpan = container.querySelector(
+            axis === "h"
+              ? `.static-h-val[data-badge-id="${id}"]`
+              : `.static-v-val[data-badge-id="${id}"]`,
+          );
+          if (valSpan) valSpan.textContent = range.value;
+        };
+        range.onchange = () => {
+          const id = range.dataset.badgeId;
+          const hEl = container.querySelector(`.static-pos-h[data-badge-id="${id}"]`);
+          const vEl = container.querySelector(`.static-pos-v[data-badge-id="${id}"]`);
+          void this.setStaticPlacementSliders(
+            vid,
+            id,
+            parseInt(hEl?.value || "0", 10),
+            parseInt(vEl?.value || "0", 10),
+          );
+        };
+      });
+    };
+    bindSliders(".static-pos-h", "h");
+    bindSliders(".static-pos-v", "v");
   }
 
   refreshVariantCard(row) {
@@ -3073,11 +3324,13 @@ Please share payment details and license key.`;
     const footerNote = panel.querySelector("#variant-edit-footer-note");
     if (footerNote) {
       footerNote.textContent = isStatic
-        ? "Remove, add, or reposition badges — save only, not shipping ₹."
+        ? "RGB colors, gradients, badge picker & sliders — est ₹ unchanged at original KB."
         : "6 preview options — edits update save only, not shipping ₹.";
     }
     if (resetBtn) {
-      const edited = this.isVariantEdited(row.editFlags, row.layers, row);
+      const edited =
+        this.isVariantEdited(row.editFlags, row.layers, row) ||
+        (isStatic && window.StaticFrameCompose?.needsStaticCompose?.(row));
       resetBtn.style.display = isStatic && edited ? "block" : "none";
     }
   }
@@ -3100,19 +3353,27 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
+    if (panel && panel.dataset.staticEditorV !== "2") {
+      panel.remove();
+      panel = null;
+    }
     if (panel) return panel;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
+    panel.dataset.staticEditorV = "2";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
     panel.innerHTML = `
-      <div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,0.25);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <strong id="variant-edit-title" style="font-size:15px;">Variant</strong>
-          <button type="button" id="variant-edit-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
+      <div style="background:#fff;border-radius:12px;max-width:420px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,0.25);">
+        <div style="padding:16px 16px 0;flex-shrink:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <strong id="variant-edit-title" style="font-size:15px;">Variant</strong>
+            <button type="button" id="variant-edit-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
+          </div>
+          <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
         </div>
-        <img id="variant-edit-preview" alt="Preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#f9fafb;margin-bottom:12px;">
+        <div style="overflow-y:auto;padding:0 16px 16px;flex:1;">
         <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin-bottom:12px;"></p>
         <div id="variant-edit-remove-section" style="margin-bottom:10px;">
           <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
@@ -3148,6 +3409,7 @@ Please share payment details and license key.`;
         <p id="variant-edit-footer-note" style="font-size:10px;color:#6b7280;margin-bottom:12px;">6 preview options — edits update save only, not shipping ₹.</p>
         <button type="button" id="variant-edit-reset" style="display:none;width:100%;padding:10px;margin-bottom:8px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Reset to original</button>
         <button type="button" id="variant-edit-done" class="generate-btn" style="width:100%;padding:12px;">Done</button>
+        </div>
       </div>
     `;
     document.body.appendChild(panel);

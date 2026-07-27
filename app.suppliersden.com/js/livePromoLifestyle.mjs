@@ -2,8 +2,8 @@
  * Web-only lifestyle promo frames — competitor-style solid green border @ 48–54 KB.
  * Keeps original scene (no white flatten); isolated from tall ₹50 and showcase paths.
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=42";
-import { estimateImageShipping } from "./lib/shipping.js?v=42";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=54";
+import { estimateImageShipping } from "./lib/shipping.js?v=54";
 
 /** HOT SALE, FLASH SALE — match competitor listing stickers. */
 export const PROMO_LIFESTYLE_BADGES = {
@@ -306,6 +306,11 @@ async function buildPromoLayers(img) {
       _badgePlacements: badgePlacements,
       _staticFrame: {
         style: "lifestyle_promo",
+        frameType: "solid",
+        borderColor: BORDER_COLOR,
+        gradientTop: BORDER_COLOR,
+        gradientBottom: "#1b9e34",
+        gradientPreset: null,
         px,
         py,
         dw,
