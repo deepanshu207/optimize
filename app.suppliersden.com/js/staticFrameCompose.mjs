@@ -2,9 +2,9 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=66";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=66";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=66";
+import { compressFramedToKb } from "./lib/encoder.js?v=67";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=67";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -455,7 +455,7 @@ function restoreBaseGeometry(frame) {
   if (frame.baseWhiteH != null) frame.whiteH = frame.baseWhiteH;
 }
 
-/** Gown: scale teal border + white mat together; product pixels stay fixed size. */
+/** Gown: scale teal border + white mat; product pixels stay fixed. Above 100% bias growth to teal ring. */
 function applyGownBorderThickness(frame, pct) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -488,7 +488,12 @@ function applyGownBorderThickness(frame, pct) {
   targetInset = clamp(targetInset, minInset, maxInset);
 
   const borderRatio = baseInset > 0 ? baseBorder / baseInset : 0.16;
-  frame.border = Math.max(minBorder, Math.round(targetInset * borderRatio));
+  if (t <= 1) {
+    frame.border = Math.max(minBorder, Math.round(targetInset * borderRatio));
+  } else {
+    const extra = Math.max(0, targetInset - baseInset);
+    frame.border = Math.max(minBorder, Math.round(baseBorder + extra * 0.55));
+  }
   frame.whitePad = Math.max(0, targetInset - frame.border);
   frame.whiteX = frame.border;
   frame.whiteY = frame.border;
@@ -500,6 +505,22 @@ function applyGownBorderThickness(frame, pct) {
   frame.px = frame.border + frame.whitePad + Math.round((innerW - baseDw) / 2);
   frame.py = frame.border + frame.whitePad + Math.round((innerH - baseDh) / 2);
   return frame;
+}
+
+export function staticFrameBorderEdited(frame) {
+  if (!frame) return false;
+  return (frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT) !== BORDER_THICKNESS_DEFAULT;
+}
+
+export function shouldRebuildStaticFrame(layers, options = {}) {
+  const frame = layers?._staticFrame;
+  if (!frame?.outerW) return false;
+  if (!layers.productOnly && !layers.noStickers) return false;
+  if (staticFrameBorderEdited(frame)) return true;
+  if (options.staticAppearanceEdited) return true;
+  const frameDef = layers._staticDefaults?.frame;
+  if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
+  return false;
 }
 
 /**
@@ -651,15 +672,35 @@ function drawFrameBackground(ctx, frame) {
   }
 }
 
-async function rebuildFrameCanvas(layers) {
-  const frame = ensureFrameDefaults({ ...layers._staticFrame });
-  if (frame.borderThicknessPct != null && frame.borderThicknessPct !== BORDER_THICKNESS_DEFAULT) {
-    applyBorderThickness(frame);
-  }
-  const productUrl = layers.productOnly;
-  if (!productUrl || !frame.outerW) return null;
+async function loadProductForFrame(layers, frame) {
+  if (layers.productOnly) return loadImage(layers.productOnly);
+  const dw = frame.baseDw ?? frame.dw;
+  const dh = frame.baseDh ?? frame.dh;
+  const px = frame.basePx ?? frame.px;
+  const py = frame.basePy ?? frame.py;
+  if (!layers.noStickers || !dw || !dh || px == null || py == null) return null;
+  const src = await loadImage(layers.noStickers);
+  const c = document.createElement("canvas");
+  c.width = dw;
+  c.height = dh;
+  c.getContext("2d").drawImage(src, px, py, dw, dh, 0, 0, dw, dh);
+  return c;
+}
 
-  const productImg = await loadImage(productUrl);
+async function rebuildFrameCanvas(layers) {
+  if (!layers?._staticFrame) return null;
+  const frame = ensureFrameDefaults({ ...layers._staticFrame });
+  ensureFrameBases(frame);
+  applyBorderThickness(frame);
+
+  let productImg = null;
+  try {
+    productImg = await loadProductForFrame(layers, frame);
+  } catch (e) {
+    return null;
+  }
+  if (!productImg || !frame.outerW) return null;
+
   const canvas = document.createElement("canvas");
   canvas.width = frame.outerW;
   canvas.height = frame.outerH;
@@ -671,6 +712,7 @@ async function rebuildFrameCanvas(layers) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, frame.px, frame.py, frame.dw, frame.dh);
 
+  Object.assign(layers._staticFrame, frame);
   return { canvas, frame };
 }
 
@@ -840,6 +882,7 @@ export function needsStaticCompose(result) {
   const layers = result.layers;
   if (!layers._staticFrame && !(layers._badgePlacements || []).length) return false;
   if (result._badgesRepositioned || result._staticAppearanceEdited) return true;
+  if (staticFrameBorderEdited(layers._staticFrame)) return true;
   const flags = result.editFlags || {};
   if (isStaticEdited(flags, false)) return true;
 
@@ -890,17 +933,15 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     return layers.productOnly || layers.full || "";
   }
 
-  const borderPct = layers._staticFrame?.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT;
-  const frameEdited =
-    layers._staticFrame &&
-    (borderPct !== BORDER_THICKNESS_DEFAULT ||
-      frameAppearanceChanged(layers._staticFrame, layers._staticDefaults?.frame));
+  const frameEdited = shouldRebuildStaticFrame(layers, {
+    staticAppearanceEdited: !!options.staticAppearanceEdited,
+  });
 
   let canvas = null;
   let frame = layers._staticFrame;
   const picked = pickStaticBaseLayer(layers, flags);
 
-  if (frameEdited && layers.productOnly && frame) {
+  if (frameEdited && layers._staticFrame) {
     const rebuilt = await rebuildFrameCanvas(layers);
     if (rebuilt) {
       canvas = rebuilt.canvas;
@@ -1395,6 +1436,8 @@ if (typeof window !== "undefined") {
     ensureFrameBases,
     applyBorderThickness,
     reanchorPlacements,
+    staticFrameBorderEdited,
+    shouldRebuildStaticFrame,
     BORDER_THICKNESS_DEFAULT,
     BORDER_THICKNESS_MAX,
   };
