@@ -60,22 +60,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=54";
+      return "/js/liveAnalysisBridge.mjs?v=55";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=54");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=55");
     }
-    return "/js/liveAnalysisBridge.mjs?v=54";
+    return "/js/liveAnalysisBridge.mjs?v=55";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=54";
+      return "/js/staticFrameCompose.mjs?v=55";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=54");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=55");
     }
-    return "/js/staticFrameCompose.mjs?v=54";
+    return "/js/staticFrameCompose.mjs?v=55";
   }
 
   async preloadStaticComposeModule() {
@@ -2888,9 +2888,28 @@ Please share payment details and license key.`;
     }
   }
 
+  async setStaticPlacementSize(variantId, placementId, sizePct) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updatePlacementSize) return;
+
+    const ok = window.StaticFrameCompose.updatePlacementSize(
+      row.layers,
+      placementId,
+      sizePct,
+    );
+    if (!ok) return;
+
+    row._badgesRepositioned = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
   async resetStaticVariantEdits(variantId) {
     const row = this.findResultRow(variantId);
-    if (!row?.layers?._staticFrame) return;
+    if (!row?.layers?._staticFrame && !(row?.layers?._badgePlacements || []).length)
+      return;
 
     await this.preloadStaticComposeModule();
     if (window.StaticFrameCompose?.resetStaticPlacements) {
@@ -2913,6 +2932,26 @@ Please share payment details and license key.`;
     }
   }
 
+  hasAdvancedEditor(row) {
+    if (window.StaticFrameCompose?.isEditableVariant) {
+      return window.StaticFrameCompose.isEditableVariant(row);
+    }
+    return this.isStaticPromoRow(row) || !!(row?.layers?._badgePlacements || []).length;
+  }
+
+  getVariantComposeOptions(row) {
+    const preserveKb =
+      !row?.meta?.targetKb && row?.blob?.size
+        ? Math.ceil(row.blob.size / 1024)
+        : row?.meta?.actualKb || 0;
+    return {
+      targetKb: row?.meta?.targetKb || 0,
+      preserveKb: row?.meta?.targetKb ? 0 : preserveKb,
+      jpegQuality: row?.meta?.jpegQuality,
+      style: row?.layers?._staticFrame?.style,
+    };
+  }
+
   async refreshStaticPreview(variantId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
@@ -2929,7 +2968,7 @@ Please share payment details and license key.`;
       row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
         row.layers,
         row.editFlags || {},
-        { targetKb: row.meta?.targetKb || 0 },
+        this.getVariantComposeOptions(row),
       );
     }
 
@@ -3062,14 +3101,16 @@ Please share payment details and license key.`;
     if (!SFC || !container) return;
 
     const frame = row.layers._staticFrame || {};
-    const style = frame.style || row.meta?.path || "";
+    const style = frame.style || row.meta?.path || row.meta?.style || "";
+    const showFrameColors = !!frame.outerW;
     const slots = SFC.getBadgeSlots(row);
     const placements = row.layers._badgePlacements || [];
     const presets = SFC.GRADIENT_PRESETS || [];
     const allHidden = slots.length > 0 && slots.every((s) => s.hidden);
 
     let html = "";
-    html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
+    if (showFrameColors) {
+      html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
 
     html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
       <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
@@ -3081,7 +3122,7 @@ Please share payment details and license key.`;
     });
     html += `</select></label>`;
 
-    if (style === "showcase" || frame.frameType === "gradient" || frame.gradientPreset) {
+    if (style === "showcase" || style === "live_standard" || frame.frameType === "gradient" || frame.gradientPreset) {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Top
         <input type="color" id="static-color-top" value="${frame.gradientTop || "#FF9800"}" style="flex:1;height:28px;border:none;">
       </label>`;
@@ -3096,13 +3137,14 @@ Please share payment details and license key.`;
       </label>`;
     }
 
-    if (style === "tall_static") {
+    if (style === "tall_static" || style === "live_framed") {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
         <input type="color" id="static-color-border" value="${frame.borderColor || "#45a9e5"}" style="flex:1;height:28px;border:none;">
       </label>`;
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
         <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
       </label>`;
+      }
     }
 
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
@@ -3117,6 +3159,7 @@ Please share payment details and license key.`;
       const p = placements.find((b) => b.id === slot.id);
       const posH = p?.posH ?? slot.posH ?? 0;
       const posV = p?.posV ?? slot.posV ?? 0;
+      const sizePct = p?.sizePct ?? slot.sizePct ?? 100;
       const isFreeShip = p?.kind === "freeShipping";
       html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3138,6 +3181,9 @@ Please share payment details and license key.`;
         html += `</select></label>`;
       }
 
+      html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%
+        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;">
+      </label>`;
       html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%
         <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;">
       </label>`;
@@ -3147,7 +3193,14 @@ Please share payment details and license key.`;
       html += `</div>`;
     });
 
-    html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep est ₹ at ${row.meta?.targetKb || "?"}KB — shipping unchanged.</p>`;
+    const priceLock = row.meta?.targetKb
+      ? `est ₹ at ${row.meta.targetKb}KB`
+      : row.shippingCost > 0
+      ? `shipping ₹${row.shippingCost}`
+      : row.estShipping > 0
+      ? `est ₹${row.estShipping}`
+      : "original pricing";
+    html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep ${priceLock} unchanged.</p>`;
     container.innerHTML = html;
 
     const vid = row.variantId;
@@ -3232,6 +3285,17 @@ Please share payment details and license key.`;
     };
     bindSliders(".static-pos-h", "h");
     bindSliders(".static-pos-v", "v");
+
+    container.querySelectorAll(".static-size-pct").forEach((range) => {
+      range.oninput = () => {
+        const id = range.dataset.badgeId;
+        const valSpan = container.querySelector(`.static-size-val[data-badge-id="${id}"]`);
+        if (valSpan) valSpan.textContent = range.value;
+      };
+      range.onchange = () => {
+        void this.setStaticPlacementSize(vid, range.dataset.badgeId, parseInt(range.value, 10));
+      };
+    });
   }
 
   refreshVariantCard(row) {
@@ -3287,12 +3351,13 @@ Please share payment details and license key.`;
     setRow("#variant-edit-add-both-wrap", addBothCb, caps.canAddBoth);
 
     const isStatic = caps.isStaticPromo || this.isStaticPromoRow(row);
+    const hasAdvanced = caps.canAdjustBadges || this.hasAdvancedEditor(row);
     const addSection = panel.querySelector("#variant-edit-add-section");
     const staticSection = panel.querySelector("#variant-edit-static-badges");
     const resetBtn = panel.querySelector("#variant-edit-reset");
     if (addSection) addSection.style.display = "block";
     if (staticSection) {
-      if (isStatic && caps.canAdjustBadges) {
+      if (hasAdvanced) {
         staticSection.style.display = "block";
         void this.preloadStaticComposeModule().then(() => {
           if (this._editingVariantId === row.variantId) {
@@ -3323,15 +3388,15 @@ Please share payment details and license key.`;
     }
     const footerNote = panel.querySelector("#variant-edit-footer-note");
     if (footerNote) {
-      footerNote.textContent = isStatic
-        ? "RGB colors, gradients, badge picker & sliders — est ₹ unchanged at original KB."
+      footerNote.textContent = hasAdvanced
+        ? "RGB colors, gradients, badge size/position — pricing unchanged on save."
         : "6 preview options — edits update save only, not shipping ₹.";
     }
     if (resetBtn) {
       const edited =
         this.isVariantEdited(row.editFlags, row.layers, row) ||
-        (isStatic && window.StaticFrameCompose?.needsStaticCompose?.(row));
-      resetBtn.style.display = isStatic && edited ? "block" : "none";
+        (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
+      resetBtn.style.display = hasAdvanced && edited ? "block" : "none";
     }
   }
 
@@ -3353,7 +3418,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "2") {
+    if (panel && panel.dataset.staticEditorV !== "3") {
       panel.remove();
       panel = null;
     }
@@ -3361,7 +3426,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "2";
+    panel.dataset.staticEditorV = "3";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:16px;";
     panel.innerHTML = `
@@ -3542,9 +3607,14 @@ Please share payment details and license key.`;
       );
       return;
     }
-    if (this.isStaticPromoRow(row)) {
+    if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
       await this.preloadStaticComposeModule();
-      if (window.StaticFrameCompose?.ensureStaticPlacementMeta && row.layers._staticFrame) {
+      if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+        await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+      } else if (
+        window.StaticFrameCompose?.ensureStaticPlacementMeta &&
+        row.layers._staticFrame
+      ) {
         window.StaticFrameCompose.ensureStaticPlacementMeta(
           row.layers,
           row.layers._staticFrame.style,

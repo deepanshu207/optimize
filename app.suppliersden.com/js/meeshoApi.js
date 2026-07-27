@@ -1491,6 +1491,19 @@ const MeeshoAPI = {
             border,
             badgeCount,
           );
+          badgePlacements.forEach((p, i) => {
+            p.id = "live-badge-" + i;
+            p.label = "Badge " + (i + 1);
+          });
+
+          const gradAxis =
+            gradType === 0
+              ? "solid"
+              : gradType === 1
+              ? "horizontal"
+              : gradType === 3
+              ? "diagonal"
+              : "vertical";
 
           if (typeof ImageGenerator !== "undefined" && ImageGenerator.drawText) {
             ImageGenerator.drawText(ctx, finalW, finalH, border);
@@ -1531,6 +1544,15 @@ const MeeshoAPI = {
                   badgeCount,
                   stickersRendered,
                   style: "standard",
+                  canvasW: finalW,
+                  canvasH: finalH,
+                  productW: w,
+                  productH: h,
+                  gradientTop: c1,
+                  gradientBottom: c2,
+                  gradType,
+                  gradAxis,
+                  jpegQuality: quality,
                 },
                 layers: {
                   full,
@@ -1539,6 +1561,21 @@ const MeeshoAPI = {
                   productOnly,
                   _stickersRendered: stickersRendered,
                   _badgePlacements: badgePlacements,
+                  _staticFrame: {
+                    style: "live_standard",
+                    frameType: gradType === 0 ? "solid" : "gradient",
+                    gradientTop: c1,
+                    gradientBottom: c2,
+                    gradientAxis: gradAxis,
+                    borderColor: c1,
+                    px: border,
+                    py: border,
+                    dw: w,
+                    dh: h,
+                    border,
+                    outerW: finalW,
+                    outerH: finalH,
+                  },
                 },
               }),
             "image/jpeg",
@@ -1685,7 +1722,8 @@ const MeeshoAPI = {
     const ctx = canvas.getContext("2d");
 
     const blues = ["#9ec5e8", "#add8e6", "#b8d4e8", "#a8cce8", "#7ec8e3"];
-    ctx.fillStyle = blues[Math.abs(seed || 0) % blues.length];
+    const borderColor = blues[Math.abs(seed || 0) % blues.length];
+    ctx.fillStyle = borderColor;
     ctx.fillRect(0, 0, finalW, finalH);
 
     ctx.fillStyle = "#ffffff";
@@ -1707,13 +1745,14 @@ const MeeshoAPI = {
       layout: isTallProfile ? "tall" : "screenshot",
       blueOuter,
       whitePad,
+      borderColor,
     };
   },
 
   buildLowShippingFramedLayers: async function (img, profile, seed) {
     const built = this.buildScreenshotFramedCanvas(img, profile, seed);
 
-    const { canvas, px, py, dw, dh } = built;
+    const { canvas, px, py, dw, dh, blueOuter, borderColor } = built;
     const noStickersCanvas = document.createElement("canvas");
     noStickersCanvas.width = canvas.width;
     noStickersCanvas.height = canvas.height;
@@ -1729,6 +1768,11 @@ const MeeshoAPI = {
       dh,
       seed,
     );
+    badgePlacements.forEach((p, i) => {
+      p.id = "live-framed-" + i;
+      p.label = "Badge " + (i + 1);
+      p.drawn = true;
+    });
     const full = this.dataUrlFromCanvas(canvas);
 
     const productOnlyCanvas = document.createElement("canvas");
@@ -1756,7 +1800,33 @@ const MeeshoAPI = {
 
     return {
       canvas,
-      layers: { full, noStickers, noBorder, productOnly },
+      layers: {
+        full,
+        noStickers,
+        noBorder,
+        productOnly,
+        _stickersRendered: badgePlacements.length > 0,
+        _badgePlacements: badgePlacements,
+        _staticFrame: {
+          style: "live_framed",
+          frameType: "tall",
+          borderColor: borderColor || "#add8e6",
+          matColor: "#ffffff",
+          gradientTop: borderColor || "#add8e6",
+          gradientBottom: "#7ec8e3",
+          px,
+          py,
+          dw,
+          dh,
+          border: blueOuter,
+          outerW: canvas.width,
+          outerH: canvas.height,
+          whiteX: blueOuter,
+          whiteY: blueOuter,
+          whiteW: canvas.width - blueOuter * 2,
+          whiteH: canvas.height - blueOuter * 2,
+        },
+      },
       meta: {
         layout: built.layout,
         profileId: profile.id,
@@ -1768,6 +1838,9 @@ const MeeshoAPI = {
         canvasH: canvas.height,
         productW: dw,
         productH: dh,
+        borderPx: blueOuter,
+        blueOuter,
+        borderColor: borderColor || "#add8e6",
         style: "framed_low",
       },
     };
@@ -1924,28 +1997,56 @@ const MeeshoAPI = {
     if (!layers) return empty;
 
     if (layers._staticFrame) {
+      const frameStyle = layers._staticFrame.style;
+      const isStaticPromo =
+        frameStyle === "showcase" ||
+        frameStyle === "lifestyle_promo" ||
+        frameStyle === "tall_static";
       const hasStickers = layers._stickersRendered !== false;
+      const hasPlacements = !!(layers._badgePlacements || []).length;
+
+      if (isStaticPromo) {
+        return {
+          hasStickers,
+          hasBorder: true,
+          canRemoveStickers: hasStickers,
+          canRemoveBorder: !!layers.noBorder,
+          canRemoveBoth: !!layers.productOnly,
+          canAddStickers: false,
+          canAddBorder: false,
+          canAddBoth: false,
+          isStaticPromo: true,
+          canAdjustBadges: hasStickers && hasPlacements,
+        };
+      }
+
+      const diff = (a, b) => !!(a && b && a !== b);
+      const hasBorder =
+        diff(layers.noStickers, layers.productOnly) ||
+        diff(layers.full, layers.noBorder);
       return {
-        hasStickers,
-        hasBorder: true,
-        canRemoveStickers: hasStickers,
-        canRemoveBorder: !!layers.noBorder,
-        canRemoveBoth: !!layers.productOnly,
-        canAddStickers: false,
-        canAddBorder: false,
-        canAddBoth: false,
-        isStaticPromo: true,
-        canAdjustBadges: hasStickers && !!(layers._badgePlacements || []).length,
+        hasStickers: hasStickers && hasPlacements,
+        hasBorder,
+        canRemoveStickers: hasStickers && hasPlacements,
+        canRemoveBorder: hasBorder && !!layers.noBorder,
+        canRemoveBoth: (hasStickers || hasBorder) && !!layers.productOnly,
+        canAddStickers: !hasStickers && !!(layers.full || layers.noBorder),
+        canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
+        canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
+        isStaticPromo: false,
+        canAdjustBadges: hasPlacements,
       };
     }
 
     const diff = (a, b) => !!(a && b && a !== b);
+    const hasPlacements = !!(layers._badgePlacements || []).length;
     const hasStickers =
       layers._stickersRendered === true
         ? true
         : layers._stickersRendered === false
         ? false
-        : diff(layers.full, layers.noStickers) ||
+        : hasPlacements ||
+          diff(layers.full, layers.noStickers) ||
           diff(layers.noBorder, layers.productOnly);
     const hasBorder =
       diff(layers.noStickers, layers.productOnly) ||
@@ -1961,7 +2062,7 @@ const MeeshoAPI = {
       canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
       canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
       isStaticPromo: false,
-      canAdjustBadges: false,
+      canAdjustBadges: hasPlacements,
     };
   },
 
@@ -1971,6 +2072,11 @@ const MeeshoAPI = {
     if (!layers) return base;
 
     if (layers._staticFrame) {
+      const frameStyle = layers._staticFrame.style;
+      const isStaticPromo =
+        frameStyle === "showcase" ||
+        frameStyle === "lifestyle_promo" ||
+        frameStyle === "tall_static";
       let hasStickers = base.hasStickers;
       let hasBorder = base.hasBorder;
       if (flags.cleanProduct) {
@@ -1990,16 +2096,20 @@ const MeeshoAPI = {
         hasStickers,
         hasBorder,
         canRemoveStickers: hasStickers,
-        canRemoveBorder: hasBorder && !!layers.noBorder,
+        canRemoveBorder: isStaticPromo ? hasBorder && !!layers.noBorder : hasBorder && !flags.borderOnlyRemoved && !flags.cleanProduct,
         canRemoveBoth:
           (hasStickers || hasBorder) && !!layers.productOnly,
-        canAddStickers:
-          !hasStickers && !!(layers.noStickers || layers.noBorder || layers.full),
-        canAddBorder: !hasBorder && !!(layers.noStickers || layers.full),
-        canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
-        isStaticPromo: true,
-        canAdjustBadges:
-          base.canAdjustBadges && hasStickers,
+        canAddStickers: isStaticPromo
+          ? false
+          : !hasStickers && !!(layers.noStickers || layers.noBorder || layers.full),
+        canAddBorder: isStaticPromo
+          ? false
+          : !hasBorder && !!(layers.noStickers || layers.full),
+        canAddBoth: isStaticPromo
+          ? false
+          : !(hasStickers && hasBorder) && !!layers.full,
+        isStaticPromo,
+        canAdjustBadges: base.canAdjustBadges && hasStickers,
       };
     }
 
@@ -2033,7 +2143,8 @@ const MeeshoAPI = {
       canAddBorder: !hasBorder && !!(layers.full || layers.noStickers),
       canAddBoth: !(hasStickers && hasBorder) && !!layers.full,
       isStaticPromo: false,
-      canAdjustBadges: false,
+      canAdjustBadges:
+        base.canAdjustBadges && hasStickers,
     };
   },
 
@@ -2061,14 +2172,47 @@ const MeeshoAPI = {
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
+          const preserveKb = result.meta?.targetKb
+            ? 0
+            : result.blob?.size
+            ? Math.ceil(result.blob.size / 1024)
+            : result.meta?.actualKb || 0;
           return await window.StaticFrameCompose.composeStaticPreview(
             result.layers,
             result.editFlags || {},
-            { targetKb: result.meta?.targetKb || 0 },
+            {
+              targetKb: result.meta?.targetKb || 0,
+              preserveKb,
+              jpegQuality: result.meta?.jpegQuality,
+              style: result.layers._staticFrame?.style,
+            },
           );
         } catch (e) {}
       }
       return this.resolveDisplayUrl(result);
+    }
+
+    const needsLiveCompose =
+      typeof window !== "undefined" &&
+      window.StaticFrameCompose?.needsStaticCompose?.(result);
+    if (
+      needsLiveCompose &&
+      typeof window !== "undefined" &&
+      window.StaticFrameCompose?.composeStaticPreview
+    ) {
+      try {
+        const preserveKb = result.blob?.size
+          ? Math.ceil(result.blob.size / 1024)
+          : 0;
+        return await window.StaticFrameCompose.composeStaticPreview(
+          result.layers,
+          result.editFlags || {},
+          {
+            preserveKb,
+            jpegQuality: result.meta?.jpegQuality,
+          },
+        );
+      } catch (e) {}
     }
 
     const flags = result.editFlags || {};
