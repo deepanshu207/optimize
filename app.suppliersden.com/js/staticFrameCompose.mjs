@@ -2,7 +2,7 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=50";
+import { drawTallPlacement } from "./tallStaticBadges.mjs?v=51";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
