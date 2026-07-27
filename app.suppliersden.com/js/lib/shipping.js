@@ -110,7 +110,8 @@ export function estimateImageShipping(variant) {
     return 50;
   }
   if (path === "gown_static") {
-    if (maxSide <= 1024 && kb >= 44 && kb <= 52) return Math.min(kb, 49);
+    if (maxSide <= 1024 && kb >= 38 && kb <= 50) return Math.min(kb, 49);
+    if (kb > 50 && kb <= 72) return 79;
     return 49;
   }
   if (path === "collage_back") {

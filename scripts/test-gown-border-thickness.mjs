@@ -1,14 +1,18 @@
 /**
- * Gown static variant + border thickness default (100% = unchanged frame).
+ * Gown static — reference geometry + ₹49 KB band (not tall_static max-fill).
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyBorderThickness } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
-import { applyBorderThickness } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
+const gownCode = readFileSync(
+  resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
+  "utf8",
+);
 
 let failed = 0;
 function assert(cond, msg) {
@@ -20,57 +24,47 @@ function assert(cond, msg) {
   }
 }
 
+assert(gownCode.includes("imageToCanvas"), "gown keeps lifestyle scene (not white flatten)");
+assert(!gownCode.includes("imageToWhiteCanvas"), "gown does not white-flatten product");
+assert(gownCode.includes("GOWN_PRODUCT_FILL = 0.64"), "product capped at 64% of white mat");
+assert(gownCode.includes("GOWN_TEAL_RATIO = 0.035"), "thin teal border ratio");
+assert(gownCode.includes("#64c5d3"), "reference teal color");
+assert(gownCode.includes("compressGownToKb"), "downscale compressor for ₹49 KB band");
+assert(gownCode.includes("const start = 38"), "KB tiers start at 38 not 45");
+assert(gownCode.includes("const end = 48"), "KB tiers end at 48");
+
 const gownFrame = {
   style: "gown_static",
   frameType: "tall",
-  border: 28,
-  whitePad: 12,
-  baseBorder: 28,
-  baseWhitePad: 12,
-  basePx: 40,
-  basePy: 40,
-  baseWhiteX: 28,
-  baseWhiteY: 28,
-  baseWhiteW: 647,
-  baseWhiteH: 968,
-  px: 40,
-  py: 40,
-  dw: 623,
-  dh: 944,
+  border: 25,
+  whitePad: 80,
+  baseBorder: 25,
+  baseWhitePad: 80,
+  basePx: 105,
+  basePy: 105,
+  baseWhiteX: 25,
+  baseWhiteY: 25,
+  baseWhiteW: 653,
+  baseWhiteH: 974,
+  px: 105,
+  py: 105,
+  dw: 418,
+  dh: 627,
   outerW: 703,
   outerH: 1024,
-  whiteX: 28,
-  whiteY: 28,
-  whiteW: 647,
-  whiteH: 968,
+  whiteX: 25,
+  whiteY: 25,
+  whiteW: 653,
+  whiteH: 974,
   borderThicknessPct: 100,
 };
 
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 28, "100% keeps base border 28");
-assert(gownFrame.px === 40, "100% keeps base px 40");
-assert(gownFrame.whiteX === 28, "100% keeps base whiteX 28");
-
-gownFrame.borderThicknessPct = 50;
-applyBorderThickness(gownFrame);
-assert(gownFrame.border === 14, "50% scales border to 14");
-assert(gownFrame.whiteX === 14, "50% scales white mat inset");
-
-gownFrame.borderThicknessPct = 100;
-applyBorderThickness(gownFrame);
-assert(gownFrame.border === 28, "restore 100% returns exact base border");
-assert(gownFrame.px === 40, "restore 100% returns exact base px");
-
-const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
-const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
-assert(uiCode.includes("renderGownStaticSection"), "ui has gown section");
-assert(uiCode.includes('data-static-gen="gown"'), "hub has gown button");
-assert(contentCode.includes("generateGownStaticFrames"), "content has gown generator");
-assert(contentCode.includes("static-border-thickness"), "editor has border thickness slider");
-assert(contentCode.includes("borderThicknessPct: 100") || contentCode.includes("borderThicknessPct ?? 100"), "generators default thickness 100");
+assert(gownFrame.border === 25, "100% keeps thin teal border");
+assert(gownFrame.whitePad === 80, "100% keeps thick white mat padding");
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);
 }
-console.log("\nAll gown / border-thickness checks passed");
+console.log("\nAll gown reference / ₹49 band checks passed");

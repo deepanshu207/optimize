@@ -846,8 +846,8 @@ const OptimizerUI = {
             <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
                 <div style="background:rgba(13,148,136,0.1);border:1px solid rgba(94,196,200,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#0f766e;">👗 Gown Promo Frames</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · teal border · Best PRICE · FLASH SALE · MOST POPULAR</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ~₹49 band</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · thin teal · lifestyle scene · thick white mat</motion.div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">38–48 KB · Best/Flash/Popular · est ~₹49</div>
                 </div>
         `;
 

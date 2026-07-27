@@ -6,10 +6,10 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=60";
-import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=60";
-import { estimateImageShipping } from "./lib/shipping.js?v=60";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=60";
+} from "./lib/canvas-utils.js?v=61";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=61";
+import { estimateImageShipping } from "./lib/shipping.js?v=61";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=61";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
