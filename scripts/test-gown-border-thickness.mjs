@@ -61,7 +61,7 @@ assert(gownFrame.dh === 715, "50 does not shrink product height");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border > 18, "500 thickens teal border");
+assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
 assert(gownFrame.border + gownFrame.whitePad > 113, "500 increases total frame inset");
 assert(gownFrame.dw === 477, "500 does not shrink product width");
 assert(gownFrame.dh === 715, "500 does not shrink product height");

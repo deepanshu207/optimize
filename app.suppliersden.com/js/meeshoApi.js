@@ -2164,10 +2164,19 @@ const MeeshoAPI = {
   resolveDisplayUrlAsync: async function (result) {
     if (!result?.layers) return this.resolveDisplayUrl(result);
 
-    if (result.layers._staticFrame) {
+    const staticFrame = result.layers._staticFrame;
+    const borderEdited =
+      staticFrame &&
+      (staticFrame.borderThicknessPct ?? 100) !==
+        (window.StaticFrameCompose?.BORDER_THICKNESS_DEFAULT ?? 100);
+
+    if (staticFrame) {
       const needsCompose =
-        typeof window !== "undefined" &&
-        window.StaticFrameCompose?.needsStaticCompose?.(result);
+        borderEdited ||
+        result._staticAppearanceEdited ||
+        result._badgesRepositioned ||
+        (typeof window !== "undefined" &&
+          window.StaticFrameCompose?.needsStaticCompose?.(result));
       if (
         needsCompose &&
         typeof window !== "undefined" &&
@@ -2186,10 +2195,13 @@ const MeeshoAPI = {
               targetKb: result.meta?.targetKb || 0,
               preserveKb,
               jpegQuality: result.meta?.jpegQuality,
-              style: result.layers._staticFrame?.style,
+              style: staticFrame?.style,
+              staticAppearanceEdited: !!result._staticAppearanceEdited,
             },
           );
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Static compose preview failed:", e);
+        }
       }
       return this.resolveDisplayUrl(result);
     }

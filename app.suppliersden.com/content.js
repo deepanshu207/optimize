@@ -63,22 +63,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=66";
+      return "/js/liveAnalysisBridge.mjs?v=67";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=66");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=67");
     }
-    return "/js/liveAnalysisBridge.mjs?v=66";
+    return "/js/liveAnalysisBridge.mjs?v=67";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=66";
+      return "/js/staticFrameCompose.mjs?v=67";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=66");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=67");
     }
-    return "/js/staticFrameCompose.mjs?v=66";
+    return "/js/staticFrameCompose.mjs?v=67";
   }
 
   async preloadStaticComposeModule() {
@@ -3174,7 +3174,29 @@ Please share payment details and license key.`;
 
     await this.preloadStaticComposeModule();
 
-    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+    const composeOpts = {
+      ...this.getVariantComposeOptions(row),
+      staticAppearanceEdited: !!row._staticAppearanceEdited,
+    };
+
+    if (
+      window.StaticFrameCompose?.composeStaticPreview &&
+      (row._staticAppearanceEdited ||
+        row._badgesRepositioned ||
+        window.StaticFrameCompose.shouldRebuildStaticFrame?.(row.layers, {
+          staticAppearanceEdited: !!row._staticAppearanceEdited,
+        }))
+    ) {
+      try {
+        row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
+          row.layers,
+          row.editFlags || {},
+          composeOpts,
+        );
+      } catch (e) {
+        console.warn("Static preview compose failed:", e);
+      }
+    } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
       } catch (e) {
@@ -3184,7 +3206,7 @@ Please share payment details and license key.`;
       row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
         row.layers,
         row.editFlags || {},
-        this.getVariantComposeOptions(row),
+        composeOpts,
       );
     }
 
@@ -3391,8 +3413,8 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
 
-    await this.preloadStaticComposeModule();
-    if (!window.StaticFrameCompose?.updateFrameAppearance) return;
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
 
     window.StaticFrameCompose.updateFrameAppearance(row.layers, {
       borderThicknessPct: pct,
@@ -3401,7 +3423,34 @@ Please share payment details and license key.`;
       window.StaticFrameCompose.reanchorPlacements(row.layers);
     }
     row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+
+    const composeOpts = {
+      ...this.getVariantComposeOptions(row),
+      staticAppearanceEdited: true,
+    };
+
+    if (window.StaticFrameCompose.composeStaticPreview) {
+      try {
+        row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
+          row.layers,
+          row.editFlags || {},
+          composeOpts,
+        );
+      } catch (e) {
+        console.warn("Border thickness preview failed:", e);
+        await this.refreshStaticPreview(variantId);
+        return;
+      }
+    } else {
+      await this.refreshStaticPreview(variantId);
+      return;
+    }
+
+    if (this._editingVariantId === variantId) {
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview && row.imageUrl) preview.src = row.imageUrl;
+    }
+    this.refreshVariantCard(row);
   }
 
   async setStaticGradientPreset(variantId, presetId) {

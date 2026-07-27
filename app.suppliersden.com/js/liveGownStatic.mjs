@@ -2,10 +2,10 @@
  * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=65";
-import { blobToDataUrl } from "./lib/encoder.js?v=65";
-import { estimateImageShipping } from "./lib/shipping.js?v=65";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=65";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=67";
+import { blobToDataUrl } from "./lib/encoder.js?v=67";
+import { estimateImageShipping } from "./lib/shipping.js?v=67";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
 
 export const GOWN_STATIC_OUTER_W = 703;
 export const GOWN_STATIC_OUTER_H = 1024;
