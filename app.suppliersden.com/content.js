@@ -40,6 +40,9 @@ class MeeshoShippingOptimizer {
     this.originalImageUrl = null;
     this.modal = null;
     this.autoPopupShown = false;
+    this._borderThicknessTimer = null;
+    this._borderComposeGen = 0;
+    this._staticControlsVariantId = null;
     this.init();
   }
 
@@ -63,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=67";
+      return "/js/liveAnalysisBridge.mjs?v=68";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=67");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=68");
     }
-    return "/js/liveAnalysisBridge.mjs?v=67";
+    return "/js/liveAnalysisBridge.mjs?v=68";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=67";
+      return "/js/staticFrameCompose.mjs?v=68";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=67");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=68");
     }
-    return "/js/staticFrameCompose.mjs?v=67";
+    return "/js/staticFrameCompose.mjs?v=68";
   }
 
   async preloadStaticComposeModule() {
@@ -3155,17 +3158,52 @@ Please share payment details and license key.`;
     return this.isStaticPromoRow(row) || !!(row?.layers?._badgePlacements || []).length;
   }
 
-  getVariantComposeOptions(row) {
+  getVariantComposeOptions(row, { preview = false } = {}) {
     const preserveKb =
       !row?.meta?.targetKb && row?.blob?.size
         ? Math.ceil(row.blob.size / 1024)
         : row?.meta?.actualKb || 0;
+    if (preview) {
+      return {
+        targetKb: 0,
+        preserveKb: 0,
+        jpegQuality: row?.meta?.jpegQuality || 0.82,
+        style: row?.layers?._staticFrame?.style,
+        preview: true,
+      };
+    }
     return {
       targetKb: row?.meta?.targetKb || 0,
       preserveKb: row?.meta?.targetKb ? 0 : preserveKb,
       jpegQuality: row?.meta?.jpegQuality,
       style: row?.layers?._staticFrame?.style,
     };
+  }
+
+  async composePreviewForRow(row, options = {}) {
+    if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
+    const gen = ++this._borderComposeGen;
+    const url = await window.StaticFrameCompose.composeStaticPreview(
+      row.layers,
+      row.editFlags || {},
+      {
+        ...this.getVariantComposeOptions(row, { preview: true }),
+        staticAppearanceEdited: !!row._staticAppearanceEdited,
+        ...options,
+      },
+    );
+    if (gen !== this._borderComposeGen) return row.imageUrl || url;
+    return url;
+  }
+
+  applyStaticPreviewToRow(row, url, variantId) {
+    if (!url) return;
+    row.imageUrl = url;
+    if (this._editingVariantId === variantId) {
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview) preview.src = url;
+    }
+    this.refreshVariantCard(row);
   }
 
   async refreshStaticPreview(variantId) {
@@ -3175,7 +3213,7 @@ Please share payment details and license key.`;
     await this.preloadStaticComposeModule();
 
     const composeOpts = {
-      ...this.getVariantComposeOptions(row),
+      ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
     };
 
@@ -3188,11 +3226,8 @@ Please share payment details and license key.`;
         }))
     ) {
       try {
-        row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-          row.layers,
-          row.editFlags || {},
-          composeOpts,
-        );
+        const url = await this.composePreviewForRow(row, composeOpts);
+        if (url) row.imageUrl = url;
       } catch (e) {
         console.warn("Static preview compose failed:", e);
       }
@@ -3203,11 +3238,8 @@ Please share payment details and license key.`;
         row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
       }
     } else if (window.StaticFrameCompose?.composeStaticPreview) {
-      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-        row.layers,
-        row.editFlags || {},
-        composeOpts,
-      );
+      const url = await this.composePreviewForRow(row, composeOpts);
+      if (url) row.imageUrl = url;
     }
 
     if (this._editingVariantId === variantId) {
@@ -3409,7 +3441,21 @@ Please share payment details and license key.`;
     await this.refreshStaticPreview(variantId);
   }
 
-  async setStaticBorderThickness(variantId, pct) {
+  queueStaticBorderThickness(variantId, pct) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    const panel = document.getElementById("variant-edit-static-badges");
+    const val = panel?.querySelector("#static-border-thickness-val");
+    if (val) val.textContent = String(pct);
+
+    clearTimeout(this._borderThicknessTimer);
+    this._borderThicknessTimer = setTimeout(() => {
+      void this.applyStaticBorderThickness(variantId, pct);
+    }, 150);
+  }
+
+  async applyStaticBorderThickness(variantId, pct) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
 
@@ -3424,33 +3470,18 @@ Please share payment details and license key.`;
     }
     row._staticAppearanceEdited = true;
 
-    const composeOpts = {
-      ...this.getVariantComposeOptions(row),
-      staticAppearanceEdited: true,
-    };
-
-    if (window.StaticFrameCompose.composeStaticPreview) {
-      try {
-        row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-          row.layers,
-          row.editFlags || {},
-          composeOpts,
-        );
-      } catch (e) {
-        console.warn("Border thickness preview failed:", e);
-        await this.refreshStaticPreview(variantId);
-        return;
-      }
-    } else {
+    try {
+      const url = await this.composePreviewForRow(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
+    } catch (e) {
+      console.warn("Border thickness preview failed:", e);
       await this.refreshStaticPreview(variantId);
-      return;
     }
+  }
 
-    if (this._editingVariantId === variantId) {
-      const preview = document.getElementById("variant-edit-preview");
-      if (preview && row.imageUrl) preview.src = row.imageUrl;
-    }
-    this.refreshVariantCard(row);
+  async setStaticBorderThickness(variantId, pct) {
+    clearTimeout(this._borderThicknessTimer);
+    await this.applyStaticBorderThickness(variantId, pct);
   }
 
   async setStaticGradientPreset(variantId, presetId) {
@@ -3641,11 +3672,19 @@ Please share payment details and license key.`;
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
     if (borderThickness) {
-      borderThickness.oninput = () => {
+      const commitBorder = () => {
         const v = parseInt(borderThickness.value, 10);
         if (borderThicknessVal) borderThicknessVal.textContent = String(v);
         void this.setStaticBorderThickness(vid, v);
       };
+      borderThickness.oninput = () => {
+        const v = parseInt(borderThickness.value, 10);
+        if (borderThicknessVal) borderThicknessVal.textContent = String(v);
+        this.queueStaticBorderThickness(vid, v);
+      };
+      borderThickness.onchange = commitBorder;
+      borderThickness.addEventListener("pointerup", commitBorder);
+      borderThickness.addEventListener("touchend", commitBorder, { passive: true });
     }
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
@@ -3754,6 +3793,9 @@ Please share payment details and license key.`;
   closeVariantEditor() {
     const panel = document.getElementById("variant-edit-panel");
     if (panel) panel.style.display = "none";
+    clearTimeout(this._borderThicknessTimer);
+    this._borderThicknessTimer = null;
+    this._staticControlsVariantId = null;
     this._editingVariantId = null;
   }
 
@@ -3798,14 +3840,25 @@ Please share payment details and license key.`;
     if (staticSection) {
       if (hasAdvanced) {
         staticSection.style.display = "block";
-        void this.preloadStaticComposeModule().then(() => {
-          if (this._editingVariantId === row.variantId) {
-            this.renderStaticBadgePlacementControls(row, staticSection);
-          }
-        });
+        const sameVariant = this._staticControlsVariantId === row.variantId;
+        if (!sameVariant) {
+          this._staticControlsVariantId = row.variantId;
+          void this.preloadStaticComposeModule().then(() => {
+            if (this._editingVariantId === row.variantId) {
+              this.renderStaticBadgePlacementControls(row, staticSection);
+            }
+          });
+        } else {
+          const slider = staticSection.querySelector("#static-border-thickness");
+          const val = staticSection.querySelector("#static-border-thickness-val");
+          const pct = row.layers._staticFrame?.borderThicknessPct ?? 100;
+          if (slider && document.activeElement !== slider) slider.value = String(pct);
+          if (val && document.activeElement !== slider) val.textContent = String(pct);
+        }
       } else {
         staticSection.style.display = "none";
         staticSection.innerHTML = "";
+        this._staticControlsVariantId = null;
       }
     }
 

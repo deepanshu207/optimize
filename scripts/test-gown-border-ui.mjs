@@ -19,7 +19,7 @@ await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 await page.waitForFunction(() => window.meeshoOptimizer, { timeout: 15000 });
 
 const injected = await page.evaluate(async () => {
-  await import("/js/staticFrameCompose.mjs?v=67");
+  await import("/js/staticFrameCompose.mjs?v=68");
 
   const productCanvas = document.createElement("canvas");
   productCanvas.width = 477;
@@ -120,16 +120,10 @@ const before = await page.$eval("#variant-edit-preview", (el) => el.src.length);
 await page.$eval("#static-border-thickness", (el) => {
   el.value = "500";
   el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
 });
 
-await page.waitForFunction(
-  (len) => {
-    const src = document.getElementById("variant-edit-preview")?.src || "";
-    return src.length > 0 && src.length !== len;
-  },
-  { timeout: 10000 },
-  before,
-);
+await new Promise((r) => setTimeout(r, 220));
 
 const after = await page.$eval("#variant-edit-preview", (el) => el.src.length);
 const borderVal = await page.$eval("#static-border-thickness-val", (el) => el.textContent);

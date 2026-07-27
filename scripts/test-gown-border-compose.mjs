@@ -23,7 +23,7 @@ page.on("pageerror", (err) => logs.push(`[pageerror] ${err.message}`));
 await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 
 const result = await page.evaluate(async () => {
-  const mod = await import("/js/staticFrameCompose.mjs?v=67");
+  const mod = await import("/js/staticFrameCompose.mjs?v=68");
   const {
     applyBorderThickness,
     composeStaticPreview,
