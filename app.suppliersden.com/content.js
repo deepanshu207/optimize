@@ -63,22 +63,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=64";
+      return "/js/liveAnalysisBridge.mjs?v=65";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=64");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=65");
     }
-    return "/js/liveAnalysisBridge.mjs?v=64";
+    return "/js/liveAnalysisBridge.mjs?v=65";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=64";
+      return "/js/staticFrameCompose.mjs?v=65";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=64");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=65");
     }
-    return "/js/staticFrameCompose.mjs?v=64";
+    return "/js/staticFrameCompose.mjs?v=65";
   }
 
   async preloadStaticComposeModule() {
@@ -3463,7 +3463,7 @@ Please share payment details and license key.`;
 
     if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#A0E6E6" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
+        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#71cbd3" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
       </label>`;
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
         <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">

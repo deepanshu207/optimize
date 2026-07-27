@@ -2,21 +2,21 @@
  * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=64";
-import { blobToDataUrl } from "./lib/encoder.js?v=64";
-import { estimateImageShipping } from "./lib/shipping.js?v=64";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=64";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=65";
+import { blobToDataUrl } from "./lib/encoder.js?v=65";
+import { estimateImageShipping } from "./lib/shipping.js?v=65";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=65";
 
 export const GOWN_STATIC_OUTER_W = 703;
 export const GOWN_STATIC_OUTER_H = 1024;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Reference listing: light aqua teal + thick white mat. */
-const BORDER_TEAL = "#A0E6E6";
-const BORDER_TEAL_DARK = "#7ec8d0";
-const GOWN_TEAL_RATIO = 0.022;
-const GOWN_WHITE_PAD_RATIO = 0.162;
-const GOWN_INNER_PRODUCT_FILL = 0.9;
+/** Reference listing: thin teal + thick white mat, lifestyle photo fills mat. */
+const BORDER_TEAL = "#71cbd3";
+const BORDER_TEAL_DARK = "#5eb8c4";
+const GOWN_TEAL_RATIO = 0.025;
+/** Visible white mat between teal border and lifestyle photo (~13.5% per side). */
+const GOWN_WHITE_PAD_RATIO = 0.135;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -81,27 +81,24 @@ async function compressGownToKb(canvas, targetKb) {
 function buildGownStaticFrameCanvas(img) {
   const outerW = GOWN_STATIC_OUTER_W;
   const outerH = GOWN_STATIC_OUTER_H;
-  const base = imageToCanvas(img, 1400);
+  const base = imageToCanvas(img, 1200);
   const ref = Math.min(outerW, outerH);
 
   const tealOuter = Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
-  const whitePad = Math.max(72, Math.round(ref * GOWN_WHITE_PAD_RATIO));
-  const inset = tealOuter + whitePad;
+  const whitePad = Math.max(64, Math.round(ref * GOWN_WHITE_PAD_RATIO));
   const whiteX = tealOuter;
   const whiteY = tealOuter;
   const whiteW = outerW - tealOuter * 2;
   const whiteH = outerH - tealOuter * 2;
 
-  const innerW = outerW - inset * 2;
-  const innerH = outerH - inset * 2;
-  const maxProdW = Math.round(innerW * GOWN_INNER_PRODUCT_FILL);
-  const maxProdH = Math.round(innerH * GOWN_INNER_PRODUCT_FILL);
+  const maxProdW = whiteW - whitePad * 2;
+  const maxProdH = whiteH - whitePad * 2;
   const fitScale = Math.min(maxProdW / base.width, maxProdH / base.height, 1);
   const sw = Math.round(base.width * fitScale);
   const sh = Math.round(base.height * fitScale);
 
-  const px = inset + Math.round((innerW - sw) / 2);
-  const py = inset + Math.round((innerH - sh) / 2);
+  const px = tealOuter + whitePad + Math.round((maxProdW - sw) / 2);
+  const py = tealOuter + whitePad + Math.round((maxProdH - sh) / 2);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -137,13 +134,13 @@ function buildGownStaticFrameCanvas(img) {
 
 function gownStaticPlacements(px, py, dw, dh) {
   const ref = Math.min(dw, dh);
-  const bestW = Math.round(ref * 0.38);
-  const bestH = Math.round(bestW * 0.72);
-  const flashW = Math.round(ref * 0.34);
-  const flashH = Math.round(flashW * 0.42);
-  const popW = Math.round(ref * 0.48);
-  const popH = Math.round(popW * 0.28);
-  const inset = Math.max(2, Math.round(ref * 0.012));
+  const bestW = Math.round(ref * 0.36);
+  const bestH = Math.round(bestW * 0.7);
+  const flashW = Math.round(ref * 0.32);
+  const flashH = Math.round(flashW * 0.4);
+  const popW = Math.round(ref * 0.42);
+  const popH = Math.round(popW * 0.26);
+  const inset = Math.max(2, Math.round(ref * 0.015));
 
   return [
     {
@@ -167,7 +164,7 @@ function gownStaticPlacements(px, py, dw, dh) {
       w: flashW,
       h: flashH,
       x: px + dw - flashW - inset,
-      y: py + Math.round(dh * 0.025),
+      y: py + Math.round(dh * 0.03),
       drawn: false,
     },
     {
@@ -178,8 +175,8 @@ function gownStaticPlacements(px, py, dw, dh) {
       gownSlot: "gown-popular",
       w: popW,
       h: popH,
-      x: px - Math.round(popW * 0.12),
-      y: py + Math.round(dh * 0.5) - Math.round(popH / 2),
+      x: px - Math.round(popW * 0.08),
+      y: py + Math.round(dh * 0.48) - Math.round(popH / 2),
       drawn: false,
     },
   ];
