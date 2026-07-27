@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=71";
+      return "/js/liveAnalysisBridge.mjs?v=72";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=71");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=72");
     }
-    return "/js/liveAnalysisBridge.mjs?v=71";
+    return "/js/liveAnalysisBridge.mjs?v=72";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=71";
+      return "/js/staticFrameCompose.mjs?v=72";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=71");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=72");
     }
-    return "/js/staticFrameCompose.mjs?v=71";
+    return "/js/staticFrameCompose.mjs?v=72";
   }
 
   async preloadStaticComposeModule() {
@@ -3580,7 +3580,130 @@ Please share payment details and license key.`;
     await this.refreshStaticPreview(variantId);
 
     if (this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
       this.renderVariantEditorPanel(row);
+    }
+  }
+
+  buildStaticColorFieldHtml(id, label, colorValue, fallback = "#000000") {
+    const SFC = window.StaticFrameCompose;
+    const hex = SFC?.normalizeFrameColor?.(colorValue, fallback) || fallback;
+    const rgb = SFC?.hexToRgb?.(hex) || { r: 0, g: 0, b: 0 };
+    return `<div class="static-color-row" data-color-id="${id}" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span style="font-size:11px;min-width:52px;">${label}</span>
+        <input type="color" class="static-color-pick" id="${id}" value="${hex}" style="width:40px;height:28px;border:1px solid #e5e7eb;border-radius:4px;padding:0;flex-shrink:0;">
+        <span class="static-color-hex" id="${id}-hex" style="font-size:10px;color:#4b5563;font-family:monospace;">${hex}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b7280;">
+        <span style="min-width:24px;">RGB</span>
+        <input type="number" class="static-color-r" id="${id}-r" min="0" max="255" value="${rgb.r}" inputmode="numeric" aria-label="${label} red" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
+        <input type="number" class="static-color-g" id="${id}-g" min="0" max="255" value="${rgb.g}" inputmode="numeric" aria-label="${label} green" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
+        <input type="number" class="static-color-b" id="${id}-b" min="0" max="255" value="${rgb.b}" inputmode="numeric" aria-label="${label} blue" style="width:46px;padding:4px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;">
+      </div>
+    </div>`;
+  }
+
+  syncStaticColorRowFromPicker(container, id) {
+    const SFC = window.StaticFrameCompose;
+    const pick = container.querySelector(`#${id}`);
+    if (!pick || !SFC?.hexToRgb) return;
+    const hex = SFC.normalizeFrameColor(pick.value);
+    if (!hex) return;
+    const rgb = SFC.hexToRgb(hex);
+    const hexEl = container.querySelector(`#${id}-hex`);
+    const r = container.querySelector(`#${id}-r`);
+    const g = container.querySelector(`#${id}-g`);
+    const b = container.querySelector(`#${id}-b`);
+    if (hexEl) hexEl.textContent = hex;
+    if (r) r.value = String(rgb.r);
+    if (g) g.value = String(rgb.g);
+    if (b) b.value = String(rgb.b);
+    pick.value = hex;
+  }
+
+  readStaticColorField(container, id) {
+    const SFC = window.StaticFrameCompose;
+    if (!SFC) return null;
+    const r = container.querySelector(`#${id}-r`);
+    const g = container.querySelector(`#${id}-g`);
+    const b = container.querySelector(`#${id}-b`);
+    if (r?.value !== "" && g?.value !== "" && b?.value !== "") {
+      const hex = SFC.rgbToHex(r.value, g.value, b.value);
+      return SFC.normalizeFrameColor(hex);
+    }
+    const pick = container.querySelector(`#${id}`);
+    return SFC.normalizeFrameColor(pick?.value);
+  }
+
+  syncStaticColorRowFromRgb(container, id) {
+    const SFC = window.StaticFrameCompose;
+    const r = container.querySelector(`#${id}-r`);
+    const g = container.querySelector(`#${id}-g`);
+    const b = container.querySelector(`#${id}-b`);
+    const pick = container.querySelector(`#${id}`);
+    const hexEl = container.querySelector(`#${id}-hex`);
+    if (!r || !g || !b || !SFC) return false;
+    if (r.value === "" || g.value === "" || b.value === "") return false;
+    const hex = SFC.normalizeFrameColor(SFC.rgbToHex(r.value, g.value, b.value));
+    if (!hex) return false;
+    if (pick) pick.value = hex;
+    if (hexEl) hexEl.textContent = hex;
+    return true;
+  }
+
+  bindStaticColorFields(container, { variantId, style }) {
+    const colorMap = {
+      "static-color-top": { patchKey: "gradientTop", frameType: "gradient" },
+      "static-color-bottom": { patchKey: "gradientBottom", frameType: "gradient" },
+      "static-color-border": {
+        patchKey: "borderColor",
+        frameType: style === "lifestyle_promo" ? "solid" : undefined,
+      },
+      "static-color-mat": { patchKey: "matColor" },
+    };
+
+    const applyColors = () => {
+      const patch = {};
+      for (const [id, cfg] of Object.entries(colorMap)) {
+        if (!container.querySelector(`#${id}`)) continue;
+        const hex = this.readStaticColorField(container, id);
+        if (!hex) continue;
+        patch[cfg.patchKey] = hex;
+        if (cfg.frameType) patch.frameType = cfg.frameType;
+      }
+      if (!Object.keys(patch).length) return;
+      patch.gradientPreset = null;
+      const presetSel = container.querySelector("#static-gradient-preset");
+      if (presetSel) presetSel.value = "";
+      void this.setStaticFrameColors(variantId, patch);
+    };
+
+    const rgbTimers = new Map();
+    for (const id of Object.keys(colorMap)) {
+      const pick = container.querySelector(`#${id}`);
+      if (!pick) continue;
+      pick.oninput = () => {
+        this.syncStaticColorRowFromPicker(container, id);
+        applyColors();
+      };
+      for (const ch of ["r", "g", "b"]) {
+        const input = container.querySelector(`#${id}-${ch}`);
+        if (!input) continue;
+        input.oninput = () => {
+          clearTimeout(rgbTimers.get(input));
+          rgbTimers.set(
+            input,
+            setTimeout(() => {
+              if (this.syncStaticColorRowFromRgb(container, id)) applyColors();
+            }, 180),
+          );
+        };
+        input.onchange = () => {
+          clearTimeout(rgbTimers.get(input));
+          if (this.syncStaticColorRowFromRgb(container, id)) applyColors();
+        };
+      }
     }
   }
 
@@ -3611,27 +3734,42 @@ Please share payment details and license key.`;
     html += `</select></label>`;
 
     if (style === "showcase" || style === "live_standard" || frame.frameType === "gradient" || frame.gradientPreset) {
-      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Top
-        <input type="color" id="static-color-top" value="${frame.gradientTop || "#FF9800"}" style="flex:1;height:28px;border:none;">
-      </label>`;
-      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Bottom
-        <input type="color" id="static-color-bottom" value="${frame.gradientBottom || "#4CAF50"}" style="flex:1;height:28px;border:none;">
-      </label>`;
+      html += this.buildStaticColorFieldHtml(
+        "static-color-top",
+        "Top",
+        frame.gradientTop,
+        "#FF9800",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-bottom",
+        "Bottom",
+        frame.gradientBottom,
+        "#4CAF50",
+      );
     }
 
     if (style === "lifestyle_promo") {
-      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || "#32d74b"}" style="flex:1;height:28px;border:none;">
-      </label>`;
+      html += this.buildStaticColorFieldHtml(
+        "static-color-border",
+        "Border",
+        frame.borderColor,
+        "#32d74b",
+      );
     }
 
     if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
-      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#71cbd3" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
-      </label>`;
-      html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
-        <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
-      </label>`;
+      html += this.buildStaticColorFieldHtml(
+        "static-color-border",
+        "Border",
+        frame.borderColor,
+        style === "gown_static" ? "#71cbd3" : "#45a9e5",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-mat",
+        "Mat",
+        frame.matColor,
+        "#ffffff",
+      );
     }
 
     const borderPct = frame.borderThicknessPct ?? 100;
@@ -3735,34 +3873,7 @@ Please share payment details and license key.`;
       };
     }
 
-    const applyColors = () => {
-      const patch = {};
-      const top = container.querySelector("#static-color-top");
-      const bottom = container.querySelector("#static-color-bottom");
-      const border = container.querySelector("#static-color-border");
-      const mat = container.querySelector("#static-color-mat");
-      if (top?.value) {
-        patch.gradientTop = top.value;
-        patch.frameType = "gradient";
-      }
-      if (bottom?.value) {
-        patch.gradientBottom = bottom.value;
-        patch.frameType = "gradient";
-      }
-      if (border?.value) {
-        patch.borderColor = border.value;
-        if (style === "lifestyle_promo") patch.frameType = "solid";
-      }
-      if (mat?.value) patch.matColor = mat.value;
-      if (Object.keys(patch).length) void this.setStaticFrameColors(vid, patch);
-    };
-
-    ["#static-color-top", "#static-color-bottom", "#static-color-border", "#static-color-mat"].forEach(
-      (sel) => {
-        const el = container.querySelector(sel);
-        if (el) el.oninput = applyColors;
-      },
-    );
+    this.bindStaticColorFields(container, { variantId: vid, style });
 
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
