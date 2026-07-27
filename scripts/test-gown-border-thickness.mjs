@@ -92,6 +92,11 @@ assert(
 );
 assert(!gownCode.includes("GOWN_INNER_PRODUCT_FILL"), "gown fills white mat not double-padded");
 assert(gownCode.includes("whiteW - whitePad * 2"), "gown product sized from white mat");
+assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
+assert(contentCode.includes("borderThicknessLocked"), "border lock stored on frame");
+assert(contentCode.includes("static-size-lock"), "badge size has lock button");
+assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
+assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
 assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");
 assert(contentCode.includes("preview: true"), "editor preview skips targetKb recompress");
 assert(contentCode.includes("pricingImageUrl"), "pricing image kept separate from preview");

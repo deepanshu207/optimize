@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=68";
+      return "/js/liveAnalysisBridge.mjs?v=70";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=68");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=70");
     }
-    return "/js/liveAnalysisBridge.mjs?v=68";
+    return "/js/liveAnalysisBridge.mjs?v=70";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=68";
+      return "/js/staticFrameCompose.mjs?v=70";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=68");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=70");
     }
-    return "/js/staticFrameCompose.mjs?v=68";
+    return "/js/staticFrameCompose.mjs?v=70";
   }
 
   async preloadStaticComposeModule() {
@@ -3105,9 +3105,12 @@ Please share payment details and license key.`;
     }
   }
 
-  async setStaticPlacementSize(variantId, placementId, sizePct) {
+  async setStaticPlacementSize(variantId, placementId, sizePct, options = {}) {
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
+
+    const p = (row.layers._badgePlacements || []).find((b) => b.id === placementId);
+    if (p?.lockSize !== false && !options.force) return;
 
     await this.preloadStaticComposeModule();
     if (!window.StaticFrameCompose?.updatePlacementSize) return;
@@ -3116,11 +3119,19 @@ Please share payment details and license key.`;
       row.layers,
       placementId,
       sizePct,
+      options,
     );
     if (!ok) return;
 
     row._badgesRepositioned = true;
     await this.refreshStaticPreview(variantId);
+
+    if (options.autoLock && this._editingVariantId === variantId) {
+      const container = document.querySelector("#variant-edit-static-badges");
+      if (container) {
+        this.updatePlacementSizeLockUI(container, placementId, row.layers);
+      }
+    }
   }
 
   async resetStaticVariantEdits(variantId) {
@@ -3374,6 +3385,50 @@ Please share payment details and license key.`;
     if (vWrap) vWrap.style.opacity = lockV ? "0.55" : "1";
   }
 
+  toggleStaticPlacementSizeLock(variantId, placementId) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers) return;
+
+    const p = (row.layers._badgePlacements || []).find((b) => b.id === placementId);
+    if (!p) return;
+
+    const locked = p.lockSize !== false;
+    if (window.StaticFrameCompose?.setPlacementSizeLock) {
+      window.StaticFrameCompose.setPlacementSizeLock(
+        row.layers,
+        placementId,
+        !locked,
+      );
+    } else {
+      p.lockSize = !locked;
+    }
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updatePlacementSizeLockUI(container, placementId, row.layers);
+  }
+
+  updatePlacementSizeLockUI(container, placementId, layers) {
+    const p = (layers?._badgePlacements || []).find((b) => b.id === placementId);
+    if (!p || !container) return;
+
+    const lockSize = p.lockSize !== false;
+    const lockBtn = container.querySelector(
+      `.static-size-lock[data-badge-id="${placementId}"]`,
+    );
+    const slider = container.querySelector(`.static-size-pct[data-badge-id="${placementId}"]`);
+    const wrap = container.querySelector(`.static-size-wrap[data-badge-id="${placementId}"]`);
+
+    if (lockBtn) {
+      lockBtn.textContent = lockSize ? "🔒" : "🔓";
+      lockBtn.title = lockSize
+        ? "Unlock size to adjust (locks again after change)"
+        : "Lock badge size";
+      lockBtn.setAttribute("aria-pressed", lockSize ? "true" : "false");
+    }
+    if (slider) slider.disabled = lockSize;
+    if (wrap) wrap.style.opacity = lockSize ? "0.55" : "1";
+  }
+
   async setStaticBadgeNum(variantId, placementId, badgeNum) {
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
@@ -3441,9 +3496,37 @@ Please share payment details and license key.`;
     await this.refreshStaticPreview(variantId);
   }
 
+  updateBorderThicknessLockUI(container, frame) {
+    if (!container || !frame) return;
+    const locked = frame.borderThicknessLocked !== false;
+    const btn = container.querySelector("#static-border-lock");
+    const slider = container.querySelector("#static-border-thickness");
+    const wrap = container.querySelector(".static-border-wrap");
+    if (btn) {
+      btn.textContent = locked ? "🔒" : "🔓";
+      btn.title = locked
+        ? "Unlock border thickness to adjust"
+        : "Lock border thickness";
+      btn.setAttribute("aria-pressed", locked ? "true" : "false");
+    }
+    if (slider) slider.disabled = locked;
+    if (wrap) wrap.style.opacity = locked ? "0.55" : "1";
+  }
+
+  toggleStaticBorderThicknessLock(variantId) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame) return;
+    const locked = frame.borderThicknessLocked !== false;
+    frame.borderThicknessLocked = !locked;
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updateBorderThicknessLockUI(container, frame);
+  }
+
   queueStaticBorderThickness(variantId, pct) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
+    if (row.layers._staticFrame.borderThicknessLocked !== false) return;
 
     const panel = document.getElementById("variant-edit-static-badges");
     const val = panel?.querySelector("#static-border-thickness-val");
@@ -3458,6 +3541,7 @@ Please share payment details and license key.`;
   async applyStaticBorderThickness(variantId, pct) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
+    if (row.layers._staticFrame.borderThicknessLocked !== false) return;
 
     const loaded = await this.preloadStaticComposeModule();
     if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
@@ -3551,9 +3635,15 @@ Please share payment details and license key.`;
     }
 
     const borderPct = frame.borderThicknessPct ?? 100;
-    html += `<label style="display:block;font-size:10px;margin-bottom:8px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)
-      <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;">
-    </label>`;
+    if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
+    const borderLocked = frame.borderThicknessLocked !== false;
+    html += `<div class="static-border-wrap" style="margin-bottom:8px;touch-action:none;${borderLocked ? "opacity:0.55;" : ""}">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+        <button type="button" id="static-border-lock" aria-pressed="${borderLocked ? "true" : "false"}" title="${borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${borderLocked ? "🔒" : "🔓"}</button>
+        <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
+      </div>
+      <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;"${borderLocked ? " disabled" : ""}>
+    </div>`;
     }
 
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
@@ -3571,6 +3661,7 @@ Please share payment details and license key.`;
       const sizePct = p?.sizePct ?? slot.sizePct ?? 100;
       const lockH = p?.lockH !== false;
       const lockV = p?.lockV !== false;
+      const lockSize = p?.lockSize !== false;
       const freeValue =
         window.StaticFrameCompose?.FREE_SHIPPING_BADGE_VALUE || "free";
       const showFreeOption = slot.freeShippingSlot || p?._freeShippingSlot;
@@ -3602,9 +3693,13 @@ Please share payment details and license key.`;
       }
       html += `</select></label>`;
 
-      html += `<label style="display:block;font-size:10px;margin-bottom:4px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%
-        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;">
-      </label>`;
+      html += `<div class="static-size-wrap" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;${lockSize ? "opacity:0.55;" : ""}">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <button type="button" class="static-size-lock" data-badge-id="${slot.id}" aria-pressed="${lockSize ? "true" : "false"}" title="${lockSize ? "Unlock size to adjust" : "Lock badge size"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockSize ? "🔒" : "🔓"}</button>
+          <span style="font-size:10px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%</span>
+        </div>
+        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;"${lockSize ? " disabled" : ""}>
+      </div>`;
       html += `<div class="static-pos-h-wrap" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;${lockH ? "opacity:0.55;" : ""}">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="h" data-badge-id="${slot.id}" aria-pressed="${lockH ? "true" : "false"}" title="${lockH ? "Unlock horizontal to adjust" : "Lock horizontal"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockH ? "🔒" : "🔓"}</button>
@@ -3671,13 +3766,33 @@ Please share payment details and license key.`;
 
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
+    const borderWrap = container.querySelector(".static-border-wrap");
+    const borderLock = container.querySelector("#static-border-lock");
+    if (borderWrap) {
+      borderWrap.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!borderThickness?.disabled) e.stopPropagation();
+        },
+        { passive: true },
+      );
+    }
+    if (borderLock) {
+      borderLock.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticBorderThicknessLock(vid);
+      };
+    }
     if (borderThickness) {
       const commitBorder = () => {
+        if (borderThickness.disabled) return;
         const v = parseInt(borderThickness.value, 10);
         if (borderThicknessVal) borderThicknessVal.textContent = String(v);
         void this.setStaticBorderThickness(vid, v);
       };
       borderThickness.oninput = () => {
+        if (borderThickness.disabled) return;
         const v = parseInt(borderThickness.value, 10);
         if (borderThicknessVal) borderThicknessVal.textContent = String(v);
         this.queueStaticBorderThickness(vid, v);
@@ -3764,15 +3879,49 @@ Please share payment details and license key.`;
     bindAxisSlider(".static-pos-h", "h");
     bindAxisSlider(".static-pos-v", "v");
 
+    container.querySelectorAll(".static-size-lock").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticPlacementSizeLock(vid, btn.dataset.badgeId);
+      };
+    });
+
+    const sizeTimers = new Map();
     container.querySelectorAll(".static-size-pct").forEach((range) => {
+      range.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!range.disabled) e.stopPropagation();
+        },
+        { passive: true },
+      );
       range.oninput = () => {
+        if (range.disabled) return;
         const id = range.dataset.badgeId;
         const valSpan = container.querySelector(`.static-size-val[data-badge-id="${id}"]`);
         if (valSpan) valSpan.textContent = range.value;
+        clearTimeout(sizeTimers.get(range));
+        sizeTimers.set(
+          range,
+          setTimeout(() => {
+            void this.setStaticPlacementSize(vid, id, parseInt(range.value, 10));
+          }, 120),
+        );
       };
-      range.onchange = () => {
-        void this.setStaticPlacementSize(vid, range.dataset.badgeId, parseInt(range.value, 10));
+      const commitSize = () => {
+        if (range.disabled) return;
+        clearTimeout(sizeTimers.get(range));
+        void this.setStaticPlacementSize(
+          vid,
+          range.dataset.badgeId,
+          parseInt(range.value, 10),
+          { autoLock: true },
+        );
       };
+      range.onchange = commitSize;
+      range.addEventListener("pointerup", commitSize);
+      range.addEventListener("touchend", commitSize, { passive: true });
     });
   }
 
@@ -3854,6 +4003,7 @@ Please share payment details and license key.`;
           const pct = row.layers._staticFrame?.borderThicknessPct ?? 100;
           if (slider && document.activeElement !== slider) slider.value = String(pct);
           if (val && document.activeElement !== slider) val.textContent = String(pct);
+          this.updateBorderThicknessLockUI(staticSection, row.layers._staticFrame);
         }
       } else {
         staticSection.style.display = "none";
