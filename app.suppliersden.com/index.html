@@ -230,9 +230,9 @@
           </div>
           <div class="generate-sticky" id="generate-sticky" style="margin:8px 16px 0;">
             <button type="button" id="generate-btn" class="generate-btn" disabled style="margin-top:0;">🚀 Generate Variants</button>
-            <button type="button" id="generate-showcase-btn" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
-            <button type="button" id="generate-promo-lifestyle-btn" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#22c55e;color:#fff;">🏷️ Generate Lifestyle Promo (25)</button>
-            <button type="button" id="generate-tall-static-btn" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#7c3aed;color:#fff;">📐 Generate Tall Promo (25)</button>
+            <button type="button" id="generate-showcase-btn" data-static-gen="showcase" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
+            <button type="button" id="generate-promo-lifestyle-btn" data-static-gen="lifestyle" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#22c55e;color:#fff;">🏷️ Generate Lifestyle Promo (25)</button>
+            <button type="button" id="generate-tall-static-btn" data-static-gen="tall" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#7c3aed;color:#fff;">📐 Generate Tall Promo (25)</button>
             <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · showcase / lifestyle / tall ₹50 · no Meesho session</p>
             <button type="button" id="test-generate-btn" class="generate-btn" disabled style="margin-top:0;display:none;">🧪 Run Test Lab</button>
           </div>
@@ -444,6 +444,12 @@
           if (window.meeshoOptimizer && window.meeshoOptimizer.setupOptimizerTabs) {
             window.meeshoOptimizer.setupOptimizerTabs();
           }
+          if (window.meeshoOptimizer && window.meeshoOptimizer.refreshLiveResultsPanel) {
+            window.meeshoOptimizer.refreshLiveResultsPanel({ scroll: false });
+          }
+          if (window.meeshoOptimizer && window.meeshoOptimizer.bindStaticPromoButtons) {
+            window.meeshoOptimizer.bindStaticPromoButtons();
+          }
         };
         reader.readAsDataURL(file);
       }
@@ -468,17 +474,17 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=58"></script>
-  <script src="/web-session.js?v=58"></script>
+  <script src="/js/meeshoCategories.js?v=59"></script>
+  <script src="/web-session.js?v=59"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=58"></script>
+  <script src="/js/meeshoApi.js?v=59"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=58"></script>
-  <script src="/content.js?v=58"></script>
-  <script src="/web-app.js?v=58"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=58"></script>
-  <script type="module" src="/js/liveAnalysisBridge.mjs?v=58"></script>
+  <script src="/js/ui.js?v=59"></script>
+  <script src="/content.js?v=59"></script>
+  <script src="/web-app.js?v=59"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=59"></script>
+  <script type="module" src="/js/liveAnalysisBridge.mjs?v=59"></script>
 </body>
 </html>
