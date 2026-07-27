@@ -618,9 +618,11 @@ const OptimizerUI = {
     const showcase = options.showcaseResults || [];
     const promo = options.promoLifestyleResults || [];
     const tall = options.tallStaticResults || [];
+    const gown = options.gownStaticResults || [];
     const genShowcase = !!options.isGeneratingShowcase;
     const genPromo = !!options.isGeneratingPromoLifestyle;
     const genTall = !!options.isGeneratingTallStatic;
+    const genGown = !!options.isGeneratingGownStatic;
     const count = options.showcaseVariantCount || 25;
 
     const bestEst = (list) => {
@@ -645,7 +647,7 @@ const OptimizerUI = {
     return `
       <div id="static-promo-hub" style="margin-bottom:16px;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;background:linear-gradient(180deg,#fafafa,#fff);">
         <div style="font-size:13px;font-weight:700;margin-bottom:4px;text-align:center;">🎨 Static Promo Studio</div>
-        <p style="font-size:10px;color:#6b7280;text-align:center;margin:0 0 10px;">Generate showcase, lifestyle, or tall promo — same image, no refresh needed</p>
+        <p style="font-size:10px;color:#6b7280;text-align:center;margin:0 0 10px;">Generate showcase, lifestyle, tall, or gown promo — same image, no refresh needed</p>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
           <button type="button" data-static-gen="showcase" class="generate-btn" style="${btnStyle("linear-gradient(135deg,#ff9800,#4caf50)", genShowcase)}" ${genShowcase ? "disabled" : ""}>
             ${genShowcase ? "Generating showcase frames…" : `🖼️ Generate Showcase Frames (${count})`}
@@ -656,11 +658,15 @@ const OptimizerUI = {
           <button type="button" data-static-gen="tall" class="generate-btn" style="${btnStyle("#7c3aed", genTall)}" ${genTall ? "disabled" : ""}>
             ${genTall ? "Generating tall promo…" : `📐 Generate Tall Promo (${count})`}
           </button>
+          <button type="button" data-static-gen="gown" class="generate-btn" style="${btnStyle("#0d9488", genGown)}" ${genGown ? "disabled" : ""}>
+            ${genGown ? "Generating gown promo…" : `👗 Generate Gown Promo (${count})`}
+          </button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
           ${chip("Showcase", showcase.length, bestEst(showcase), "rgba(255,152,0,0.15)")}
           ${chip("Lifestyle", promo.length, bestEst(promo), "rgba(34,197,94,0.15)")}
           ${chip("Tall", tall.length, bestEst(tall), "rgba(124,58,237,0.15)")}
+          ${chip("Gown", gown.length, bestEst(gown), "rgba(13,148,136,0.15)")}
         </div>
       </div>`;
   },
@@ -821,6 +827,56 @@ const OptimizerUI = {
     return html;
   },
 
+  renderGownStaticSection: function (options) {
+    if (!window.WEB_OPTIMIZER_MODE) return "";
+
+    options = options || {};
+    const gown = options.gownStaticResults || [];
+    const showPanel = !!options.showGownStaticResults;
+    const baseline = options.baselineShipping || 0;
+    const sorted = [...gown].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+    const bestEst =
+      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+
+    let html = `
+            <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
+                <div style="background:rgba(13,148,136,0.1);border:1px solid rgba(94,196,200,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
+                    <div style="font-size:11px;color:#0f766e;">👗 Gown Promo Frames</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · teal border · Best PRICE · FLASH SALE · MOST POPULAR</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ~₹49 band</div>
+                </div>
+        `;
+
+    if (gown.length > 0) {
+      html += `
+                <button type="button" id="toggle-gown-static-results" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;font-size:12px;margin-bottom:6px;">
+                    ${showPanel ? "▼" : "▶"} See more gown promo variants (${gown.length}) — best est ₹${bestEst}
+                </button>
+                <div id="gown-static-results-panel" style="display:${showPanel ? "block" : "none"};">
+                    <div class="gown-static-results-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:520px;overflow-y:auto;">
+        `;
+      sorted.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode: false,
+          analysisMode: true,
+          isBest: i === 0,
+        });
+      });
+      html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
   // Results HTML - Only accurate results
   getResultsHTML: function (results, options) {
     options = options || {};
@@ -832,15 +888,18 @@ const OptimizerUI = {
       window.WEB_OPTIMIZER_MODE ? options.promoLifestyleResults || [] : [];
     const tallStaticResults =
       window.WEB_OPTIMIZER_MODE ? options.tallStaticResults || [] : [];
+    const gownStaticResults =
+      window.WEB_OPTIMIZER_MODE ? options.gownStaticResults || [] : [];
     const hasShowcase = showcaseResults.length > 0;
     const hasPromoLifestyle = promoLifestyleResults.length > 0;
     const hasTallStatic = tallStaticResults.length > 0;
+    const hasGownStatic = gownStaticResults.length > 0;
     const hasLive = results.length > 0;
     const hasAnalysis = analysisPrimary.length > 0;
 
     const staticPromoHubActive = !!options.staticPromoHubActive;
 
-    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && !hasTallStatic && !staticPromoHubActive) {
+    if (!hasLive && !hasAnalysis && !hasShowcase && !hasPromoLifestyle && !hasTallStatic && !hasGownStatic && !staticPromoHubActive) {
       return `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">😔</div>
@@ -1007,7 +1066,9 @@ const OptimizerUI = {
       html += this.renderShowcaseSection(options);
       html += this.renderPromoLifestyleSection(options);
       html += this.renderTallStaticSection(options);
-    } else if (hasLive || hasAnalysis || hasShowcase || hasPromoLifestyle || hasTallStatic) {
+      html += this.renderGownStaticSection(options);
+    } else if (hasLive || hasAnalysis || hasShowcase || hasPromoLifestyle || hasTallStatic || hasGownStatic) {
+      html += this.renderGownStaticSection(options);
       html += this.renderTallStaticSection(options);
       html += this.renderPromoLifestyleSection(options);
       html += this.renderShowcaseSection(options);
@@ -1043,6 +1104,16 @@ const OptimizerUI = {
     const bestShowcaseEst =
       bestShowcase?.estShipping || bestShowcase?.meta?.estInr || 0;
 
+    const bestGown = hasGownStatic
+      ? [...gownStaticResults].sort(
+          (a, b) =>
+            (a.estShipping || a.meta?.estInr || 999) -
+            (b.estShipping || b.meta?.estInr || 999),
+        )[0]
+      : null;
+    const bestGownEst =
+      bestGown?.estShipping || bestGown?.meta?.estInr || 0;
+
     const bestLive = hasLive && results[0]?.shippingCost > 0 ? results[0].shippingCost : null;
     const analysisSorted = hasAnalysis
       ? [...analysisPrimary].sort(
@@ -1055,7 +1126,8 @@ const OptimizerUI = {
       ? analysisSorted[0].estShipping || analysisSorted[0].meta?.estInr || 0
       : 0;
 
-    const bestStaticEst = bestTallEst || bestPromoEst || bestShowcaseEst;
+    const bestStaticEst =
+      bestGownEst || bestTallEst || bestPromoEst || bestShowcaseEst;
 
     html += `
             <div style="display:flex;gap:8px;">

@@ -82,6 +82,10 @@ assert(
   indexHtml.includes('data-static-gen="tall"'),
   "sticky tall button has data-static-gen",
 );
+assert(
+  indexHtml.includes('data-static-gen="gown"'),
+  "sticky gown button has data-static-gen",
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

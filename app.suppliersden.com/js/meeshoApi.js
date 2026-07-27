@@ -1995,7 +1995,8 @@ const MeeshoAPI = {
       const isStaticPromo =
         frameStyle === "showcase" ||
         frameStyle === "lifestyle_promo" ||
-        frameStyle === "tall_static";
+        frameStyle === "tall_static" ||
+        frameStyle === "gown_static";
       const hasStickers = layers._stickersRendered !== false;
       const hasPlacements = !!(layers._badgePlacements || []).length;
 
@@ -2070,7 +2071,8 @@ const MeeshoAPI = {
       const isStaticPromo =
         frameStyle === "showcase" ||
         frameStyle === "lifestyle_promo" ||
-        frameStyle === "tall_static";
+        frameStyle === "tall_static" ||
+        frameStyle === "gown_static";
       let hasStickers = base.hasStickers;
       let hasBorder = base.hasBorder;
       if (flags.cleanProduct) {

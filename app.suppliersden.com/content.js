@@ -22,6 +22,9 @@ class MeeshoShippingOptimizer {
     this.tallStaticResults = [];
     this.showTallStaticResults = false;
     this.isGeneratingTallStatic = false;
+    this.gownStaticResults = [];
+    this.showGownStaticResults = false;
+    this.isGeneratingGownStatic = false;
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -60,22 +63,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=59";
+      return "/js/liveAnalysisBridge.mjs?v=62";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=59");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=62");
     }
-    return "/js/liveAnalysisBridge.mjs?v=59";
+    return "/js/liveAnalysisBridge.mjs?v=62";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=59";
+      return "/js/staticFrameCompose.mjs?v=62";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=59");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=62");
     }
-    return "/js/staticFrameCompose.mjs?v=59";
+    return "/js/staticFrameCompose.mjs?v=62";
   }
 
   async preloadStaticComposeModule() {
@@ -100,7 +103,7 @@ class MeeshoShippingOptimizer {
       return window.StaticFrameCompose.isStaticPromoVariant(row);
     }
     const style = row?.variantStyle || row?.meta?.path || "";
-    return style === "showcase" || style === "lifestyle_promo" || style === "tall_static";
+    return style === "showcase" || style === "lifestyle_promo" || style === "tall_static" || style === "gown_static";
   }
 
   async preloadLiveAnalysisModule() {
@@ -157,6 +160,14 @@ class MeeshoShippingOptimizer {
     if (!ready || !window.LiveAnalysis?.runTallStaticGeneration) return null;
     return window.LiveAnalysis.runTallStaticGeneration(file, {
       onProgress: (msg) => console.log("Tall static:", msg),
+    });
+  }
+
+  async runGownStaticGeneration(file) {
+    const ready = await this.preloadLiveAnalysisModule();
+    if (!ready || !window.LiveAnalysis?.runGownStaticGeneration) return null;
+    return window.LiveAnalysis.runGownStaticGeneration(file, {
+      onProgress: (msg) => console.log("Gown static:", msg),
     });
   }
 
@@ -328,6 +339,62 @@ class MeeshoShippingOptimizer {
     }
   }
 
+  async generateGownStaticFrames() {
+    if (!window.WEB_OPTIMIZER_MODE) return;
+    if (this.isGeneratingGownStatic) return;
+
+    const scrollToResults = !this.hasStaticPromoResults();
+    const file = await this.getImageFileForShowcase();
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+
+    this.lastProcessedFile = file;
+    this.isGeneratingGownStatic = true;
+    this.displayLiveResultsPanel({ scroll: false });
+
+    const processingArea = document.getElementById("processing-area");
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:24px 16px;">
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building gown promo frames…</div>
+          <div style="font-size:12px;color:#666;">703×1024 teal frame · Best/Flash/Popular badges · ~₹49 band</div>
+        </div>`;
+    }
+
+    try {
+      const out = await this.runGownStaticGeneration(file);
+      if (!out?.success || !out.results?.length) {
+        OptimizerUtils.showNotification(
+          "Could not generate gown promo frames",
+          "error",
+        );
+        return;
+      }
+      this.gownStaticResults = out.results.map((r, i) =>
+        this.mapResultFromApi(r, i + 90000),
+      );
+      this.gownStaticResults.sort(
+        (a, b) => (a.estShipping || 999) - (b.estShipping || 999),
+      );
+      this.showGownStaticResults = true;
+      OptimizerUtils.showNotification(
+        `✅ ${this.gownStaticResults.length} gown promo frames ready (est ₹${this.gownStaticResults[0]?.estShipping || "—"})`,
+        "success",
+      );
+      this.displayLiveResultsPanel({ scroll: scrollToResults });
+    } catch (e) {
+      console.error("Gown static generate:", e);
+      OptimizerUtils.showNotification("Gown promo generation failed", "error");
+    } finally {
+      this.isGeneratingGownStatic = false;
+      if (processingArea) processingArea.style.display = "none";
+      this.displayLiveResultsPanel({ scroll: false });
+    }
+  }
+
   displayLiveResultsPanel(options = {}) {
     this.refreshLiveResultsPanel(options);
   }
@@ -345,7 +412,8 @@ class MeeshoShippingOptimizer {
     return !!(
       this.showcaseResults.length ||
       this.promoLifestyleResults.length ||
-      this.tallStaticResults.length
+      this.tallStaticResults.length ||
+      this.gownStaticResults.length
     );
   }
 
@@ -420,6 +488,14 @@ class MeeshoShippingOptimizer {
         e.preventDefault();
         e.stopPropagation();
         void this.generateTallStaticFrames();
+      };
+    });
+    root.querySelectorAll('[data-static-gen="gown"]').forEach((btn) => {
+      btn.disabled = !hasFile || this.isGeneratingGownStatic;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.generateGownStaticFrames();
       };
     });
   }
@@ -745,6 +821,14 @@ class MeeshoShippingOptimizer {
         document.getElementById("image-input")?.files?.[0];
       tallStaticBtn.disabled = !hasFile;
     }
+    const gownStaticBtn = document.getElementById("generate-gown-static-btn");
+    if (gownStaticBtn) {
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      gownStaticBtn.disabled = !hasFile;
+    }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
@@ -1047,12 +1131,14 @@ Please share payment details and license key.`;
       const showcaseBtn = document.getElementById("generate-showcase-btn");
       const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
       const tallStaticBtn = document.getElementById("generate-tall-static-btn");
+      const gownStaticBtn = document.getElementById("generate-gown-static-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (showcaseBtn) showcaseBtn.disabled = false;
         if (promoBtn) promoBtn.disabled = false;
         if (tallStaticBtn) tallStaticBtn.disabled = false;
+        if (gownStaticBtn) gownStaticBtn.disabled = false;
         if (bootMsg) {
           bootMsg.textContent =
             this.getActiveOptimizerTab() === "test"
@@ -1137,6 +1223,15 @@ Please share payment details and license key.`;
           e.preventDefault();
           e.stopPropagation();
           void this.generateTallStaticFrames();
+        };
+      }
+      const gownStaticBtn = document.getElementById("generate-gown-static-btn");
+      if (gownStaticBtn) {
+        gownStaticBtn.disabled = !getUploadFile();
+        gownStaticBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void this.generateGownStaticFrames();
         };
       }
     }
@@ -1682,6 +1777,9 @@ Please share payment details and license key.`;
     this.tallStaticResults = [];
     this.showTallStaticResults = false;
     this.isGeneratingTallStatic = false;
+    this.gownStaticResults = [];
+    this.showGownStaticResults = false;
+    this.isGeneratingGownStatic = false;
     this.testLabCurrentResults = [];
     this.testLabFramedExtraResults = [];
     this.testLabShowFramedExtras = false;
@@ -2055,6 +2153,9 @@ Please share payment details and license key.`;
     this.tallStaticResults = [];
     this.showTallStaticResults = false;
     this.isGeneratingTallStatic = false;
+    this.gownStaticResults = [];
+    this.showGownStaticResults = false;
+    this.isGeneratingGownStatic = false;
 
     const uploadArea = document.getElementById("upload-area");
     const sections = document.querySelectorAll(".opt-section");
@@ -2282,7 +2383,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0))) {
+    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0 || this.gownStaticResults.length > 0))) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -2695,6 +2796,10 @@ Please share payment details and license key.`;
       showTallStaticResults: this.showTallStaticResults,
       isGeneratingTallStatic: this.isGeneratingTallStatic,
       tallStaticVariantCount: 25,
+      gownStaticResults: this.gownStaticResults,
+      showGownStaticResults: this.showGownStaticResults,
+      isGeneratingGownStatic: this.isGeneratingGownStatic,
+      gownStaticVariantCount: 25,
       staticPromoHubActive: this.shouldShowStaticPromoWorkspace(),
     };
   }
@@ -2851,6 +2956,9 @@ Please share payment details and license key.`;
       return this.testLabAnalysisPrimaryResults[0];
     }
     if (this.analysisPrimaryResults.length) return this.analysisPrimaryResults[0];
+    if (window.WEB_OPTIMIZER_MODE && this.gownStaticResults.length) {
+      return this.gownStaticResults[0];
+    }
     if (window.WEB_OPTIMIZER_MODE && this.tallStaticResults.length) {
       return this.tallStaticResults[0];
     }
@@ -2955,6 +3063,7 @@ Please share payment details and license key.`;
       this.showcaseResults.find((r) => r.variantId === variantId) ||
       this.promoLifestyleResults.find((r) => r.variantId === variantId) ||
       this.tallStaticResults.find((r) => r.variantId === variantId) ||
+      this.gownStaticResults.find((r) => r.variantId === variantId) ||
       this.testLabCurrentResults.find((r) => r.variantId === variantId) ||
       this.testLabFramedExtraResults.find((r) => r.variantId === variantId) ||
       this.testLabAnalysisPrimaryResults.find((r) => r.variantId === variantId) ||
@@ -3278,6 +3387,20 @@ Please share payment details and license key.`;
     await this.refreshStaticPreview(variantId);
   }
 
+  async setStaticBorderThickness(variantId, pct) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.preloadStaticComposeModule();
+    if (!window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, {
+      borderThicknessPct: pct,
+    });
+    row._staticAppearanceEdited = true;
+    await this.refreshStaticPreview(variantId);
+  }
+
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
@@ -3335,14 +3458,19 @@ Please share payment details and license key.`;
       </label>`;
     }
 
-    if (style === "tall_static" || style === "live_framed") {
+    if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;">Border
-        <input type="color" id="static-color-border" value="${frame.borderColor || "#45a9e5"}" style="flex:1;height:28px;border:none;">
+        <input type="color" id="static-color-border" value="${frame.borderColor || (style === "gown_static" ? "#5ec4c8" : "#45a9e5")}" style="flex:1;height:28px;border:none;">
       </label>`;
       html += `<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">Mat
         <input type="color" id="static-color-mat" value="${frame.matColor || "#ffffff"}" style="flex:1;height:28px;border:none;">
       </label>`;
-      }
+    }
+
+    const borderPct = frame.borderThicknessPct ?? 100;
+    html += `<label style="display:block;font-size:10px;margin-bottom:8px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span>% (100 = default)
+      <input type="range" id="static-border-thickness" min="0" max="100" value="${borderPct}" style="width:100%;touch-action:none;">
+    </label>`;
     }
 
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
@@ -3457,6 +3585,16 @@ Please share payment details and license key.`;
         if (el) el.oninput = applyColors;
       },
     );
+
+    const borderThickness = container.querySelector("#static-border-thickness");
+    const borderThicknessVal = container.querySelector("#static-border-thickness-val");
+    if (borderThickness) {
+      borderThickness.oninput = () => {
+        const v = parseInt(borderThickness.value, 10);
+        if (borderThicknessVal) borderThicknessVal.textContent = String(v);
+        void this.setStaticBorderThickness(vid, v);
+      };
+    }
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
@@ -4082,6 +4220,14 @@ Please share payment details and license key.`;
     if (toggleTall) {
       toggleTall.onclick = () => {
         this.showTallStaticResults = !this.showTallStaticResults;
+        this.refreshResultsView();
+      };
+    }
+
+    const toggleGown = document.getElementById("toggle-gown-static-results");
+    if (toggleGown) {
+      toggleGown.onclick = () => {
+        this.showGownStaticResults = !this.showGownStaticResults;
         this.refreshResultsView();
       };
     }
