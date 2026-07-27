@@ -233,7 +233,8 @@
             <button type="button" id="generate-showcase-btn" data-static-gen="showcase" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
             <button type="button" id="generate-promo-lifestyle-btn" data-static-gen="lifestyle" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#22c55e;color:#fff;">🏷️ Generate Lifestyle Promo (25)</button>
             <button type="button" id="generate-tall-static-btn" data-static-gen="tall" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#7c3aed;color:#fff;">📐 Generate Tall Promo (25)</button>
-            <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · showcase / lifestyle / tall ₹50 · no Meesho session</p>
+            <button type="button" id="generate-gown-static-btn" data-static-gen="gown" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#0d9488;color:#fff;">👗 Generate Gown Promo (25)</button>
+            <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · showcase / lifestyle / tall / gown · no Meesho session</p>
             <button type="button" id="test-generate-btn" class="generate-btn" disabled style="margin-top:0;display:none;">🧪 Run Test Lab</button>
           </div>
 
@@ -428,11 +429,13 @@
           var showcaseBtn = document.getElementById("generate-showcase-btn");
           var promoBtn = document.getElementById("generate-promo-lifestyle-btn");
           var tallBtn = document.getElementById("generate-tall-static-btn");
+          var gownBtn = document.getElementById("generate-gown-static-btn");
           if (liveBtn) liveBtn.disabled = false;
           if (testBtn) testBtn.disabled = false;
           if (showcaseBtn) showcaseBtn.disabled = false;
           if (promoBtn) promoBtn.disabled = false;
           if (tallBtn) tallBtn.disabled = false;
+          if (gownBtn) gownBtn.disabled = false;
           var boot = document.getElementById("boot-msg");
           var onTest =
             document.querySelector('[data-optimizer-tab="test"]')?.classList.contains("active");
@@ -474,17 +477,17 @@
       }
     })();
   </script>
-  <script src="/js/meeshoCategories.js?v=59"></script>
-  <script src="/web-session.js?v=59"></script>
+  <script src="/js/meeshoCategories.js?v=60"></script>
+  <script src="/web-session.js?v=60"></script>
   <script src="/config.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
-  <script src="/js/meeshoApi.js?v=59"></script>
+  <script src="/js/meeshoApi.js?v=60"></script>
   <script src="/js/imageGenerator.js"></script>
-  <script src="/js/ui.js?v=59"></script>
-  <script src="/content.js?v=59"></script>
-  <script src="/web-app.js?v=59"></script>
-  <script type="module" src="/js/testLabBridge.mjs?v=59"></script>
-  <script type="module" src="/js/liveAnalysisBridge.mjs?v=59"></script>
+  <script src="/js/ui.js?v=60"></script>
+  <script src="/content.js?v=60"></script>
+  <script src="/web-app.js?v=60"></script>
+  <script type="module" src="/js/testLabBridge.mjs?v=60"></script>
+  <script type="module" src="/js/liveAnalysisBridge.mjs?v=60"></script>
 </body>
 </html>
