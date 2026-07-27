@@ -2,8 +2,8 @@
  * Web-only lifestyle promo frames — competitor-style solid green border @ 48–54 KB.
  * Keeps original scene (no white flatten); isolated from tall ₹50 and showcase paths.
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=56";
-import { estimateImageShipping } from "./lib/shipping.js?v=56";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=57";
+import { estimateImageShipping } from "./lib/shipping.js?v=57";
 
 /** HOT SALE, FLASH SALE — match competitor listing stickers. */
 export const PROMO_LIFESTYLE_BADGES = {
