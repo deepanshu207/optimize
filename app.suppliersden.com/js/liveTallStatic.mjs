@@ -1,31 +1,72 @@
 /**
- * Tall portrait promo — pixel-match reference #2 @ 703×1024.
- * Hunt low_48_tall frame math + badge3 / arrow / badge1 on product corners.
+ * Tall portrait promo — reference #2 @ 703×1024.
+ * Badge loading/drawing matches lifestyle & showcase (MeeshoAPI.loadBadge + drawImage).
  */
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=51";
-import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=51";
-import { estimateImageShipping } from "./lib/shipping.js?v=51";
-import { drawTallPlacement, loadTallBadge } from "./tallStaticBadges.mjs?v=51";
+} from "./lib/canvas-utils.js?v=52";
+import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=52";
+import { estimateImageShipping } from "./lib/shipping.js?v=52";
+import {
+  drawCurvedArrow,
+  drawPriceTag,
+  drawDeliveryTruck,
+} from "./tallStaticBadges.mjs?v=52";
 
 export const TALL_STATIC_OUTER_W = 703;
 export const TALL_STATIC_OUTER_H = 1024;
 export const TALL_STATIC_VARIANT_COUNT = 25;
 
-/** Reference #2 badge assets. */
+/** Reference badge PNGs (Badge/ folder). */
 export const TALL_STATIC_BADGES = {
   tag: 3,
   ship: 1,
 };
 
-/** Reference #2: blue ~10% of canvas, white mat ~half of blue band. */
 const BORDER_BLUE_RATIO = 0.10;
 const WHITE_MAT_RATIO = 0.05;
-
-/** Sky blue from reference (#45a9e5). */
 const BORDER_BLUE = "#45a9e5";
+
+const badgeCache = {};
+
+function assetUrl(relative) {
+  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.assetUrl) {
+    return MeeshoAPI.assetUrl(relative);
+  }
+  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+    return chrome.runtime.getURL(relative);
+  }
+  return relative;
+}
+
+/** Same loader as lifestyle/showcase — prefers MeeshoAPI.loadBadge. */
+async function loadBadge(num) {
+  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.loadBadge) {
+    return MeeshoAPI.loadBadge(num);
+  }
+  if (badgeCache[num]) return badgeCache[num];
+  const src = assetUrl("Badge/badge" + num + ".png");
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      badgeCache[num] = img;
+      resolve(img);
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function preloadTallBadges() {
+  if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.preloadBadges) {
+    await MeeshoAPI.preloadBadges();
+    return;
+  }
+  await Promise.all(
+    [TALL_STATIC_BADGES.tag, TALL_STATIC_BADGES.ship].map((n) => loadBadge(n)),
+  );
+}
 
 function prepareTallProduct(img) {
   const white = imageToWhiteCanvas(img, 2400);
@@ -43,10 +84,6 @@ function tallStaticKbTiers(count = TALL_STATIC_VARIANT_COUNT) {
   return tiers;
 }
 
-/**
- * Build 703×1024 edge-to-edge — fixed border % of canvas (reference #2).
- * No centering gap (that was causing extra-thick blue bars on the sides).
- */
 function buildTallStaticFrameCanvas(img) {
   const outerW = TALL_STATIC_OUTER_W;
   const outerH = TALL_STATIC_OUTER_H;
@@ -91,7 +128,6 @@ function buildTallStaticFrameCanvas(img) {
     dw: sw,
     dh: sh,
     border: blueOuter,
-    whitePad,
     whiteX,
     whiteY,
     whiteW,
@@ -102,30 +138,27 @@ function buildTallStaticFrameCanvas(img) {
   };
 }
 
-/**
- * Badges on product-photo corners (reference #2 / addLowShippingBadges slots).
- */
-function tallStaticPlacements(frame) {
-  const { px, py, dw, dh } = frame;
-
-  const size = Math.max(56, Math.round(Math.min(dw, dh) * 0.14));
-  const inset = Math.max(6, Math.round(size * 0.06));
-  const tagSize = size;
-  const arrowW = Math.round(size * 1.2);
-  const arrowH = Math.round(size * 1.15);
-  const truckSize = Math.round(size * 0.95);
+/** Badge slots on product photo — sized like lifestyle (visible on white bg). */
+function tallStaticPlacements(px, py, dw, dh) {
+  const ref = Math.min(dw, dh);
+  const tagSize = Math.round(ref * 0.16);
+  const arrowW = Math.round(ref * 0.18);
+  const arrowH = Math.round(ref * 0.16);
+  const shipSize = Math.round(ref * 0.15);
+  const padX = Math.round(dw * 0.02);
+  const padY = Math.round(dh * 0.015);
 
   return [
     {
       id: "tall-sale",
       label: "Price tag",
       anchor: "top-left",
+      kind: "badge",
       num: TALL_STATIC_BADGES.tag,
-      size: tagSize,
       w: tagSize,
       h: tagSize,
-      x: px + inset,
-      y: py + inset,
+      x: px + padX,
+      y: py + padY,
       drawn: false,
     },
     {
@@ -135,34 +168,48 @@ function tallStaticPlacements(frame) {
       kind: "curvedArrow",
       w: arrowW,
       h: arrowH,
-      x: px + dw - arrowW - inset,
-      y: py + inset,
+      x: px + dw - arrowW - padX,
+      y: py + padY,
       drawn: false,
     },
     {
       id: "tall-ship",
       label: "Delivery truck",
       anchor: "bottom-left",
+      kind: "badge",
       num: TALL_STATIC_BADGES.ship,
-      size: truckSize,
-      w: truckSize,
-      h: truckSize,
-      x: px + inset,
-      y: py + dh - truckSize - inset,
+      w: shipSize,
+      h: shipSize,
+      x: px + padX,
+      y: py + dh - shipSize - padY,
       drawn: false,
     },
   ];
 }
 
+/** Draw badges — same pattern as livePromoLifestyle.mjs drawPlacements. */
 async function drawPlacements(ctx, placements) {
   const out = [];
   for (const p of placements) {
     const copy = { ...p };
     try {
-      copy.drawn = await drawTallPlacement(ctx, p);
-    } catch (e) {
-      copy.drawn = false;
-    }
+      if (p.kind === "curvedArrow") {
+        drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
+        copy.drawn = true;
+      } else if (p.kind === "badge") {
+        const badge = await loadBadge(p.num);
+        if (badge) {
+          ctx.drawImage(badge, p.x, p.y, p.w, p.h);
+          copy.drawn = true;
+        } else if (p.id === "tall-sale") {
+          drawPriceTag(ctx, p.x, p.y, p.w);
+          copy.drawn = true;
+        } else if (p.id === "tall-ship") {
+          drawDeliveryTruck(ctx, p.x, p.y, p.w);
+          copy.drawn = true;
+        }
+      }
+    } catch (e) {}
     out.push(copy);
   }
   return out;
@@ -173,10 +220,7 @@ function dataUrlFromCanvas(canvas, quality = 0.82) {
 }
 
 async function buildTallStaticLayers(img) {
-  await Promise.all([
-    loadTallBadge(TALL_STATIC_BADGES.tag),
-    loadTallBadge(TALL_STATIC_BADGES.ship),
-  ]);
+  await preloadTallBadges();
 
   const built = buildTallStaticFrameCanvas(img);
   const {
@@ -194,7 +238,7 @@ async function buildTallStaticLayers(img) {
     outerW,
     outerH,
   } = built;
-  const placements = tallStaticPlacements(built);
+  const placements = tallStaticPlacements(px, py, dw, dh);
 
   const noStickersCanvas = document.createElement("canvas");
   noStickersCanvas.width = canvas.width;

@@ -2,7 +2,11 @@
  * Compose / reposition badges on static showcase & lifestyle promo frames.
  * Web-only static variants — does not affect Live Meesho hunt.
  */
-import { drawTallPlacement } from "./tallStaticBadges.mjs?v=51";
+import {
+  drawCurvedArrow,
+  drawPriceTag,
+  drawDeliveryTruck,
+} from "./tallStaticBadges.mjs?v=52";
 
 export const BADGE_ANCHOR_OPTIONS = [
   { value: "top-left", label: "Top left" },
@@ -271,20 +275,19 @@ async function drawPlacementsOnCtx(ctx, placements) {
   for (const p of placements) {
     if (!p || p.drawn === false) continue;
     try {
-      if (
-        p.kind === "priceTag" ||
-        p.kind === "curvedArrow" ||
-        p.kind === "truckIcon" ||
-        p.id?.startsWith("tall-")
-      ) {
-        await drawTallPlacement(ctx, p);
+      if (p.kind === "curvedArrow" || p.id === "tall-arrow") {
+        drawCurvedArrow(ctx, p.x, p.y, p.w, p.h);
       } else if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, p.size);
-      } else if (p.num != null) {
+      } else if (p.kind === "badge" || p.num != null) {
         const badge = await loadBadge(p.num);
         if (badge) {
           const { w, h } = placementSize(p);
           ctx.drawImage(badge, p.x, p.y, w, h);
+        } else if (p.id === "tall-sale") {
+          drawPriceTag(ctx, p.x, p.y, p.w || p.size);
+        } else if (p.id === "tall-ship") {
+          drawDeliveryTruck(ctx, p.x, p.y, p.w || p.size);
         }
       }
     } catch (e) {}
