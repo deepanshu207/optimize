@@ -13,7 +13,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=103";
+} from "./liveGownStatic.mjs?v=104";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -680,6 +680,9 @@ export function ensureFrameBases(frame) {
   if (frame.baseBorder == null && frame.px != null && frame.frameType !== "tall") {
     frame.baseBorder = frame.px;
   }
+  if (frame.style === "gown_static" && frame.baseInnerStroke != null) {
+    frame.innerStroke = 0;
+  }
   return frame;
 }
 
@@ -701,6 +704,7 @@ function restoreBaseGeometry(frame) {
   if (frame.baseInnerFrameW != null) frame.innerFrameW = frame.baseInnerFrameW;
   if (frame.baseInnerFrameH != null) frame.innerFrameH = frame.baseInnerFrameH;
   if (frame.baseInnerStroke != null) frame.innerStroke = frame.baseInnerStroke;
+  if (frame.style === "gown_static") frame.innerStroke = 0;
 }
 
 /** Per-layer gown frame controls (100 = generated default for each band). */
@@ -729,7 +733,6 @@ export function gownFrameLayersEdited(frame) {
   return (
     p.border !== BORDER_THICKNESS_DEFAULT ||
     p.outerMat !== BORDER_THICKNESS_DEFAULT ||
-    p.innerAccent !== BORDER_THICKNESS_DEFAULT ||
     p.innerMat !== BORDER_THICKNESS_DEFAULT
   );
 }
@@ -776,13 +779,10 @@ function applyGownFrameLayers(frame) {
   frame.dh = baseDh;
 
   frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
-  frame.innerStroke = scaleGownLayerPx(
-    baseHairline,
-    p.innerAccent,
-    p.innerAccent > 0 ? 1 : 0,
-  );
+  const accentInset = frame.baseInnerStroke ?? baseHairline ?? 0;
+  frame.innerStroke = 0;
 
-  const slotInset = frame.innerMatPad + frame.innerStroke;
+  const slotInset = frame.innerMatPad + accentInset;
   const innerFrameX = basePx - slotInset;
   const innerFrameY = basePy - slotInset;
   const innerFrameW = baseDw + slotInset * 2;
@@ -830,7 +830,7 @@ function applyGownFrameLayers(frame) {
 function syncGownLayerPctFromLegacySlider(frame, pct) {
   ensureGownLayerPcts(frame);
   const p = frame.gownLayerPct;
-  if (p.innerAccent === BORDER_THICKNESS_DEFAULT && p.innerMat === BORDER_THICKNESS_DEFAULT) {
+  if (p.innerMat === BORDER_THICKNESS_DEFAULT) {
     p.border = pct;
     p.outerMat = pct;
   }

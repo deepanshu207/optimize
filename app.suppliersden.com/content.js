@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=103";
+      return "/js/staticFrameCompose.mjs?v=104";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=103");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=104");
     }
-    return "/js/staticFrameCompose.mjs?v=103";
+    return "/js/staticFrameCompose.mjs?v=104";
   }
 
   async preloadStaticComposeModule() {
@@ -4548,12 +4548,6 @@ Please share payment details and license key.`;
         "#ffffff",
       );
       html += this.buildStaticColorFieldHtml(
-        "static-color-inner-accent",
-        "Inner accent",
-        frame.innerStrokeColor,
-        "#71cbd3",
-      );
-      html += this.buildStaticColorFieldHtml(
         "static-color-pad",
         "Photo pad",
         frame.padColor ?? frame.matColor,
@@ -4592,7 +4586,6 @@ Please share payment details and license key.`;
       const gownLayers = [
         { key: "border", label: "Outer border (teal ring)" },
         { key: "outerMat", label: "Outer mat (white band)" },
-        { key: "innerAccent", label: "Inner accent (thin teal)" },
         { key: "innerMat", label: "Photo pad (white edge)" },
       ];
       html += `<div class="static-gown-layers-wrap${
@@ -4608,7 +4601,7 @@ Please share payment details and license key.`;
       }</button>
           <span style="font-size:10px;font-weight:600;">Frame layers (100 = default · photo size fixed)</span>
         </div>
-        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Teal border → white mat → thin teal accent → white photo pad around the lifestyle photo. Unlock 🔓 then drag a slider — only that band changes; the photo box stays the same size.</p>`;
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Teal border → white mat → white photo pad around the lifestyle photo. Unlock 🔓 then drag a slider — only that band changes; the photo box stays the same size.</p>`;
       for (const layer of gownLayers) {
         const v = lp[layer.key] ?? 100;
         html += `<div class="static-gown-layer-row" data-gown-layer="${
@@ -5480,6 +5473,13 @@ Please share payment details and license key.`;
     this._editingVariantId = variantId;
     this.ensureFrozenPricing(row);
     this.ensureVariantEditorPanel();
+    if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
+      try {
+        await this.applyRowStaticPreview(variantId, row);
+      } catch (e) {
+        console.warn("Editor open preview compose:", e);
+      }
+    }
     this.renderVariantEditorPanel(row);
     document.getElementById("variant-edit-panel").style.display = "flex";
   }

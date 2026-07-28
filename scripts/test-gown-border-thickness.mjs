@@ -72,7 +72,7 @@ assert(gownFrame.border === 19, "100 keeps base teal border");
 assert(gownFrame.dw === 657, "100 keeps product width");
 assert(gownFrame.dh === 978, "100 keeps product height");
 assert(gownFrame.innerMatPad === 17, "100 keeps inner mat band");
-assert(gownFrame.innerStroke === 3, "100 keeps teal accent");
+assert(gownFrame.innerStroke === 0, "100 keeps inner accent hidden");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
@@ -82,7 +82,7 @@ assert(gownFrame.whiteX === gownFrame.border, "50 border color band matches whit
 assert(gownFrame.dw === 657, "50 does not shrink product width");
 assert(gownFrame.dh === 978, "50 does not shrink product height");
 assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed");
-assert(gownFrame.innerStroke === 3, "50 keeps teal accent fixed");
+assert(gownFrame.innerStroke === 0, "50 keeps inner accent hidden");
 
 gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMat: 100 };
 gownFrame.borderThicknessPct = 500;
@@ -101,16 +101,9 @@ updateFrameAppearance({ _staticFrame: layerFrame }, { gownLayerPct: { outerMat: 
 assert(layerFrame.outerMatPad < 19, "layer edit thins outer mat only");
 assert(layerFrame.border > 19, "layer edit thickens border band to keep product fixed");
 assert(layerFrame.whiteX === layerFrame.border, "layer edit keeps border band visible");
-assert(layerFrame.innerStroke === 3, "layer edit keeps inner accent");
+assert(layerFrame.innerStroke === 0, "layer edit keeps inner accent hidden");
 
-const accentFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 50, innerMat: 100 } };
-updateFrameAppearance({ _staticFrame: accentFrame }, { gownLayerPct: { innerAccent: 50 } });
-assert(accentFrame.innerStroke < 3, "inner accent scales independently");
-assert(accentFrame.px === accentFrame.basePx, "inner accent edit keeps product position");
-assert(accentFrame.whiteX === accentFrame.border, "inner accent edit keeps border band visible");
-assert(accentFrame.dw === 657, "inner accent edit keeps image width fixed");
-
-const padFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 100, innerMat: 50 } };
+const padFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerMat: 50 } };
 updateFrameAppearance({ _staticFrame: padFrame }, { gownLayerPct: { innerMat: 50 } });
 assert(padFrame.innerMatPad < 17, "photo pad thickness scales");
 assert(padFrame.dw === 657, "photo pad edit keeps image width fixed");
@@ -147,9 +140,8 @@ assert(
 );
 assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "gown has outer mat band");
 assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
-assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent");
-assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
 assert(gownCode.includes("drawGownPhotoInFixedRect"), "gown uses cover-fit");
+assert(!/drawGownStaticFrameBackground[\s\S]*drawGownInnerAccent/.test(gownCode), "gown background skips inner accent line");
 assert(composeCode.includes("ensureGownLayerPcts"), "compose has gown layer pct helper");
 assert(composeCode.includes("drawProductPhotoCoverFit"), "compose uses shared photo cover-fit draw");
 assert(composeCode.includes("applyGownFrameLayers"), "compose applies gown layers independently");
@@ -161,7 +153,7 @@ assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
 assert(contentCode.includes('dataset.staticEditorV = "19"'), "editor panel layout v19");
 assert(contentCode.includes("static-color-outer-mat"), "gown has outer mat color");
-assert(contentCode.includes("static-color-inner-accent"), "gown has inner accent color");
+assert(!contentCode.includes('"Inner accent"'), "gown editor removed inner accent color row");
 assert(contentCode.includes("static-color-pad"), "gown has photo pad color");
 assert(contentCode.includes("openStaticColorPicker"), "custom colour picker modal");
 assert(contentCode.includes("applyStaticGownLayerPcts"), "gown layer preview batches all sliders");
