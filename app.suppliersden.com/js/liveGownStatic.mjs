@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=84";
-import { blobToDataUrl } from "./lib/encoder.js?v=84";
-import { estimateImageShipping } from "./lib/shipping.js?v=84";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=84";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=85";
+import { blobToDataUrl } from "./lib/encoder.js?v=85";
+import { estimateImageShipping } from "./lib/shipping.js?v=85";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=85";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -296,6 +296,8 @@ async function buildGownStaticLayers(img) {
     whitePad,
     outerMatPad,
     innerMatPad,
+    innerStroke,
+    innerStrokeColor,
     innerFrameX,
     innerFrameY,
     innerFrameW,
@@ -371,12 +373,12 @@ async function buildGownStaticLayers(img) {
         innerFrameY,
         innerFrameW,
         innerFrameH,
-        innerStroke: GOWN_INNER_STROKE,
-        innerStrokeColor: GOWN_INNER_STROKE_COLOR,
+        innerStroke,
+        innerStrokeColor,
         baseBorder: border,
         baseOuterMatPad: outerMatPad,
         baseInnerMatPad: innerMatPad,
-        baseInnerStroke: innerStroke ?? GOWN_INNER_STROKE,
+        baseInnerStroke: innerStroke,
         baseWhitePad: whitePad,
         basePx: px,
         basePy: py,

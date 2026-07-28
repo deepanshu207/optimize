@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=84";
+      return "/js/liveAnalysisBridge.mjs?v=85";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=84");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=85");
     }
-    return "/js/liveAnalysisBridge.mjs?v=84";
+    return "/js/liveAnalysisBridge.mjs?v=85";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=84";
+      return "/js/staticFrameCompose.mjs?v=85";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=84");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=85");
     }
-    return "/js/staticFrameCompose.mjs?v=84";
+    return "/js/staticFrameCompose.mjs?v=85";
   }
 
   async preloadStaticComposeModule() {
