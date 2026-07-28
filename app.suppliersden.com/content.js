@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=100";
+      return "/js/staticFrameCompose.mjs?v=101";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=100");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=101");
     }
-    return "/js/staticFrameCompose.mjs?v=100";
+    return "/js/staticFrameCompose.mjs?v=101";
   }
 
   async preloadStaticComposeModule() {
@@ -5067,7 +5067,12 @@ Please share payment details and license key.`;
     const img = document.querySelector(
       `.result-img[data-variant-id="${row.variantId}"]`
     );
-    if (img) img.src = row.imageUrl;
+    if (img) {
+      img.src =
+        (typeof OptimizerUI !== "undefined" && OptimizerUI.pickResultImageSrc
+          ? OptimizerUI.pickResultImageSrc(row)
+          : null) || row.imageUrl || "";
+    }
     const badge = document.querySelector(
       `.result-edit-badge[data-variant-id="${row.variantId}"]`
     );
@@ -5158,6 +5163,8 @@ Please share payment details and license key.`;
           const pct = row.layers._staticFrame?.borderThicknessPct ?? 100;
           if (slider && document.activeElement !== slider) slider.value = String(pct);
           if (val && document.activeElement !== slider) val.textContent = String(pct);
+          this.syncPlacementSlidersFromRow(row);
+          this.syncPhotoControlsFromRow(row);
           this.updateBorderThicknessLockUI(staticSection, row.layers._staticFrame);
         }
       } else {
@@ -5213,7 +5220,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "18") {
+    if (panel && panel.dataset.staticEditorV !== "19") {
       panel.remove();
       panel = null;
     }
@@ -5221,7 +5228,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "18";
+    panel.dataset.staticEditorV = "19";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `

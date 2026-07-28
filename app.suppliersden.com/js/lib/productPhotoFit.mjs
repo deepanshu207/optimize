@@ -19,12 +19,6 @@ export function productPhotoRect(frame) {
   };
 }
 
-export function frameHasProductSlot(frame) {
-  const { w, h } = productPhotoRect(frame);
-  return w > 0 && h > 0;
-}
-
-/** Cover-fit into fixed photo rect; zoom scales inside clip without resizing the box. */
 export function drawProductPhotoCoverFit(ctx, productImg, frame) {
   const { x, y, w, h } = productPhotoRect(frame);
   if (w <= 0 || h <= 0 || !productImg?.width) return;
@@ -48,4 +42,21 @@ export function drawProductPhotoCoverFit(ctx, productImg, frame) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, imgX, imgY, sw, sh);
   ctx.restore();
+}
+
+export function frameHasProductSlot(frame) {
+  const { w, h } = productPhotoRect(frame);
+  return w > 0 && h > 0;
+}
+
+/** Default locked photo zoom/pan on any frame with a product slot. */
+export function ensureFramePhotoDefaults(frame) {
+  if (!frameHasProductSlot(frame)) return frame;
+  if (frame.photoZoomPct == null) frame.photoZoomPct = PHOTO_ZOOM_DEFAULT;
+  if (frame.photoPanH == null) frame.photoPanH = 50;
+  if (frame.photoPanV == null) frame.photoPanV = 50;
+  if (frame.photoZoomLocked == null) frame.photoZoomLocked = true;
+  if (frame.photoPanHLocked == null) frame.photoPanHLocked = true;
+  if (frame.photoPanVLocked == null) frame.photoPanVLocked = true;
+  return frame;
 }

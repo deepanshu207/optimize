@@ -5,14 +5,15 @@
 import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
 import {
   drawProductPhotoCoverFit,
+  ensureFramePhotoDefaults,
   frameHasProductSlot,
-} from "./lib/productPhotoFit.mjs?v=1";
+} from "./lib/productPhotoFit.mjs?v=2";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=100";
+} from "./liveGownStatic.mjs?v=101";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -1883,6 +1884,8 @@ export function ensureStaticPlacementMeta(layers, style) {
   if (!layers._staticFrame) return layers;
 
   ensureFrameDefaults(layers._staticFrame);
+  ensureFrameBases(layers._staticFrame);
+  ensureFramePhotoDefaults(layers._staticFrame);
   snapshotDefaults(layers, style);
 
   if (layers._placementMetaReady) return layers;
@@ -2027,6 +2030,7 @@ export function isStaticEdited(flags, badgesRepositioned, staticAppearanceEdited
 if (typeof window !== "undefined") {
   window.StaticFrameCompose = {
     frameHasProductSlot,
+    ensureFramePhotoDefaults,
     drawProductPhotoCoverFit,
     isStaticPromoVariant,
     isEditableVariant,

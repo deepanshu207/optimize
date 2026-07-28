@@ -9,7 +9,7 @@ import {
   clampPhotoZoom,
   drawProductPhotoCoverFit,
   productPhotoRect,
-} from "./lib/productPhotoFit.mjs?v=1";
+} from "./lib/productPhotoFit.mjs?v=2";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 
 export const GOWN_STATIC_OUTER_W = 773;

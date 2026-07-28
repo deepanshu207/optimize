@@ -427,7 +427,10 @@ const OptimizerUI = {
       : "Ready";
     const savings =
       baseline > 0 && r.shippingCost > 0 ? baseline - r.shippingCost : 0;
-    const canEdit = !testLabMode && !!(r.layers && r.layers.full);
+    const staticPromoEditor = OptimizerUI.isStaticPromoEditorRow(r);
+    const canEdit =
+      !testLabMode &&
+      !!(r.layers && (r.layers.full || staticPromoEditor));
     const edited =
       r._badgesRepositioned ||
       r._staticAppearanceEdited ||
@@ -439,8 +442,13 @@ const OptimizerUI = {
       r.editFlags?.borderAdded ||
       r.editFlags?.fullDecorationsAdded;
     const vid = r.variantId || "var-" + i;
-    const imgSrc =
-      testLabMode || analysisMode ? this.pickResultImageSrc(r) : r.imageUrl;
+    const imgSrc = testLabMode
+      ? OptimizerUI.pickResultImageSrc(r)
+      : staticPromoEditor
+      ? r.imageUrl || OptimizerUI.pickResultImageSrc(r)
+      : analysisMode
+      ? OptimizerUI.pickResultImageSrc(r)
+      : r.imageUrl || OptimizerUI.pickResultImageSrc(r);
     const styleTag = testLabMode
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "test"} · ${r.meta?.kb || "?"}KB</div>`
       : r.variantStyle === "framed"
@@ -469,7 +477,9 @@ const OptimizerUI = {
     };position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">✂️</span>
                     <img src="${imgSrc}" class="result-img" data-variant-id="${vid}" title="${
       canEdit
-        ? "Tap to edit border & stickers"
+        ? staticPromoEditor
+          ? "Tap to edit colors, zoom, pan, and badges"
+          : "Tap to edit border & stickers"
         : testLabMode
         ? "Tap to preview"
         : ""
@@ -479,7 +489,7 @@ const OptimizerUI = {
                     ${styleTag}
                     ${
                       canEdit
-                        ? '<div style="font-size:9px;color:#6b7280;margin-bottom:2px;">Tap image to edit</div>'
+                        ? `<div style="font-size:9px;color:#6b7280;margin-bottom:2px;">${staticPromoEditor ? "Tap image to edit colors, zoom, pan, and badges" : "Tap image to edit"}</div>`
                         : ""
                     }
                     <div class="result-price-label" style="font-size:14px;font-weight:700;color:${
@@ -712,7 +722,7 @@ const OptimizerUI = {
                 <div style="background:rgba(255,152,0,0.1);border:1px solid rgba(76,175,80,0.35);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#e65100;">🖼️ Showcase Promo Frames</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">Tight portrait frame · orange→green gradient · 3 quality badges</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · tap image for 6 edit options</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · tap image to edit colors, zoom, pan, and badges</div>
                 </div>
         `;
 
@@ -764,7 +774,7 @@ const OptimizerUI = {
                 <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#15803d;">🏷️ Lifestyle Promo (₹54 band)</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">Keeps trellis/lifestyle scene · solid green frame · HOT/FLASH sale</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">48–54 KB · competitor-style · no Meesho session</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">48–54 KB · competitor-style · tap image to edit colors, zoom, pan, and badges</div>
                 </div>
         `;
 
@@ -816,7 +826,7 @@ const OptimizerUI = {
                 <div style="background:rgba(124,58,237,0.1);border:1px solid rgba(173,216,230,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#5b21b6;">📐 Tall Promo Frames</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">703×1024 · blue frame · price tag + arrow + truck</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — no Meesho session · est ₹50 band</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">Static only — tap image to edit colors, zoom, pan, and badges · est ₹50 band</div>
                 </div>
         `;
 
@@ -865,7 +875,7 @@ const OptimizerUI = {
                 <div style="background:rgba(13,148,136,0.1);border:1px solid rgba(94,196,200,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#0f766e;">👗 Gown Promo Frames</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:4px;">773×1094 · thin teal · lifestyle scene · thick white mat</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">38–48 KB · Best/Flash/Popular · est ~₹49</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px;">38–48 KB · Best/Flash/Popular · tap image to edit colors, zoom, pan, and badges</div>
                 </div>
         `;
 
@@ -1163,10 +1173,38 @@ const OptimizerUI = {
     return html;
   },
 
-  /** TEST LAB ONLY — uses same layout as getResultsHTML (Live mode). */
+  isStaticPromoEditorRow(r) {
+    if (!r) return false;
+    if (r.layers?._staticFrame || (r.layers?._badgePlacements || []).length) {
+      return true;
+    }
+    const style = String(
+      r.variantStyle || r.meta?.style || r.meta?.path || r.style || "",
+    ).toLowerCase();
+    return (
+      style === "showcase" ||
+      style === "lifestyle_promo" ||
+      style === "tall_static" ||
+      style === "gown_static" ||
+      style === "live_standard" ||
+      style === "live_framed"
+    );
+  },
+
+  /** Prefer composed preview URL for static promo rows when available. */
   pickResultImageSrc: function (r) {
     if (!r) return "";
-    return r.dataUrl || r.pricingImageUrl || r.imageUrl || r.uploadedUrl || "";
+    const preferComposed =
+      OptimizerUI.isStaticPromoEditorRow(r) ||
+      r._staticAppearanceEdited ||
+      r._badgesRepositioned;
+    if (preferComposed && r.imageUrl) return r.imageUrl;
+    if (r.dataUrl) return r.dataUrl;
+    if (r.imageUrl) return r.imageUrl;
+    if (r.pricingImageUrl) return r.pricingImageUrl;
+    if (r.uploadedUrl) return r.uploadedUrl;
+    if (r.blob) return URL.createObjectURL(r.blob);
+    return "";
   },
 
   getTestLabResultsHTML: function (results, options) {
