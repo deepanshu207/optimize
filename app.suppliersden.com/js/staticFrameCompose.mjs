@@ -8,7 +8,7 @@ import {
   ensureFramePhotoDefaults,
   frameHasProductSlot,
   PHOTO_ZOOM_DEFAULT,
-} from "./lib/productPhotoFit.mjs?v=2";
+} from "./lib/productPhotoFit.mjs?v=3";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
