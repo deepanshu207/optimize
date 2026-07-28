@@ -1,5 +1,5 @@
 /**
- * Gown canvas geometry — competitor 773×1094 with larger lifestyle fill.
+ * Gown canvas geometry — competitor 773×1094 with cover-fit lifestyle photo.
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -30,28 +30,24 @@ const gownCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
   "utf8",
 );
-assert(gownCode.includes("GOWN_WHITE_PAD_RATIO = 0.112"), "white mat ratio tuned");
-assert(!gownCode.includes("maxProdH / base.height, 1)"), "lifestyle photo may upscale to fill mat");
+assert(gownCode.includes("GOWN_WHITE_PAD_RATIO = 0.048"), "thin white mat ratio");
+assert(gownCode.includes("GOWN_WHITE_PAD_MIN = 28"), "low white mat floor");
+assert(gownCode.includes("Math.max(maxProdW / base.width, maxProdH / base.height)"), "cover-fit fills mat");
 
-// Expected base geometry for a 477×715 source (legacy product patch size)
 const ref = Math.min(773, 1094);
 const teal = Math.max(14, Math.round(ref * 0.025));
-const whitePad = Math.max(64, Math.round(ref * 0.112));
+const whitePad = Math.max(28, Math.round(ref * 0.048));
 const whiteW = 773 - teal * 2;
 const whiteH = 1094 - teal * 2;
 const maxProdW = whiteW - whitePad * 2;
 const maxProdH = whiteH - whitePad * 2;
-const srcW = 477;
-const srcH = 715;
-const fitScale = Math.min(maxProdW / srcW, maxProdH / srcH);
-const dw = Math.round(srcW * fitScale);
-const dh = Math.round(srcH * fitScale);
 
 assert(teal === 19, `teal border ${teal}px`);
-assert(whitePad === 87, `white mat ${whitePad}px`);
-assert(dw >= 555 && dw <= 565, `product width ${dw}px (~17% larger than old 477)`);
-assert(dh >= 835 && dh <= 845, `product height ${dh}px`);
-assert(dw / 773 >= 0.72, `product fills ≥72% of canvas width (${((dw / 773) * 100).toFixed(1)}%)`);
+assert(whitePad === 37, `white mat ${whitePad}px`);
+assert(maxProdW === 661, `product slot width ${maxProdW}px`);
+assert(maxProdH === 982, `product slot height ${maxProdH}px`);
+assert(maxProdW / 773 >= 0.85, `product fills ≥85% of canvas width (${((maxProdW / 773) * 100).toFixed(1)}%)`);
+assert(maxProdH / 1094 >= 0.89, `product fills ≥89% of canvas height (${((maxProdH / 1094) * 100).toFixed(1)}%)`);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
