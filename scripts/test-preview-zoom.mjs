@@ -31,7 +31,9 @@ assert(!content.includes("bindVariantPreviewZoom"), "removed blurry transform zo
 assert(!content.includes("variant-edit-preview-stage"), "preview stage wrapper removed");
 assert(content.includes("openVariantFullPreview"), "tap opens full-size preview overlay");
 assert(content.includes("max-height:180px"), "compact preview on editor open");
-assert(content.includes('dataset.staticEditorV = "9"'), "editor panel version bumped");
+assert(content.includes('dataset.staticEditorV = "11"'), "editor panel version bumped");
+assert(content.includes("touch-action:pan-y"), "scroll area allows vertical pan");
+assert(content.includes("touch-action:pan-x"), "sliders allow horizontal pan only");
 assert(!index.includes("maximum-scale=1.0"), "viewport allows mobile pinch zoom");
 
 if (failed) {

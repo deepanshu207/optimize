@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=87";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=87";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=87";
-import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=87";
+import { compressFramedToKb } from "./lib/encoder.js?v=89";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=89";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=89";
+import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=89";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -966,7 +966,21 @@ async function rebuildFrameCanvas(layers) {
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, frame.px, frame.py, frame.dw, frame.dh);
+  if (frame.style === "gown_static") {
+    drawGownProductInSlot(ctx, productImg, frame);
+  } else {
+    ctx.drawImage(
+      productImg,
+      0,
+      0,
+      productImg.width,
+      productImg.height,
+      frame.px,
+      frame.py,
+      frame.dw,
+      frame.dh,
+    );
+  }
 
   Object.assign(layers._staticFrame, frame);
   return { canvas, frame };
@@ -1484,7 +1498,6 @@ export function updateFrameAppearance(layers, patch) {
 export function applyGradientPreset(layers, presetId) {
   const preset = GRADIENT_PRESETS.find((g) => g.id === presetId);
   if (!preset || !layers?._staticFrame) return false;
-  if (layers._staticFrame.style === "gown_static") return false;
   return updateFrameAppearance(layers, {
     frameType: "gradient",
     gradientTop: preset.top,
@@ -1506,6 +1519,9 @@ export function clearGradientPreset(layers) {
 
 export function staticStyleUsesGradientColors(style, frame) {
   if (style === "showcase" || style === "live_standard") return true;
+  if (style === "gown_static") {
+    return gownUsesBorderGradient(frame);
+  }
   return !!frame?.gradientPreset;
 }
 

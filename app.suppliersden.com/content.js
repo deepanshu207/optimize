@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=87";
+      return "/js/liveAnalysisBridge.mjs?v=89";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=87");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=89");
     }
-    return "/js/liveAnalysisBridge.mjs?v=87";
+    return "/js/liveAnalysisBridge.mjs?v=89";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=87";
+      return "/js/staticFrameCompose.mjs?v=89";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=87");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=89");
     }
-    return "/js/staticFrameCompose.mjs?v=87";
+    return "/js/staticFrameCompose.mjs?v=89";
   }
 
   async preloadStaticComposeModule() {
@@ -3707,7 +3707,6 @@ Please share payment details and license key.`;
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
-    if (row.layers._staticFrame.style === "gown_static") return;
 
     await this.preloadStaticComposeModule();
     const SFC = window.StaticFrameCompose;
@@ -4128,7 +4127,6 @@ Please share payment details and license key.`;
     if (showFrameColors) {
       html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
 
-    if (style !== "gown_static") {
       html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
         <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
       html += `<option value="">— Custom / solid —</option>`;
@@ -4138,18 +4136,22 @@ Please share payment details and license key.`;
         }>${g.label}</option>`;
       });
       html += `</select></label>`;
-    }
+
+    const gownGradient =
+      style === "gown_static" && SFC.staticStyleUsesGradientColors?.(style, frame);
+    const gradientTopLabel = gownGradient ? "Border top" : "Top";
+    const gradientBottomLabel = gownGradient ? "Border bottom" : "Bottom";
 
     if (style === "showcase" || style === "live_standard" || SFC.staticStyleUsesGradientColors?.(style, frame)) {
       html += this.buildStaticColorFieldHtml(
         "static-color-top",
-        "Top",
+        gradientTopLabel,
         frame.gradientTop,
         "#FF9800",
       );
       html += this.buildStaticColorFieldHtml(
         "static-color-bottom",
-        "Bottom",
+        gradientBottomLabel,
         frame.gradientBottom,
         "#4CAF50",
       );
@@ -4165,12 +4167,14 @@ Please share payment details and license key.`;
     }
 
     if (style === "gown_static") {
-      html += this.buildStaticColorFieldHtml(
-        "static-color-border",
-        "Outer border",
-        frame.borderColor,
-        "#71cbd3",
-      );
+      if (!gownGradient) {
+        html += this.buildStaticColorFieldHtml(
+          "static-color-border",
+          "Outer border",
+          frame.borderColor,
+          "#71cbd3",
+        );
+      }
       html += this.buildStaticColorFieldHtml(
         "static-color-outer-mat",
         "Outer mat",
@@ -4220,14 +4224,14 @@ Please share payment details and license key.`;
       if (frame.gownFrameLayersLocked == null) frame.gownFrameLayersLocked = true;
       const frameLocked = frame.gownFrameLayersLocked !== false;
       const gownLayers = [
-        { key: "border", label: "Outer border (teal)" },
-        { key: "outerMat", label: "Outer mat (white)" },
-        { key: "innerAccent", label: "Inner accent (teal)" },
-        { key: "innerMat", label: "Photo pad (white)" },
+        { key: "border", label: "Outer border" },
+        { key: "outerMat", label: "Outer mat" },
+        { key: "innerAccent", label: "Inner accent" },
+        { key: "innerMat", label: "Photo pad" },
       ];
       html += `<div class="static-gown-layers-wrap${
         frameLocked ? " static-slider-locked" : ""
-      }" style="margin-bottom:8px;touch-action:none;">
+      }" style="margin-bottom:8px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
           <button type="button" id="static-gown-layers-lock" aria-pressed="${
             frameLocked ? "true" : "false"
@@ -4248,7 +4252,7 @@ Please share payment details and license key.`;
         }">${v}</span></span>
           <input type="range" class="static-gown-layer-pct" data-gown-layer="${
             layer.key
-          }" min="0" max="1000" value="${v}" style="width:100%;touch-action:none;"${
+          }" min="0" max="1000" value="${v}" style="width:100%;"${
           frameLocked ? " disabled" : ""
         }>
         </div>`;
@@ -4259,7 +4263,7 @@ Please share payment details and license key.`;
       const borderLocked = frame.borderThicknessLocked !== false;
       html += `<div class="static-border-wrap${
         borderLocked ? " static-slider-locked" : ""
-      }" style="margin-bottom:8px;touch-action:none;">
+      }" style="margin-bottom:8px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" id="static-border-lock" aria-pressed="${
             borderLocked ? "true" : "false"
@@ -4270,7 +4274,7 @@ Please share payment details and license key.`;
       }</button>
           <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
         </div>
-        <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;"${
+        <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;"${
         borderLocked ? " disabled" : ""
       }>
       </div>`;
@@ -4334,26 +4338,26 @@ Please share payment details and license key.`;
       }
       html += `</select></label>`;
 
-      html += `<div class="static-size-wrap${lockSize ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
+      html += `<div class="static-size-wrap${lockSize ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-size-lock" data-badge-id="${slot.id}" aria-pressed="${lockSize ? "true" : "false"}" title="${lockSize ? "Unlock size to adjust" : "Lock badge size"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockSize ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%</span>
         </div>
-        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;"${lockSize ? " disabled" : ""}>
+        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;"${lockSize ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-h-wrap${lockH ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
+      html += `<div class="static-pos-h-wrap${lockH ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="h" data-badge-id="${slot.id}" aria-pressed="${lockH ? "true" : "false"}" title="${lockH ? "Unlock horizontal to adjust" : "Lock horizontal"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockH ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%</span>
         </div>
-        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;touch-action:none;"${lockH ? " disabled" : ""}>
+        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;"${lockH ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-v-wrap${lockV ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="touch-action:none;">
+      html += `<div class="static-pos-v-wrap${lockV ? " static-slider-locked" : ""}" data-badge-id="${slot.id}">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="v" data-badge-id="${slot.id}" aria-pressed="${lockV ? "true" : "false"}" title="${lockV ? "Unlock vertical to adjust" : "Lock vertical"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockV ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%</span>
         </div>
-        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;touch-action:none;"${lockV ? " disabled" : ""}>
+        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;"${lockV ? " disabled" : ""}>
       </div>`;
       html += `</div>`;
     });
@@ -4380,17 +4384,7 @@ Please share payment details and license key.`;
 
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
-    const borderWrap = container.querySelector(".static-border-wrap");
     const borderLock = container.querySelector("#static-border-lock");
-    if (borderWrap) {
-      borderWrap.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!borderThickness?.disabled) e.stopPropagation();
-        },
-        { passive: true },
-      );
-    }
     if (borderLock) {
       borderLock.onclick = (e) => {
         e.preventDefault();
@@ -4416,17 +4410,7 @@ Please share payment details and license key.`;
       borderThickness.addEventListener("touchend", commitBorder, { passive: true });
     }
 
-    const gownLayersWrap = container.querySelector(".static-gown-layers-wrap");
     const gownLayersLock = container.querySelector("#static-gown-layers-lock");
-    if (gownLayersWrap) {
-      gownLayersWrap.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!e.target.closest(".static-gown-layer-pct")?.disabled) e.stopPropagation();
-        },
-        { passive: true },
-      );
-    }
     if (gownLayersLock) {
       gownLayersLock.onclick = (e) => {
         e.preventDefault();
@@ -4489,13 +4473,6 @@ Please share payment details and license key.`;
     const bindAxisSlider = (cls, axis) => {
       const timers = new Map();
       container.querySelectorAll(cls).forEach((range) => {
-        range.addEventListener(
-          "touchstart",
-          (e) => {
-            if (!range.disabled) e.stopPropagation();
-          },
-          { passive: true },
-        );
         range.oninput = () => {
           if (range.disabled) return;
           const id = range.dataset.badgeId;
@@ -4546,13 +4523,6 @@ Please share payment details and license key.`;
 
     const sizeTimers = new Map();
     container.querySelectorAll(".static-size-pct").forEach((range) => {
-      range.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!range.disabled) e.stopPropagation();
-        },
-        { passive: true },
-      );
       range.oninput = () => {
         if (range.disabled) return;
         const id = range.dataset.badgeId;
@@ -4719,7 +4689,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "9") {
+    if (panel && panel.dataset.staticEditorV !== "11") {
       panel.remove();
       panel = null;
     }
@@ -4727,7 +4697,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "9";
+    panel.dataset.staticEditorV = "11";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -4738,12 +4708,11 @@ Please share payment details and license key.`;
         }
         #variant-edit-panel #variant-edit-scroll {
           overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
-          padding:0 16px 12px;overscroll-behavior:contain;
+          padding:0 16px 12px;overscroll-behavior:contain;touch-action:pan-y;
         }
         #variant-edit-panel #variant-edit-preview-wrap {
-          position:sticky;top:0;z-index:2;margin:0 0 6px;padding:4px 0 0;
-          background:linear-gradient(#fff 88%, rgba(255,255,255,0));
-          cursor:pointer;
+          position:sticky;top:0;z-index:2;margin:0 0 10px;padding:4px 0 10px;
+          background:#fff;cursor:pointer;
         }
         #variant-edit-panel #variant-edit-preview {
           width:100%;max-height:180px;height:auto;object-fit:contain;
@@ -4751,10 +4720,13 @@ Please share payment details and license key.`;
           box-shadow:0 2px 8px rgba(0,0,0,0.08);
         }
         #variant-edit-panel #variant-edit-preview-hint {
-          font-size:10px;color:#6b7280;text-align:center;margin:4px 0 0;
+          font-size:10px;color:#6b7280;text-align:center;margin:4px 0 0;pointer-events:none;
         }
         #variant-edit-panel .static-slider-locked input[type="range"]:disabled {
           opacity:0.5;cursor:not-allowed;
+        }
+        #variant-edit-panel input[type="range"] {
+          touch-action:pan-x;
         }
         #variant-edit-panel .static-sticker-card input[type="range"],
         #variant-edit-panel #static-border-thickness,

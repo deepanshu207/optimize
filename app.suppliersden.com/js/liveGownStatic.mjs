@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=87";
-import { blobToDataUrl } from "./lib/encoder.js?v=87";
-import { estimateImageShipping } from "./lib/shipping.js?v=87";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=87";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=89";
+import { blobToDataUrl } from "./lib/encoder.js?v=89";
+import { estimateImageShipping } from "./lib/shipping.js?v=89";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=89";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -148,6 +148,21 @@ function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
   ctx.fillRect(x + w - t, y, t, h);
 }
 
+/** Gown outer border uses a vertical gradient when frameType is gradient or a preset is set. */
+export function gownUsesBorderGradient(frame) {
+  return frame?.frameType === "gradient" || !!frame?.gradientPreset;
+}
+
+function gownBorderFillStyle(ctx, frame, outerW, outerH) {
+  if (!gownUsesBorderGradient(frame)) {
+    return frame.borderColor || BORDER_TEAL;
+  }
+  const grad = ctx.createLinearGradient(0, 0, 0, outerH);
+  grad.addColorStop(0, frame.gradientTop || frame.borderColor || BORDER_TEAL);
+  grad.addColorStop(1, frame.gradientBottom || BORDER_TEAL_DARK);
+  return grad;
+}
+
 /** Teal border + white mat + teal inner accent (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const outerW = frame.outerW || 0;
@@ -157,20 +172,26 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   const wy = frame.whiteY ?? border;
   const ww = frame.whiteW ?? outerW - border * 2;
   const wh = frame.whiteH ?? outerH - border * 2;
-  const ifx = frame.innerFrameX ?? wx + (frame.outerMatPad ?? 0);
-  const ify = frame.innerFrameY ?? wy + (frame.outerMatPad ?? 0);
-  const ifw = frame.innerFrameW ?? ww - (frame.outerMatPad ?? 0) * 2;
-  const ifh = frame.innerFrameH ?? wh - (frame.outerMatPad ?? 0) * 2;
+  const omp = frame.outerMatPad ?? 0;
+  const ifx = frame.innerFrameX ?? wx + omp;
+  const ify = frame.innerFrameY ?? wy + omp;
+  const ifw = frame.innerFrameW ?? ww - omp * 2;
+  const ifh = frame.innerFrameH ?? wh - omp * 2;
   const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
   const outerMatColor = frame.outerMatColor ?? frame.matColor ?? "#ffffff";
   const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
   const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
 
-  ctx.fillStyle = frame.borderColor || BORDER_TEAL;
+  ctx.fillStyle = gownBorderFillStyle(ctx, frame, outerW, outerH);
   ctx.fillRect(0, 0, outerW, outerH);
 
-  ctx.fillStyle = outerMatColor;
-  ctx.fillRect(wx, wy, ww, wh);
+  if (omp > 0 && ww > 0 && wh > 0) {
+    ctx.fillStyle = outerMatColor;
+    ctx.fillRect(wx, wy, ww, omp);
+    ctx.fillRect(wx, wy + wh - omp, ww, omp);
+    ctx.fillRect(wx, wy + omp, omp, wh - 2 * omp);
+    ctx.fillRect(wx + ww - omp, wy + omp, omp, wh - 2 * omp);
+  }
 
   if (ifw > 0 && ifh > 0) {
     const padX = ifx + stroke;
@@ -183,6 +204,36 @@ export function drawGownStaticFrameBackground(ctx, frame) {
     }
     drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
   }
+}
+
+/** Cover-fit lifestyle photo clipped to the gown photo pad (inside inner accent). */
+export function drawGownProductInSlot(ctx, productImg, frame) {
+  const ifx = frame.innerFrameX ?? 0;
+  const ify = frame.innerFrameY ?? 0;
+  const ifw = frame.innerFrameW ?? 0;
+  const ifh = frame.innerFrameH ?? 0;
+  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const slotInset = (frame.innerMatPad ?? 0) + stroke;
+  const slotX = ifx + slotInset;
+  const slotY = ify + slotInset;
+  const slotW = ifw - 2 * slotInset;
+  const slotH = ifh - 2 * slotInset;
+  if (slotW <= 0 || slotH <= 0 || !productImg?.width) return;
+
+  const fitScale = Math.max(slotW / productImg.width, slotH / productImg.height);
+  const sw = Math.round(productImg.width * fitScale);
+  const sh = Math.round(productImg.height * fitScale);
+  const imgX = slotX + Math.round((slotW - sw) / 2);
+  const imgY = slotY + Math.round((slotH - sh) / 2);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(slotX, slotY, slotW, slotH);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, imgX, imgY, sw, sh);
+  ctx.restore();
 }
 
 function drawGownPhotoCoverFit(ctx, base, geom) {
