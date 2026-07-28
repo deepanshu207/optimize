@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=99";
+      return "/js/staticFrameCompose.mjs?v=100";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=99");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=100");
     }
-    return "/js/staticFrameCompose.mjs?v=99";
+    return "/js/staticFrameCompose.mjs?v=100";
   }
 
   async preloadStaticComposeModule() {
@@ -5213,7 +5213,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "17") {
+    if (panel && panel.dataset.staticEditorV !== "18") {
       panel.remove();
       panel = null;
     }
@@ -5221,7 +5221,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "17";
+    panel.dataset.staticEditorV = "18";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `

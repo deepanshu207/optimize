@@ -152,4 +152,17 @@ function mockGownLayers() {
   );
 }
 
+// all placement axes locked by default
+{
+  const layers = mockGownLayers();
+  delete layers._badgePlacements[0].lockH;
+  delete layers._badgePlacements[0].lockV;
+  delete layers._badgePlacements[0].lockSize;
+  ensureStaticPlacementMeta(layers, "gown_static");
+  const p = layers._badgePlacements[0];
+  assert.equal(p.lockH, true, "lockH defaults true");
+  assert.equal(p.lockV, true, "lockV defaults true");
+  assert.equal(p.lockSize, true, "lockSize defaults true");
+}
+
 console.log("test-gown-placement-pan.mjs: all passed");

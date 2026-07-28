@@ -77,8 +77,8 @@ assert(
 );
 
 assert(
-  composeCode.includes('p.kind === "badge"') &&
-    composeCode.includes("p.lockH = false") &&
-    composeCode.includes("p.lockV = false"),
-  "gown numbered badges unlock H/V sliders by default",
+  composeCode.includes("if (p.lockH == null) p.lockH = true") &&
+    composeCode.includes("if (p.lockV == null) p.lockV = true") &&
+    composeCode.includes("if (p.lockSize == null) p.lockSize = true"),
+  "placement sliders locked by default",
 );
