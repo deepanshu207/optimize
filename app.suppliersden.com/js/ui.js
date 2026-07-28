@@ -123,6 +123,7 @@ const OptimizerUI = {
                         <div class="opt-preview" id="preview-box">
                             <img id="preview-img" alt="Preview">
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
+                            <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
                     </div>
 
@@ -329,6 +330,7 @@ const OptimizerUI = {
                         <div class="opt-preview" id="preview-box">
                             <img id="preview-img" alt="Preview">
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
+                            <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
                     </div>
 
