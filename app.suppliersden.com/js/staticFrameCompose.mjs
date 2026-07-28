@@ -7,13 +7,14 @@ import {
   drawProductPhotoCoverFit,
   ensureFramePhotoDefaults,
   frameHasProductSlot,
+  PHOTO_ZOOM_DEFAULT,
 } from "./lib/productPhotoFit.mjs?v=2";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=104";
+} from "./liveGownStatic.mjs?v=105";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -708,21 +709,86 @@ function restoreBaseGeometry(frame) {
 }
 
 /** Per-layer gown frame controls (100 = generated default for each band). */
+export function defaultGownLayerPct() {
+  return {
+    border: BORDER_THICKNESS_DEFAULT,
+    outerMat: BORDER_THICKNESS_DEFAULT,
+    innerMat: BORDER_THICKNESS_DEFAULT,
+  };
+}
+
+export function normalizeGownLayerPct(pct) {
+  const p = pct || {};
+  return {
+    border: p.border ?? BORDER_THICKNESS_DEFAULT,
+    outerMat: p.outerMat ?? BORDER_THICKNESS_DEFAULT,
+    innerMat: p.innerMat ?? BORDER_THICKNESS_DEFAULT,
+  };
+}
+
+export function snapshotGownFrameAppearance(frame) {
+  ensureFrameDefaults(frame);
+  const defs = STYLE_DEFAULTS.gown_static || {};
+  return {
+    frameType: frame.frameType || defs.frameType,
+    gradientTop: normalizeFrameColor(frame.gradientTop) || defs.gradientTop,
+    gradientBottom: normalizeFrameColor(frame.gradientBottom) || defs.gradientBottom,
+    borderColor: normalizeFrameColor(frame.borderColor) || defs.borderColor,
+    matColor: normalizeFrameColor(frame.matColor) || defs.matColor,
+    outerMatColor:
+      normalizeFrameColor(frame.outerMatColor ?? frame.matColor) || defs.matColor,
+    padColor: normalizeFrameColor(frame.padColor ?? frame.matColor) || defs.matColor,
+    gradientPreset: frame.gradientPreset ?? null,
+    borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
+    borderThicknessLocked: frame.borderThicknessLocked !== false,
+    gownLayerPct: normalizeGownLayerPct(frame.gownLayerPct),
+    photoZoomPct: frame.photoZoomPct ?? PHOTO_ZOOM_DEFAULT,
+    photoZoomLocked: frame.photoZoomLocked !== false,
+    photoPanH: frame.photoPanH ?? 50,
+    photoPanV: frame.photoPanV ?? 50,
+    photoPanHLocked: frame.photoPanHLocked !== false,
+    photoPanVLocked: frame.photoPanVLocked !== false,
+    gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+  };
+}
+
+function snapshotFrameAppearance(frame, style) {
+  if (style === "gown_static") return snapshotGownFrameAppearance(frame);
+  ensureFrameDefaults(frame);
+  const defs = STYLE_DEFAULTS[style] || {};
+  return {
+    frameType: frame.frameType || defs.frameType,
+    gradientTop: frame.gradientTop ?? defs.gradientTop,
+    gradientBottom: frame.gradientBottom ?? defs.gradientBottom,
+    borderColor: frame.borderColor ?? defs.borderColor,
+    matColor: frame.matColor ?? defs.matColor,
+    gradientPreset: frame.gradientPreset ?? null,
+    borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
+    borderThicknessLocked: frame.borderThicknessLocked !== false,
+    outerMatColor: frame.outerMatColor,
+    innerStrokeColor: frame.innerStrokeColor,
+    padColor: frame.padColor,
+    gownLayerPct: frame.gownLayerPct ? { ...frame.gownLayerPct } : defaultGownLayerPct(),
+    photoZoomPct: frame.photoZoomPct ?? PHOTO_ZOOM_DEFAULT,
+    photoZoomLocked: frame.photoZoomLocked !== false,
+    photoPanH: frame.photoPanH ?? 50,
+    photoPanV: frame.photoPanV ?? 50,
+    photoPanHLocked: frame.photoPanHLocked !== false,
+    photoPanVLocked: frame.photoPanVLocked !== false,
+    gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+  };
+}
+
+function applyFrameAppearanceDefaults(frame, def, style) {
+  if (!frame) return frame;
+  const appearance = snapshotFrameAppearance({ ...frame, ...(def || {}) }, style);
+  Object.assign(frame, appearance);
+  return frame;
+}
+
 export function ensureGownLayerPcts(frame) {
   if (!frame) return frame;
-  if (!frame.gownLayerPct) {
-    frame.gownLayerPct = {
-      border: BORDER_THICKNESS_DEFAULT,
-      outerMat: BORDER_THICKNESS_DEFAULT,
-      innerAccent: BORDER_THICKNESS_DEFAULT,
-      innerMat: BORDER_THICKNESS_DEFAULT,
-    };
-  }
-  const p = frame.gownLayerPct;
-  if (p.border == null) p.border = BORDER_THICKNESS_DEFAULT;
-  if (p.outerMat == null) p.outerMat = BORDER_THICKNESS_DEFAULT;
-  if (p.innerAccent == null) p.innerAccent = BORDER_THICKNESS_DEFAULT;
-  if (p.innerMat == null) p.innerMat = BORDER_THICKNESS_DEFAULT;
+  frame.gownLayerPct = normalizeGownLayerPct(frame.gownLayerPct);
   return frame;
 }
 
@@ -1715,36 +1781,8 @@ function snapshotDefaults(layers, style) {
   if (!layers?._staticFrame) return;
   if (!layers._staticDefaults) {
     const frame = layers._staticFrame;
-    ensureFrameDefaults(frame);
     layers._staticDefaults = {
-      frame: {
-        frameType: frame.frameType,
-        gradientTop: frame.gradientTop,
-        gradientBottom: frame.gradientBottom,
-        borderColor: frame.borderColor,
-        matColor: frame.matColor,
-        gradientPreset: frame.gradientPreset,
-        borderThicknessPct: frame.borderThicknessPct ?? 100,
-        borderThicknessLocked: frame.borderThicknessLocked !== false,
-        outerMatColor: frame.outerMatColor,
-        innerStrokeColor: frame.innerStrokeColor,
-        padColor: frame.padColor,
-        gownLayerPct: frame.gownLayerPct
-          ? { ...frame.gownLayerPct }
-          : {
-              border: 100,
-              outerMat: 100,
-              innerAccent: 100,
-              innerMat: 100,
-            },
-        photoZoomPct: frame.photoZoomPct ?? 100,
-        photoZoomLocked: frame.photoZoomLocked !== false,
-        photoPanH: frame.photoPanH ?? 50,
-        photoPanV: frame.photoPanV ?? 50,
-        photoPanHLocked: frame.photoPanHLocked !== false,
-        photoPanVLocked: frame.photoPanVLocked !== false,
-        gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
-      },
+      frame: snapshotFrameAppearance(frame, style),
       urls: {
         full: layers.full || "",
         noStickers: layers.noStickers || "",
@@ -1958,14 +1996,17 @@ export function resetStaticPlacements(layers) {
 
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef) {
-    Object.assign(layers._staticFrame, { ...frameDef });
+    applyFrameAppearanceDefaults(layers._staticFrame, frameDef, style);
   } else {
-    const defs = STYLE_DEFAULTS[style] || {};
-    Object.assign(layers._staticFrame, { ...defs });
+    applyFrameAppearanceDefaults(layers._staticFrame, STYLE_DEFAULTS[style] || {}, style);
   }
 
   ensureFrameBases(layers._staticFrame);
-  applyBorderThickness(layers._staticFrame);
+  if (style === "gown_static") {
+    applyGownFrameLayers(layers._staticFrame);
+  } else {
+    applyBorderThickness(layers._staticFrame);
+  }
 
   for (const p of layers._badgePlacements || []) {
     if (!p.id) continue;
@@ -2081,6 +2122,9 @@ if (typeof window !== "undefined") {
     ensureVariantPlacementMeta,
     ensureStaticPlacementMeta,
     resetStaticPlacements,
+    snapshotGownFrameAppearance,
+    normalizeGownLayerPct,
+    defaultGownLayerPct,
     needsStaticCompose,
     isStaticEdited,
     ensureFrameBases,
