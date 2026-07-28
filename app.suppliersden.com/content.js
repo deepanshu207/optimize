@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=102";
+      return "/js/staticFrameCompose.mjs?v=103";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=102");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=103");
     }
-    return "/js/staticFrameCompose.mjs?v=102";
+    return "/js/staticFrameCompose.mjs?v=103";
   }
 
   async preloadStaticComposeModule() {

@@ -53,6 +53,8 @@ for (const pct of [50, 100, 150, 500, 1000]) {
   f.borderThicknessPct = pct;
   applyBorderThickness(f);
   assertProductStable(f, "gown");
+  assert(f.whiteX === f.border, `gown: border band visible at ${f.borderThicknessPct}%`);
+  assert(f.border > 0, `gown: border width > 0 at ${f.borderThicknessPct}%`);
 }
 
 const showcase = {

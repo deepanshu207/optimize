@@ -77,7 +77,8 @@ assert(gownFrame.innerStroke === 3, "100 keeps teal accent");
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border < 19, "50 thins teal border");
-assert(gownFrame.outerMatPad < 19, "50 thins outer white mat");
+assert(gownFrame.outerMatPad > 19, "50 expands outer mat to keep product fixed");
+assert(gownFrame.whiteX === gownFrame.border, "50 border color band matches whiteX");
 assert(gownFrame.dw === 657, "50 does not shrink product width");
 assert(gownFrame.dh === 978, "50 does not shrink product height");
 assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed");
@@ -86,15 +87,9 @@ assert(gownFrame.innerStroke === 3, "50 keeps teal accent fixed");
 gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMat: 100 };
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(
-  gownFrame.outerMatPad > 19,
-  "500 thickens outer white mat within canvas (product stays fixed)",
-);
-assert(
-  gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 58,
-  "500 increases total frame inset",
-);
+assert(gownFrame.border >= 38, "500 thickens teal border to canvas limit");
+assert(gownFrame.whiteX === gownFrame.border && gownFrame.border > 0, "500 keeps visible border band");
+assert(gownFrame.border + gownFrame.outerMatPad === 38, "500 fills fixed frame stack");
 assert(gownFrame.dw === 657, "500 does not shrink product width");
 assert(gownFrame.dh === 978, "500 does not shrink product height");
 
@@ -103,14 +98,16 @@ applyBorderThickness(gownFrame);
 
 const layerFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 50, innerAccent: 100, innerMat: 100 } };
 updateFrameAppearance({ _staticFrame: layerFrame }, { gownLayerPct: { outerMat: 50 } });
-assert(layerFrame.border === 19, "layer edit keeps outer border at default");
 assert(layerFrame.outerMatPad < 19, "layer edit thins outer mat only");
+assert(layerFrame.border > 19, "layer edit thickens border band to keep product fixed");
+assert(layerFrame.whiteX === layerFrame.border, "layer edit keeps border band visible");
 assert(layerFrame.innerStroke === 3, "layer edit keeps inner accent");
 
 const accentFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 50, innerMat: 100 } };
 updateFrameAppearance({ _staticFrame: accentFrame }, { gownLayerPct: { innerAccent: 50 } });
 assert(accentFrame.innerStroke < 3, "inner accent scales independently");
-assert(accentFrame.outerMatPad === 19, "inner accent edit keeps outer mat");
+assert(accentFrame.px === accentFrame.basePx, "inner accent edit keeps product position");
+assert(accentFrame.whiteX === accentFrame.border, "inner accent edit keeps border band visible");
 assert(accentFrame.dw === 657, "inner accent edit keeps image width fixed");
 
 const padFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 100, innerMat: 50 } };
