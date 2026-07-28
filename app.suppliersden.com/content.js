@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=74";
+      return "/js/liveAnalysisBridge.mjs?v=75";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=74");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=75");
     }
-    return "/js/liveAnalysisBridge.mjs?v=74";
+    return "/js/liveAnalysisBridge.mjs?v=75";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=74";
+      return "/js/staticFrameCompose.mjs?v=75";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=74");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=75");
     }
-    return "/js/staticFrameCompose.mjs?v=74";
+    return "/js/staticFrameCompose.mjs?v=75";
   }
 
   async preloadStaticComposeModule() {
@@ -1097,6 +1097,7 @@ Please share payment details and license key.`;
         const label = previewBox.querySelector(".preview-label");
         if (label) label.textContent = file.name;
         if (uploadArea) uploadArea.style.display = "none";
+        this.wireClearUploadButton();
       };
       reader.readAsDataURL(file);
     };
@@ -1286,6 +1287,8 @@ Please share payment details and license key.`;
         }
       };
     }
+
+    this.wireClearUploadButton();
   }
 
   // Load categories into dropdown
@@ -3573,9 +3576,16 @@ Please share payment details and license key.`;
     if (!row?.layers?._staticFrame) return;
 
     await this.preloadStaticComposeModule();
-    if (!window.StaticFrameCompose?.applyGradientPreset) return;
+    const SFC = window.StaticFrameCompose;
+    if (!SFC) return;
 
-    window.StaticFrameCompose.applyGradientPreset(row.layers, presetId);
+    if (presetId) {
+      if (!SFC.applyGradientPreset) return;
+      SFC.applyGradientPreset(row.layers, presetId);
+    } else {
+      if (!SFC.clearGradientPreset) return;
+      SFC.clearGradientPreset(row.layers);
+    }
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
 
@@ -3583,6 +3593,21 @@ Please share payment details and license key.`;
       this._staticControlsVariantId = null;
       this.renderVariantEditorPanel(row);
     }
+  }
+
+  clearUploadedImage() {
+    this.resetToUploadForm({ keepImage: false });
+  }
+
+  wireClearUploadButton() {
+    const btn = document.getElementById("clear-upload-btn");
+    if (!btn || btn.dataset.wired === "1") return;
+    btn.dataset.wired = "1";
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.clearUploadedImage();
+    };
   }
 
   buildStaticColorFieldHtml(id, label, colorValue, fallback = "#000000") {
@@ -3872,7 +3897,7 @@ Please share payment details and license key.`;
     });
     html += `</select></label>`;
 
-    if (style === "showcase" || style === "live_standard" || frame.frameType === "gradient" || frame.gradientPreset) {
+    if (style === "showcase" || style === "live_standard" || SFC.staticStyleUsesGradientColors?.(style, frame)) {
       html += this.buildStaticColorFieldHtml(
         "static-color-top",
         "Top",
@@ -4008,7 +4033,7 @@ Please share payment details and license key.`;
     const presetSel = container.querySelector("#static-gradient-preset");
     if (presetSel) {
       presetSel.onchange = () => {
-        if (presetSel.value) void this.setStaticGradientPreset(vid, presetSel.value);
+        void this.setStaticGradientPreset(vid, presetSel.value || null);
       };
     }
 

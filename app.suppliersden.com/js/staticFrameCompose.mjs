@@ -1283,6 +1283,21 @@ export function applyGradientPreset(layers, presetId) {
   });
 }
 
+export function clearGradientPreset(layers) {
+  if (!layers?._staticFrame) return false;
+  const frame = layers._staticFrame;
+  const style = frame.style;
+  const defs = STYLE_DEFAULTS[style];
+  frame.gradientPreset = null;
+  if (defs?.frameType) frame.frameType = defs.frameType;
+  return true;
+}
+
+export function staticStyleUsesGradientColors(style, frame) {
+  if (style === "showcase" || style === "live_standard") return true;
+  return !!frame?.gradientPreset;
+}
+
 function snapshotDefaults(layers, style) {
   if (!layers?._staticFrame) return;
   if (!layers._staticDefaults) {
@@ -1552,6 +1567,8 @@ if (typeof window !== "undefined") {
     setAllPlacementsHidden,
     updateFrameAppearance,
     applyGradientPreset,
+    clearGradientPreset,
+    staticStyleUsesGradientColors,
     parseCssColor,
     normalizeFrameColor,
     hexToRgb,
