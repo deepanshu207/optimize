@@ -2,7 +2,7 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=95";
+import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -279,10 +279,7 @@ function placementSize(p) {
 }
 
 export function isGownArtPlacement(p) {
-  return !!(
-    p &&
-    (p.kind === "gownArt" || p.gownSlot?.startsWith("gown-") || p.id?.startsWith("gown-"))
-  );
+  return !!(p && p.kind === "gownArt");
 }
 
 /** Gown badge x/y — matches liveGownStatic.mjs gownStaticPlacements (no canvas clamp). */
@@ -557,7 +554,7 @@ export function applyPositionToPlacement(placement, frame) {
   const { w, h } = placementSize(placement);
   const { outerW, outerH } = frame;
 
-  if (frame.style === "gown_static" && isGownArtPlacement(placement)) {
+  if (frame.style === "gown_static" && placement.kind === "gownArt") {
     const locksH = placement.lockH !== false;
     const locksV = placement.lockV !== false;
     if (locksH && locksV) {
@@ -1138,7 +1135,7 @@ async function drawPlacementsOnCtx(ctx, placements) {
       } else if (p.id?.startsWith("tall-")) {
         const copy = { ...p, w, h };
         await drawTallBadge(ctx, loadBadge, copy);
-      } else if (p.id?.startsWith("gown-") || p.kind === "gownArt") {
+      } else if (p.kind === "gownArt" || (p.id?.startsWith("gown-") && p.kind !== "badge")) {
         const copy = { ...p, w, h };
         await drawGownBadge(ctx, loadBadge, copy);
       } else if (p.num != null) {
@@ -1223,6 +1220,8 @@ async function compressToTargetKb(canvas, targetKb, style) {
   const blob =
     style === "lifestyle_promo"
       ? await compressLifestyleToKb(canvas, targetKb)
+      : style === "gown_static"
+      ? await compressGownToKb(canvas, targetKb)
       : await compressFramedToKb(canvas, targetKb);
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -1848,6 +1847,13 @@ export function ensureStaticPlacementMeta(layers, style) {
     const p = layers._badgePlacements[i];
     if (!p.id) p.id = `badge-slot-${i}`;
     ensurePlacementDefaults(p);
+    if (
+      style === "gown_static" &&
+      (p.kind === "badge" || p.kind === "freeShipping")
+    ) {
+      p.lockH = false;
+      p.lockV = false;
+    }
     if (!p.anchor && anchorMap[p.id]) p.anchor = anchorMap[p.id];
     if (!p.label) {
       if (p.kind === "freeShipping") p.label = "FREE SHIPPING";

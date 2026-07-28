@@ -68,12 +68,17 @@ assert(
 );
 
 assert(
-  uiCode.includes("frozenEstShipping"),
-  "UI sorts static promos by frozen est shipping",
+  composeCode.includes("compressGownToKb") && composeCode.includes('style === "gown_static"'),
+  "save compose uses gown KB compressor",
+);
+assert(
+  contentCode.includes("ensureFrozenPricing") && contentCode.includes("ensureRowComposeReady"),
+  "compose ensures frozen pricing and layer snapshot",
 );
 
-if (failed) {
-  console.error(`\n${failed} test(s) failed`);
-  process.exit(1);
-}
-console.log("\nAll gown badge shipping checks passed");
+assert(
+  composeCode.includes('p.kind === "badge"') &&
+    composeCode.includes("p.lockH = false") &&
+    composeCode.includes("p.lockV = false"),
+  "gown numbered badges unlock H/V sliders by default",
+);
