@@ -55,6 +55,14 @@ assert(
   composeCode.includes("slotW: p.w"),
   "gown slot dimensions snapshotted for art restore",
 );
+assert(
+  /const\s*\{[^}]*\binnerStroke\b[^}]*\}\s*=\s*built/.test(gownCode),
+  "buildGownStaticLayers destructures innerStroke from built",
+);
+assert(
+  gownCode.includes("baseInnerStroke: innerStroke"),
+  "_staticFrame baseInnerStroke uses destructured innerStroke",
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
