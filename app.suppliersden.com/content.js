@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=91";
+      return "/js/liveAnalysisBridge.mjs?v=92";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=91");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=92");
     }
-    return "/js/liveAnalysisBridge.mjs?v=91";
+    return "/js/liveAnalysisBridge.mjs?v=92";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=91";
+      return "/js/staticFrameCompose.mjs?v=92";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=91");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=92");
     }
-    return "/js/staticFrameCompose.mjs?v=91";
+    return "/js/staticFrameCompose.mjs?v=92";
   }
 
   async preloadStaticComposeModule() {
@@ -2903,6 +2903,36 @@ Please share payment details and license key.`;
     };
   }
 
+  freezeRowPricing(row, source = {}) {
+    const estShipping = source.estShipping ?? source.meta?.estInr ?? row.estShipping ?? 0;
+    row._frozenPricing = {
+      estShipping,
+      shippingCost: source.shippingCost ?? row.shippingCost ?? 0,
+      pricingImageUrl:
+        source.pricingImageUrl ||
+        row.pricingImageUrl ||
+        source.dataUrl ||
+        row.dataUrl ||
+        "",
+      metaKb: source.meta?.kb ?? row.meta?.kb,
+      metaEstInr: source.meta?.estInr ?? estShipping,
+      targetKb: source.meta?.targetKb ?? row.meta?.targetKb,
+    };
+    return row;
+  }
+
+  getRowDisplayShipping(row) {
+    const frozen = row?._frozenPricing;
+    if (frozen) {
+      if (frozen.shippingCost > 0) return { amount: frozen.shippingCost, verified: true };
+      if (frozen.estShipping > 0) return { amount: frozen.estShipping, verified: false };
+      if (frozen.metaEstInr > 0) return { amount: frozen.metaEstInr, verified: false };
+    }
+    if (row?.shippingCost > 0) return { amount: row.shippingCost, verified: true };
+    const est = row?.estShipping ?? row?.meta?.estInr ?? 0;
+    return { amount: est, verified: false };
+  }
+
   mapResultFromApi(r, index) {
     const variantId =
       r.variantId || `var-${index + 1}-${Math.random().toString(36).slice(2, 7)}`;
@@ -2938,6 +2968,13 @@ Please share payment details and license key.`;
       typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl
         ? MeeshoAPI.resolveDisplayUrl(row) || pricingImageUrl
         : pricingImageUrl;
+    this.freezeRowPricing(row, {
+      estShipping: row.estShipping,
+      shippingCost: row.shippingCost,
+      pricingImageUrl,
+      dataUrl: row.dataUrl,
+      meta: row.meta,
+    });
     return row;
   }
 
@@ -4398,13 +4435,16 @@ Please share payment details and license key.`;
       html += `</div>`;
     });
 
-    const priceLock = row.meta?.targetKb
-      ? `est ₹ at ${row.meta.targetKb}KB`
-      : row.shippingCost > 0
-      ? `shipping ₹${row.shippingCost}`
-      : row.estShipping > 0
-      ? `est ₹${row.estShipping}`
-      : "original pricing";
+    const priceLock = row._frozenPricing?.targetKb
+      ? `est ₹ at ${row._frozenPricing.targetKb}KB`
+      : (() => {
+          const ship = this.getRowDisplayShipping(row);
+          return ship.amount > 0
+            ? ship.verified
+              ? `shipping ₹${ship.amount}`
+              : `est ₹${ship.amount}`
+            : "original pricing";
+        })();
     html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep ${priceLock} unchanged.</p>`;
     container.innerHTML = html;
 
@@ -4686,11 +4726,12 @@ Please share payment details and license key.`;
     if (addBothCb) addBothCb.checked = !!flags.fullDecorationsAdded;
     if (title) title.textContent = row.name || "Variant";
     if (priceNote) {
+      const ship = this.getRowDisplayShipping(row);
       priceNote.textContent =
-        row.shippingCost > 0
-          ? `Shipping ₹${row.shippingCost} is unchanged — preview/save only.`
-          : row.estShipping > 0
-          ? `Est. ₹${row.estShipping} is unchanged — preview/save only.`
+        ship.amount > 0
+          ? ship.verified
+            ? `Shipping ₹${ship.amount} is unchanged — preview/save only.`
+            : `Est. ₹${ship.amount} is unchanged — preview/save only.`
           : "Shipping price is unchanged — this only affects the image you save.";
     }
     const footerNote = panel.querySelector("#variant-edit-footer-note");
