@@ -190,8 +190,12 @@ export function drawGownPhotoInFixedRect(ctx, productImg, frame) {
   const fitScale = Math.max(w / productImg.width, h / productImg.height) * zoom;
   const sw = Math.round(productImg.width * fitScale);
   const sh = Math.round(productImg.height * fitScale);
-  const imgX = x + Math.round((w - sw) / 2);
-  const imgY = y + Math.round((h - sh) / 2);
+  const maxPanX = Math.max(0, sw - w);
+  const maxPanY = Math.max(0, sh - h);
+  const panH = Math.max(0, Math.min(100, frame.photoPanH ?? 50));
+  const panV = Math.max(0, Math.min(100, frame.photoPanV ?? 50));
+  const imgX = x - Math.round(maxPanX * (panH / 100));
+  const imgY = y - Math.round(maxPanY * (panV / 100));
 
   ctx.save();
   ctx.beginPath();
@@ -433,6 +437,8 @@ async function buildGownStaticLayers(img) {
         },
         photoZoomPct: GOWN_PHOTO_ZOOM_DEFAULT,
         photoZoomLocked: true,
+        photoPanH: 50,
+        photoPanV: 50,
         gownFrameLayersLocked: true,
         outerW,
         outerH,

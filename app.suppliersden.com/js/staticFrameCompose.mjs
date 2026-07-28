@@ -10,7 +10,7 @@ import {
   drawGownProductInSlot,
   drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=95";
+} from "./liveGownStatic.mjs?v=97";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -254,8 +254,9 @@ function ensurePlacementDefaults(p) {
     }
   }
   if (p.sizePct == null) p.sizePct = 100;
-  if (p.lockH == null) p.lockH = true;
-  if (p.lockV == null) p.lockV = true;
+  const gownSlot = p.id?.startsWith("gown-") || p.kind === "gownArt";
+  if (p.lockH == null) p.lockH = gownSlot ? false : true;
+  if (p.lockV == null) p.lockV = gownSlot ? false : true;
   if (p.lockSize == null) p.lockSize = true;
   return p;
 }
@@ -557,19 +558,28 @@ export function applyPositionToPlacement(placement, frame) {
   if (frame.style === "gown_static" && placement.kind === "gownArt") {
     const locksH = placement.lockH !== false;
     const locksV = placement.lockV !== false;
+    const slot = placement.gownSlot || placement.id;
+    const anchor = gownPlacementPosition(slot, frame, w, h);
+
     if (locksH && locksV) {
-      const slot = placement.gownSlot || placement.id;
-      const { x, y } = gownPlacementPosition(slot, frame, w, h);
-      placement.x = x;
-      placement.y = y;
+      placement.x = anchor.x;
+      placement.y = anchor.y;
+      const sliders = xyToSliders(anchor.x, anchor.y, outerW, outerH, w, h);
+      placement.posH = sliders.posH;
+      placement.posV = sliders.posV;
       return placement;
     }
-    if (placement.posH != null && placement.posV != null) {
-      const { x, y } = slidersToXY(placement.posH, placement.posV, outerW, outerH, w, h);
-      placement.x = x;
-      placement.y = y;
-      return placement;
-    }
+
+    const sliderPos =
+      placement.posH != null && placement.posV != null
+        ? slidersToXY(placement.posH, placement.posV, outerW, outerH, w, h)
+        : anchor;
+    placement.x = locksH ? anchor.x : sliderPos.x;
+    placement.y = locksV ? anchor.y : sliderPos.y;
+    const sliders = xyToSliders(placement.x, placement.y, outerW, outerH, w, h);
+    placement.posH = sliders.posH;
+    placement.posV = sliders.posV;
+    return placement;
   }
 
   if (placement.posH != null && placement.posV != null) {
@@ -962,8 +972,13 @@ export function applyBorderThickness(frame, options = {}) {
 export function reanchorPlacements(layers) {
   if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
   for (const p of layers._badgePlacements) {
-    if (p.anchor) applyAnchorToPlacement(p, layers._staticFrame);
-    else applyPositionToPlacement(p, layers._staticFrame);
+    if (p.posH != null && p.posV != null) {
+      applyPositionToPlacement(p, layers._staticFrame);
+    } else if (p.anchor) {
+      applyAnchorToPlacement(p, layers._staticFrame);
+    } else {
+      applyPositionToPlacement(p, layers._staticFrame);
+    }
   }
   return true;
 }
@@ -1245,6 +1260,8 @@ export function frameAppearanceChanged(frame, defaults) {
     "gradientPreset",
     "borderThicknessPct",
     "photoZoomPct",
+    "photoPanH",
+    "photoPanV",
   ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
@@ -1547,6 +1564,10 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   p.num = num;
   p.drawn = true;
   p.label = `Badge ${num}`;
+  if (p.kind === "badge" && p.id?.startsWith("gown-")) {
+    p.lockH = false;
+    p.lockV = false;
+  }
   if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
   return true;
 }
@@ -1613,6 +1634,12 @@ export function updateFrameAppearance(layers, patch) {
   }
   if (patch.photoZoomPct != null && frame.style === "gown_static") {
     frame.photoZoomPct = clamp(patch.photoZoomPct, 50, 200);
+  }
+  if (patch.photoPanH != null && frame.style === "gown_static") {
+    frame.photoPanH = clamp(patch.photoPanH, 0, 100);
+  }
+  if (patch.photoPanV != null && frame.style === "gown_static") {
+    frame.photoPanV = clamp(patch.photoPanV, 0, 100);
   }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
@@ -1702,6 +1729,8 @@ function snapshotDefaults(layers, style) {
             },
         photoZoomPct: frame.photoZoomPct ?? 100,
         photoZoomLocked: frame.photoZoomLocked !== false,
+        photoPanH: frame.photoPanH ?? 50,
+        photoPanV: frame.photoPanV ?? 50,
         gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
       },
       urls: {
@@ -1841,16 +1870,15 @@ export function ensureStaticPlacementMeta(layers, style) {
   ensureFrameDefaults(layers._staticFrame);
   snapshotDefaults(layers, style);
 
+  if (layers._placementMetaReady) return layers;
+
   const anchorMap = DEFAULT_ANCHORS[style] || {};
 
   for (let i = 0; i < layers._badgePlacements.length; i++) {
     const p = layers._badgePlacements[i];
     if (!p.id) p.id = `badge-slot-${i}`;
     ensurePlacementDefaults(p);
-    if (
-      style === "gown_static" &&
-      (p.kind === "badge" || p.kind === "freeShipping")
-    ) {
+    if (style === "gown_static") {
       p.lockH = false;
       p.lockV = false;
     }
@@ -1898,6 +1926,7 @@ export function ensureStaticPlacementMeta(layers, style) {
     }
   }
   finalizePlacementSnapshot(layers);
+  layers._placementMetaReady = true;
   return layers;
 }
 
@@ -1905,6 +1934,7 @@ export function resetStaticPlacements(layers) {
   if (!layers?._staticFrame) return false;
   const style = layers._staticFrame.style;
   const anchorMap = DEFAULT_ANCHORS[style] || {};
+  layers._placementMetaReady = false;
 
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef) {
@@ -1956,8 +1986,13 @@ export function resetStaticPlacements(layers) {
       p.posH = pDef.posH;
       p.posV = pDef.posV;
       p.sizePct = pDef.sizePct ?? 100;
-      p.lockH = true;
-      p.lockV = true;
+      if (style === "gown_static") {
+        p.lockH = false;
+        p.lockV = false;
+      } else {
+        p.lockH = true;
+        p.lockV = true;
+      }
       p.lockSize = true;
     } else if (anchorMap[p.id]) {
       p.anchor = anchorMap[p.id];
@@ -1966,6 +2001,7 @@ export function resetStaticPlacements(layers) {
     }
     applyPositionToPlacement(p, layers._staticFrame);
   }
+  layers._placementMetaReady = true;
   return true;
 }
 
