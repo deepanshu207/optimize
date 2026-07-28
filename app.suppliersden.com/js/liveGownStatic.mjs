@@ -145,10 +145,9 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   const ify = frame.innerFrameY ?? wy + omp;
   const ifw = frame.innerFrameW ?? ww - omp * 2;
   const ifh = frame.innerFrameH ?? wh - omp * 2;
-  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const stroke = frame.innerStroke ?? 0;
   const outerMatColor = frame.outerMatColor ?? frame.matColor ?? "#ffffff";
   const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
-  const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
 
   ctx.fillStyle = gownBorderFillStyle(ctx, frame, outerW, outerH);
   ctx.fillRect(0, 0, outerW, outerH);
@@ -162,15 +161,8 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   }
 
   if (ifw > 0 && ifh > 0) {
-    const padX = ifx + stroke;
-    const padY = ify + stroke;
-    const padW = ifw - 2 * stroke;
-    const padH = ifh - 2 * stroke;
-    if (padW > 0 && padH > 0) {
-      ctx.fillStyle = padColor;
-      ctx.fillRect(padX, padY, padW, padH);
-    }
-    drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
+    ctx.fillStyle = padColor;
+    ctx.fillRect(ifx, ify, ifw, ifh);
   }
 }
 

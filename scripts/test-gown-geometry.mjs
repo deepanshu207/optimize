@@ -32,9 +32,8 @@ const gownCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
   "utf8",
 );
-assert(gownCode.includes("drawGownInnerAccent"), "teal inner accent drawn");
-assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent uses teal");
 assert(gownCode.includes("drawGownPhotoInFixedRect"), "cover-fit fills photo slot");
+assert(!/drawGownStaticFrameBackground[\s\S]*drawGownInnerAccent/.test(gownCode), "background skips inner accent line");
 assert(
   gownCode.includes("drawImage(noStickersCanvas, px, py, dw, dh"),
   "productOnly crops pre-badge frame",
@@ -44,7 +43,7 @@ const geom = computeGownFrameGeometry(773, 1094);
 assert(geom.border === 19, `teal border ${geom.border}px`);
 assert(geom.outerMatPad === 19, `outer white mat ${geom.outerMatPad}px`);
 assert(geom.innerMatPad === 17, `inner white pad ${geom.innerMatPad}px`);
-assert(geom.innerStroke === 3, `teal accent ${geom.innerStroke}px`);
+assert(geom.innerStroke === 3, `legacy accent inset ${geom.innerStroke}px (not drawn)`);
 assert(geom.whitePad === 39, `total inset ${geom.whitePad}px`);
 assert(geom.dw === 657, `product slot width ${geom.dw}px`);
 assert(geom.dh === 978, `product slot height ${geom.dh}px`);
