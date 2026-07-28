@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=105";
+      return "/js/staticFrameCompose.mjs?v=106";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=105");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=106");
     }
-    return "/js/staticFrameCompose.mjs?v=105";
+    return "/js/staticFrameCompose.mjs?v=106";
   }
 
   async preloadStaticComposeModule() {
@@ -4657,7 +4657,7 @@ Please share payment details and license key.`;
       const photoPanV = frame.photoPanV ?? 50;
       html += `<div class="static-photo-controls-wrap" style="margin-bottom:8px;">
         <div style="font-size:10px;font-weight:600;margin-bottom:4px;">Photo zoom & pan</div>
-        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each slider to adjust. When zoomed in, pan to keep the face visible — 50 is centered.</p>
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each slider to adjust. Zoom scales from the center (100 = cover-fit). Pan shifts the photo when zoomed in, or within the frame when zoomed out — 50 is centered.</p>
         <div class="static-photo-zoom-wrap${
           zoomLocked ? " static-slider-locked" : ""
         }" style="margin-bottom:6px;">

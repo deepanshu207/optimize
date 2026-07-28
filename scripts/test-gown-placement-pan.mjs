@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  computeProductPhotoDrawRect,
   drawProductPhotoCoverFit,
   frameHasProductSlot,
   productPhotoRect,
@@ -128,6 +129,53 @@ function mockGownLayers() {
   drawProductPhotoCoverFit(ctx2, productImg, centered);
   assert.notEqual(calls[0].dx, callsCenter[0].dx, "pan H=0 should differ from center");
   assert.notEqual(calls[0].dy, callsCenter[0].dy, "pan V=100 should differ from center");
+}
+
+// Zoom out centers photo at pan 50 (not top-left)
+{
+  const frame = {
+    px: 58,
+    py: 58,
+    baseDw: 657,
+    baseDh: 978,
+    photoZoomPct: 70,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  const productImg = { width: 800, height: 1200 };
+  const rect = computeProductPhotoDrawRect(productImg, frame);
+  assert.ok(rect, "draw rect computed");
+  const centerX = rect.x + Math.round((rect.w - rect.sw) / 2);
+  const centerY = rect.y + Math.round((rect.h - rect.sh) / 2);
+  assert.equal(rect.imgX, centerX, "zoom out centers horizontally at pan 50");
+  assert.equal(rect.imgY, centerY, "zoom out centers vertically at pan 50");
+
+  const left = computeProductPhotoDrawRect(productImg, { ...frame, photoPanH: 0, photoPanV: 0 });
+  assert.equal(left.imgX, rect.x, "zoom out pan H=0 aligns left");
+  assert.equal(left.imgY, rect.y, "zoom out pan V=0 aligns top");
+
+  const right = computeProductPhotoDrawRect(productImg, { ...frame, photoPanH: 100, photoPanV: 100 });
+  assert.equal(right.imgX, rect.x + rect.w - rect.sw, "zoom out pan H=100 aligns right");
+  assert.equal(right.imgY, rect.y + rect.h - rect.sh, "zoom out pan V=100 aligns bottom");
+}
+
+// Zoom 100 cover-fit stays pinned at pan 50 when one axis fills exactly
+{
+  const frame = {
+    px: 10,
+    py: 20,
+    baseDw: 200,
+    baseDh: 300,
+    photoZoomPct: 100,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  const productImg = { width: 400, height: 600 };
+  const rect = computeProductPhotoDrawRect(productImg, frame);
+  assert.equal(rect.sw, 200, "cover-fit width fills slot at 100%");
+  assert.equal(rect.sh, 300, "cover-fit height fills slot at 100%");
+  assert.equal(rect.imgX, 10, "100% zoom x at slot origin");
+  assert.equal(rect.imgY, 20, "100% zoom y at slot origin");
 }
 
 // updateFrameAppearance stores pan values

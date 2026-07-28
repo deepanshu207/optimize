@@ -19,20 +19,43 @@ export function productPhotoRect(frame) {
   };
 }
 
-export function drawProductPhotoCoverFit(ctx, productImg, frame) {
+/** Cover-fit draw rect: zooms from center; pan 50 = centered in each axis. */
+export function computeProductPhotoDrawRect(productImg, frame) {
   const { x, y, w, h } = productPhotoRect(frame);
-  if (w <= 0 || h <= 0 || !productImg?.width) return;
+  if (w <= 0 || h <= 0 || !productImg?.width) return null;
 
   const zoom = clampPhotoZoom(frame?.photoZoomPct) / 100;
   const fitScale = Math.max(w / productImg.width, h / productImg.height) * zoom;
   const sw = Math.round(productImg.width * fitScale);
   const sh = Math.round(productImg.height * fitScale);
-  const maxPanX = Math.max(0, sw - w);
-  const maxPanY = Math.max(0, sh - h);
   const panH = Math.max(0, Math.min(100, frame?.photoPanH ?? 50));
   const panV = Math.max(0, Math.min(100, frame?.photoPanV ?? 50));
-  const imgX = x - Math.round(maxPanX * (panH / 100));
-  const imgY = y - Math.round(maxPanY * (panV / 100));
+
+  let imgX;
+  if (sw >= w) {
+    const maxPanX = sw - w;
+    imgX = x - Math.round(maxPanX * (panH / 100));
+  } else {
+    const slackX = w - sw;
+    imgX = x + Math.round(slackX * (panH / 100));
+  }
+
+  let imgY;
+  if (sh >= h) {
+    const maxPanY = sh - h;
+    imgY = y - Math.round(maxPanY * (panV / 100));
+  } else {
+    const slackY = h - sh;
+    imgY = y + Math.round(slackY * (panV / 100));
+  }
+
+  return { x, y, w, h, imgX, imgY, sw, sh };
+}
+
+export function drawProductPhotoCoverFit(ctx, productImg, frame) {
+  const rect = computeProductPhotoDrawRect(productImg, frame);
+  if (!rect) return;
+  const { x, y, w, h, imgX, imgY, sw, sh } = rect;
 
   ctx.save();
   ctx.beginPath();
