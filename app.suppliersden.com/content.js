@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=86";
+      return "/js/liveAnalysisBridge.mjs?v=87";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=86");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=87");
     }
-    return "/js/liveAnalysisBridge.mjs?v=86";
+    return "/js/liveAnalysisBridge.mjs?v=87";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=86";
+      return "/js/staticFrameCompose.mjs?v=87";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=86");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=87");
     }
-    return "/js/staticFrameCompose.mjs?v=86";
+    return "/js/staticFrameCompose.mjs?v=87";
   }
 
   async preloadStaticComposeModule() {
@@ -3647,23 +3647,34 @@ Please share payment details and license key.`;
 
     clearTimeout(this._gownLayerTimer);
     this._gownLayerTimer = setTimeout(() => {
-      void this.applyStaticGownLayerPct(variantId, layerKey, pct);
+      void this.applyStaticGownLayerPcts(variantId);
     }, 150);
   }
 
-  async applyStaticGownLayerPct(variantId, layerKey, pct) {
+  readGownLayerPctFromUI(container) {
+    const patch = {};
+    container?.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      const key = slider.dataset.gownLayer;
+      if (!key) return;
+      patch[key] = parseInt(slider.value, 10);
+    });
+    return patch;
+  }
+
+  async applyStaticGownLayerPcts(variantId) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
     if (!frame || frame.style !== "gown_static") return;
     if (frame.gownFrameLayersLocked !== false) return;
-    if (!["border", "outerMat", "innerAccent", "innerMat"].includes(layerKey)) return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const gownLayerPct = this.readGownLayerPctFromUI(container);
+    if (!Object.keys(gownLayerPct).length) return;
 
     const loaded = await this.preloadStaticComposeModule();
     if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
 
-    window.StaticFrameCompose.updateFrameAppearance(row.layers, {
-      gownLayerPct: { [layerKey]: pct },
-    });
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, { gownLayerPct });
     if (window.StaticFrameCompose.reanchorPlacements) {
       window.StaticFrameCompose.reanchorPlacements(row.layers);
     }
@@ -3678,6 +3689,16 @@ Please share payment details and license key.`;
     }
   }
 
+  async applyStaticGownLayerPct(variantId, layerKey, pct) {
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector(
+      `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+    );
+    if (val) val.textContent = String(pct);
+    clearTimeout(this._gownLayerTimer);
+    await this.applyStaticGownLayerPcts(variantId);
+  }
+
   async setStaticGownLayerPct(variantId, layerKey, pct) {
     clearTimeout(this._gownLayerTimer);
     await this.applyStaticGownLayerPct(variantId, layerKey, pct);
@@ -3686,6 +3707,7 @@ Please share payment details and license key.`;
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
+    if (row.layers._staticFrame.style === "gown_static") return;
 
     await this.preloadStaticComposeModule();
     const SFC = window.StaticFrameCompose;
@@ -3725,8 +3747,6 @@ Please share payment details and license key.`;
   buildStaticColorFieldHtml(id, label, colorValue, fallback = "#000000") {
     const SFC = window.StaticFrameCompose;
     const hex = SFC?.normalizeFrameColor?.(colorValue, fallback) || fallback;
-    const rgb = SFC?.hexToRgb?.(hex) || { r: 0, g: 0, b: 0 };
-    const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
     const swatches = SFC?.FRAME_COLOR_SWATCHES || [];
     const chips = swatches
       .map((s) => {
@@ -3737,69 +3757,250 @@ Please share payment details and license key.`;
       .join("");
     return `<div class="static-color-row" data-color-id="${id}" style="margin-bottom:10px;padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <span style="font-size:12px;font-weight:600;min-width:52px;">${label}</span>
-        <div style="position:relative;width:40px;height:40px;flex-shrink:0;">
-          <span class="static-color-swatch" id="${id}-swatch" style="display:block;width:40px;height:40px;border-radius:6px;border:1px solid #d1d5db;background:${hex};pointer-events:none;"></span>
-          <input type="color" class="static-color-pick" id="${id}" value="${hex}" aria-label="${label} color picker" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:none;padding:0;margin:0;">
-        </div>
+        <span style="font-size:12px;font-weight:600;min-width:72px;">${label}</span>
+        <button type="button" class="static-color-swatch-btn" data-color-id="${id}" aria-label="Pick ${label} colour" title="Pick colour" style="width:40px;height:40px;border-radius:6px;border:1px solid #d1d5db;background:${hex};padding:0;cursor:pointer;flex-shrink:0;"></button>
         <label style="flex:1;font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">HEX
           <input type="text" class="static-color-hex-input" id="${id}-hex" value="${hex}" placeholder="#fff000" maxlength="7" spellcheck="false" autocomplete="off" style="width:100%;padding:8px;font-size:13px;font-family:monospace;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
         </label>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;">
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">R
-          <input type="number" class="static-color-r" id="${id}-r" min="0" max="255" value="${rgb.r}" inputmode="numeric" aria-label="${label} red" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">G
-          <input type="number" class="static-color-g" id="${id}-g" min="0" max="255" value="${rgb.g}" inputmode="numeric" aria-label="${label} green" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">B
-          <input type="number" class="static-color-b" id="${id}-b" min="0" max="255" value="${rgb.b}" inputmode="numeric" aria-label="${label} blue" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-      </div>
-      <label style="font-size:10px;color:#4b5563;display:block;margin-bottom:6px;">RGB (paste)
-        <input type="text" class="static-color-rgb" id="${id}-rgb" value="${rgbText}" placeholder="e.g. 113, 203, 211" inputmode="numeric" autocomplete="off" style="width:100%;margin-top:4px;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
-      </label>
       <div class="static-color-presets" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
     </div>`;
+  }
+
+  hslToHex(h, s, l) {
+    const SFC = window.StaticFrameCompose;
+    s /= 100;
+    l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const hex = SFC?.rgbToHex?.(
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    );
+    return SFC?.normalizeFrameColor?.(hex) || hex;
+  }
+
+  hexToHsl(hex) {
+    const SFC = window.StaticFrameCompose;
+    const rgb = SFC?.hexToRgb?.(hex);
+    if (!rgb) return { h: 0, s: 0, l: 50 };
+    const r = rgb.r / 255;
+    const g = rgb.g / 255;
+    const b = rgb.b / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r:
+          h = (g - b) / d + (g < b ? 6 : 0);
+          break;
+        case g:
+          h = (b - r) / d + 2;
+          break;
+        default:
+          h = (r - g) / d + 4;
+      }
+      h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+  }
+
+  ensureStaticColorPickerOverlay() {
+    let overlay = document.getElementById("static-color-picker-overlay");
+    if (overlay) return overlay;
+    overlay = document.createElement("div");
+    overlay.id = "static-color-picker-overlay";
+    overlay.style.cssText =
+      "display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;";
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <strong style="font-size:15px;">Select colour</strong>
+          <button type="button" id="static-color-picker-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span id="static-color-picker-preview" style="width:48px;height:48px;border-radius:8px;border:1px solid #d1d5db;background:#71cbd3;flex-shrink:0;"></span>
+          <label style="flex:1;font-size:11px;color:#4b5563;display:flex;flex-direction:column;gap:4px;">HEX
+            <input type="text" id="static-color-picker-hex" maxlength="7" spellcheck="false" autocomplete="off" style="width:100%;padding:10px;font-size:14px;font-family:monospace;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;">
+          </label>
+        </div>
+        <label style="display:block;font-size:11px;color:#4b5563;margin-bottom:4px;">Hue
+          <input type="range" id="static-color-picker-hue" min="0" max="360" value="180" style="width:100%;height:28px;margin-top:4px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);">
+        </label>
+        <label style="display:block;font-size:11px;color:#4b5563;margin:8px 0 4px;">Saturation
+          <input type="range" id="static-color-picker-sat" min="0" max="100" value="50" style="width:100%;height:28px;margin-top:4px;">
+        </label>
+        <label style="display:block;font-size:11px;color:#4b5563;margin:8px 0 4px;">Brightness
+          <input type="range" id="static-color-picker-val" min="0" max="100" value="50" style="width:100%;height:28px;margin-top:4px;background:linear-gradient(to right,#000,#fff);">
+        </label>
+        <div style="font-size:11px;color:#6b7280;margin:10px 0 6px;">Suggestions</div>
+        <div id="static-color-picker-swatches" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="static-color-picker-cancel" style="padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">Cancel</button>
+          <button type="button" id="static-color-picker-set" style="padding:8px 14px;border:none;border-radius:8px;background:#10b981;color:#fff;font-weight:600;cursor:pointer;">Set</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) overlay.style.display = "none";
+    };
+    overlay.querySelector("#static-color-picker-close").onclick = () => {
+      overlay.style.display = "none";
+    };
+    overlay.querySelector("#static-color-picker-cancel").onclick = () => {
+      overlay.style.display = "none";
+    };
+    return overlay;
+  }
+
+  openStaticColorPicker(container, fieldId, variantId) {
+    const SFC = window.StaticFrameCompose;
+    if (!SFC || !container) return;
+    const overlay = this.ensureStaticColorPickerOverlay();
+    const hexField = container.querySelector(`#${fieldId}-hex`);
+    const startHex =
+      SFC.normalizeFrameColor(hexField?.value) ||
+      SFC.normalizeFrameColor(
+        container.querySelector(`.static-color-swatch-btn[data-color-id="${fieldId}"]`)?.style
+          .backgroundColor,
+      ) ||
+      "#71cbd3";
+    const { h, s, l } = this.hexToHsl(startHex);
+    const hue = overlay.querySelector("#static-color-picker-hue");
+    const sat = overlay.querySelector("#static-color-picker-sat");
+    const val = overlay.querySelector("#static-color-picker-val");
+    const hexInput = overlay.querySelector("#static-color-picker-hex");
+    const preview = overlay.querySelector("#static-color-picker-preview");
+    const swatchWrap = overlay.querySelector("#static-color-picker-swatches");
+
+    const updateSatBg = (hexColor) => {
+      const hsl = this.hexToHsl(hexColor);
+      sat.style.background = `linear-gradient(to right,#808080,hsl(${hsl.h},100%,50%))`;
+    };
+
+    const syncFromHsl = () => {
+      const hex = this.hslToHex(
+        parseInt(hue.value, 10),
+        parseInt(sat.value, 10),
+        parseInt(val.value, 10),
+      );
+      if (!hex) return;
+      if (hexInput && document.activeElement !== hexInput) hexInput.value = hex;
+      if (preview) preview.style.background = hex;
+      updateSatBg(hex);
+    };
+
+    const syncFromHex = () => {
+      let raw = hexInput.value.trim();
+      if (!raw) return;
+      if (!raw.startsWith("#")) raw = `#${raw}`;
+      const hex = SFC.normalizeFrameColor(raw);
+      if (!hex) return;
+      const hsl = this.hexToHsl(hex);
+      hue.value = String(hsl.h);
+      sat.value = String(hsl.s);
+      val.value = String(hsl.l);
+      if (preview) preview.style.background = hex;
+      updateSatBg(hex);
+    };
+
+    hue.value = String(h);
+    sat.value = String(s);
+    val.value = String(l);
+    if (hexInput) hexInput.value = startHex;
+    if (preview) preview.style.background = startHex;
+    updateSatBg(startHex);
+
+    if (swatchWrap) {
+      swatchWrap.innerHTML = (SFC.FRAME_COLOR_SWATCHES || [])
+        .map((sw) => {
+          const chipHex = SFC.normalizeFrameColor(sw.hex) || sw.hex;
+          return `<button type="button" class="static-color-picker-chip" data-hex="${chipHex}" title="${sw.label}" style="width:32px;height:32px;border-radius:50%;border:2px solid #e5e7eb;background:${chipHex};padding:0;cursor:pointer;"></button>`;
+        })
+        .join("");
+      swatchWrap.querySelectorAll(".static-color-picker-chip").forEach((chip) => {
+        chip.onclick = () => {
+          const hex = SFC.normalizeFrameColor(chip.dataset.hex);
+          if (!hex) return;
+          hexInput.value = hex;
+          syncFromHex();
+        };
+      });
+    }
+
+    hue.oninput = syncFromHsl;
+    sat.oninput = syncFromHsl;
+    val.oninput = syncFromHsl;
+    hexInput.oninput = () => {
+      clearTimeout(this._colorPickerHexTimer);
+      this._colorPickerHexTimer = setTimeout(syncFromHex, 120);
+    };
+    hexInput.onchange = syncFromHex;
+
+    overlay.querySelector("#static-color-picker-set").onclick = () => {
+      const hex = SFC.normalizeFrameColor(hexInput.value);
+      if (!hex) return;
+      this.updateStaticColorRowDisplay(container, fieldId, hex);
+      const cfg = this.getStaticColorFieldConfig(fieldId, container);
+      if (cfg) {
+        const patch = { [cfg.patchKey]: hex, gradientPreset: null };
+        if (cfg.frameType) patch.frameType = cfg.frameType;
+        void this.setStaticFrameColors(variantId, patch);
+      }
+      overlay.style.display = "none";
+    };
+
+    overlay.style.display = "flex";
+  }
+
+  getStaticColorFieldConfig(fieldId, container) {
+    const style = container?.dataset?.editorStyle || "";
+    const map = {
+      "static-color-top": { patchKey: "gradientTop", frameType: "gradient" },
+      "static-color-bottom": { patchKey: "gradientBottom", frameType: "gradient" },
+      "static-color-border": {
+        patchKey: "borderColor",
+        frameType: style === "lifestyle_promo" ? "solid" : undefined,
+      },
+      "static-color-mat": { patchKey: "matColor" },
+      "static-color-outer-mat": { patchKey: "outerMatColor" },
+      "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-pad": { patchKey: "padColor" },
+    };
+    return map[fieldId] || null;
   }
 
   updateStaticColorRowDisplay(container, id, hex) {
     const SFC = window.StaticFrameCompose;
     if (!SFC || !hex) return;
-    const rgb = SFC.hexToRgb(hex);
-    if (!rgb) return;
-    const swatch = container.querySelector(`#${id}-swatch`);
-    const pick = container.querySelector(`#${id}`);
     const hexField = container.querySelector(`#${id}-hex`);
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (swatch) swatch.style.background = hex;
-    if (pick) pick.value = hex;
+    const swatchBtn = container.querySelector(
+      `.static-color-swatch-btn[data-color-id="${id}"]`,
+    );
+    if (swatchBtn) swatchBtn.style.background = hex;
     if (hexField && document.activeElement !== hexField) hexField.value = hex;
-    if (r && document.activeElement !== r) r.value = String(rgb.r);
-    if (g && document.activeElement !== g) g.value = String(rgb.g);
-    if (b && document.activeElement !== b) b.value = String(rgb.b);
-    if (rgbField && document.activeElement !== rgbField) {
-      rgbField.value = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
-    }
     container.querySelectorAll(`.static-color-chip[data-color-id="${id}"]`).forEach((chip) => {
       const chipHex = SFC.normalizeFrameColor(chip.dataset.hex);
       const active = chipHex === hex;
       chip.style.borderColor = active ? "#111827" : "#e5e7eb";
       chip.style.boxShadow = active ? "0 0 0 2px #fff inset" : "none";
     });
-  }
-
-  syncStaticColorRowFromPicker(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const pick = container.querySelector(`#${id}`);
-    if (!pick || !SFC?.hexToRgb) return;
-    const hex = SFC.normalizeFrameColor(pick.value);
-    if (!hex) return;
-    this.updateStaticColorRowDisplay(container, id, hex);
   }
 
   syncStaticColorRowFromHex(container, id) {
@@ -3825,48 +4026,23 @@ Please share payment details and license key.`;
       const fromHex = SFC.normalizeFrameColor(raw);
       if (fromHex) return fromHex;
     }
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    if (r?.value !== "" && g?.value !== "" && b?.value !== "") {
-      const hex = SFC.rgbToHex(r.value, g.value, b.value);
-      return SFC.normalizeFrameColor(hex);
+    const swatchBtn = container.querySelector(`.static-color-swatch-btn[data-color-id="${id}"]`);
+    if (swatchBtn?.style?.backgroundColor) {
+      return SFC.normalizeFrameColor(swatchBtn.style.backgroundColor);
     }
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (rgbField?.value?.trim()) {
-      const fromList = SFC.parseRgbTriplet?.(rgbField.value) || SFC.parseCssColor(rgbField.value);
-      if (fromList?.hex) return fromList.hex;
-    }
-    const pick = container.querySelector(`#${id}`);
-    return SFC.normalizeFrameColor(pick?.value);
+    return null;
   }
 
   syncStaticColorRowFromRgb(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    if (!r || !g || !b || !SFC) return false;
-    if (r.value === "" || g.value === "" || b.value === "") return false;
-    const hex = SFC.normalizeFrameColor(SFC.rgbToHex(r.value, g.value, b.value));
-    if (!hex) return false;
-    this.updateStaticColorRowDisplay(container, id, hex);
-    return true;
+    return false;
   }
 
   syncStaticColorRowFromRgbText(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (!rgbField || !SFC) return false;
-    const raw = rgbField.value.trim();
-    if (!raw) return false;
-    const parsed = SFC.parseRgbTriplet?.(raw) || SFC.parseCssColor(raw);
-    if (!parsed?.hex) return false;
-    this.updateStaticColorRowDisplay(container, id, parsed.hex);
-    return true;
+    return false;
   }
 
   bindStaticColorFields(container, { variantId, style }) {
+    container.dataset.editorStyle = style || "";
     const colorMap = {
       "static-color-top": { patchKey: "gradientTop", frameType: "gradient" },
       "static-color-bottom": { patchKey: "gradientBottom", frameType: "gradient" },
@@ -3875,27 +4051,14 @@ Please share payment details and license key.`;
         frameType: style === "lifestyle_promo" ? "solid" : undefined,
       },
       "static-color-mat": { patchKey: "matColor" },
-    };
-
-    const applyColors = () => {
-      const patch = {};
-      for (const [id, cfg] of Object.entries(colorMap)) {
-        if (!container.querySelector(`#${id}`)) continue;
-        const hex = this.readStaticColorField(container, id);
-        if (!hex) continue;
-        patch[cfg.patchKey] = hex;
-        if (cfg.frameType) patch.frameType = cfg.frameType;
-      }
-      if (!Object.keys(patch).length) return;
-      patch.gradientPreset = null;
-      const presetSel = container.querySelector("#static-gradient-preset");
-      if (presetSel) presetSel.value = "";
-      void this.setStaticFrameColors(variantId, patch);
+      "static-color-outer-mat": { patchKey: "outerMatColor" },
+      "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-pad": { patchKey: "padColor" },
     };
 
     const applyOneColor = (id) => {
       const cfg = colorMap[id];
-      if (!cfg || !container.querySelector(`#${id}`)) return;
+      if (!cfg || !container.querySelector(`#${id}-hex`)) return;
       const hex = this.readStaticColorField(container, id);
       if (!hex) return;
       const patch = { [cfg.patchKey]: hex, gradientPreset: null };
@@ -3907,13 +4070,14 @@ Please share payment details and license key.`;
 
     const timers = new Map();
     for (const id of Object.keys(colorMap)) {
-      if (!container.querySelector(`#${id}`)) continue;
+      if (!container.querySelector(`#${id}-hex`)) continue;
 
-      const pick = container.querySelector(`#${id}`);
-      if (pick) {
-        pick.oninput = () => {
-          this.syncStaticColorRowFromPicker(container, id);
-          applyOneColor(id);
+      const swatchBtn = container.querySelector(`.static-color-swatch-btn[data-color-id="${id}"]`);
+      if (swatchBtn) {
+        swatchBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openStaticColorPicker(container, id, variantId);
         };
       }
 
@@ -3931,41 +4095,6 @@ Please share payment details and license key.`;
         hexField.onchange = () => {
           clearTimeout(timers.get(hexField));
           if (this.syncStaticColorRowFromHex(container, id)) applyOneColor(id);
-        };
-      }
-
-      for (const ch of ["r", "g", "b"]) {
-        const input = container.querySelector(`#${id}-${ch}`);
-        if (!input) continue;
-        input.oninput = () => {
-          clearTimeout(timers.get(input));
-          timers.set(
-            input,
-            setTimeout(() => {
-              if (this.syncStaticColorRowFromRgb(container, id)) applyOneColor(id);
-            }, 180),
-          );
-        };
-        input.onchange = () => {
-          clearTimeout(timers.get(input));
-          if (this.syncStaticColorRowFromRgb(container, id)) applyOneColor(id);
-        };
-      }
-
-      const rgbField = container.querySelector(`#${id}-rgb`);
-      if (rgbField) {
-        rgbField.oninput = () => {
-          clearTimeout(timers.get(rgbField));
-          timers.set(
-            rgbField,
-            setTimeout(() => {
-              if (this.syncStaticColorRowFromRgbText(container, id)) applyOneColor(id);
-            }, 220),
-          );
-        };
-        rgbField.onchange = () => {
-          clearTimeout(timers.get(rgbField));
-          if (this.syncStaticColorRowFromRgbText(container, id)) applyOneColor(id);
         };
       }
     }
@@ -3999,15 +4128,17 @@ Please share payment details and license key.`;
     if (showFrameColors) {
       html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
 
-    html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
-      <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
-    html += `<option value="">— Custom / solid —</option>`;
-    presets.forEach((g) => {
-      html += `<option value="${g.id}"${
-        frame.gradientPreset === g.id ? " selected" : ""
-      }>${g.label}</option>`;
-    });
-    html += `</select></label>`;
+    if (style !== "gown_static") {
+      html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
+        <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
+      html += `<option value="">— Custom / solid —</option>`;
+      presets.forEach((g) => {
+        html += `<option value="${g.id}"${
+          frame.gradientPreset === g.id ? " selected" : ""
+        }>${g.label}</option>`;
+      });
+      html += `</select></label>`;
+    }
 
     if (style === "showcase" || style === "live_standard" || SFC.staticStyleUsesGradientColors?.(style, frame)) {
       html += this.buildStaticColorFieldHtml(
@@ -4033,12 +4164,37 @@ Please share payment details and license key.`;
       );
     }
 
-    if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
+    if (style === "gown_static") {
+      html += this.buildStaticColorFieldHtml(
+        "static-color-border",
+        "Outer border",
+        frame.borderColor,
+        "#71cbd3",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-outer-mat",
+        "Outer mat",
+        frame.outerMatColor ?? frame.matColor,
+        "#ffffff",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-inner-accent",
+        "Inner accent",
+        frame.innerStrokeColor,
+        "#71cbd3",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-pad",
+        "Photo pad",
+        frame.padColor ?? frame.matColor,
+        "#ffffff",
+      );
+    } else if (style === "tall_static" || style === "live_framed") {
       html += this.buildStaticColorFieldHtml(
         "static-color-border",
         "Border",
         frame.borderColor,
-        style === "gown_static" ? "#71cbd3" : "#45a9e5",
+        "#45a9e5",
       );
       html += this.buildStaticColorFieldHtml(
         "static-color-mat",
@@ -4563,7 +4719,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "8") {
+    if (panel && panel.dataset.staticEditorV !== "9") {
       panel.remove();
       panel = null;
     }
@@ -4571,7 +4727,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "8";
+    panel.dataset.staticEditorV = "9";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
