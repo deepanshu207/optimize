@@ -63,29 +63,34 @@ const gownFrame = {
 };
 
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 19, "100 keeps base teal border");
-assert(gownFrame.dw === 611, "100 keeps product width");
-assert(gownFrame.dh === 932, "100 keeps product height");
-assert(gownFrame.innerMatPad === 12, "100 keeps inner mat band");
+assert(gownFrame.border === 22, "100 keeps base teal border");
+assert(gownFrame.dw === 573, "100 keeps product width");
+assert(gownFrame.dh === 894, "100 keeps product height");
+assert(gownFrame.innerMatPad === 9, "100 keeps inner mat band");
+assert(gownFrame.innerStroke === 1, "100 keeps hairline thickness");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border < 19, "50 thins teal border");
-assert(gownFrame.dw === 611, "50 does not shrink product width");
-assert(gownFrame.dh === 932, "50 does not shrink product height");
-assert(gownFrame.innerMatPad === 12, "50 keeps inner mat fixed");
+assert(gownFrame.border < 22, "50 thins teal border");
+assert(gownFrame.dw === 573, "50 does not shrink product width");
+assert(gownFrame.dh === 894, "50 does not shrink product height");
+assert(gownFrame.innerMatPad === 9, "50 keeps inner mat fixed");
+assert(gownFrame.innerStroke === 1, "50 keeps hairline fixed");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(gownFrame.border + gownFrame.outerMatPad + gownFrame.innerMatPad > 80, "500 increases total frame inset");
-assert(gownFrame.dw === 611, "500 does not shrink product width");
-assert(gownFrame.dh === 932, "500 does not shrink product height");
+assert(
+  gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 96,
+  "500 increases total frame inset",
+);
+assert(gownFrame.dw === 573, "500 does not shrink product width");
+assert(gownFrame.dh === 894, "500 does not shrink product height");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 19, "restore 100 returns exact base border");
-assert(gownFrame.dw === 611, "restore 100 returns exact product width");
+assert(gownFrame.border === 22, "restore 100 returns exact base border");
+assert(gownFrame.dw === 573, "restore 100 returns exact product width");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
@@ -112,7 +117,7 @@ assert(
 );
 assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "gown has outer mat band");
 assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
-assert(gownCode.includes("drawGownStaticFrameBackground"), "gown draws inner frame stroke");
+assert(gownCode.includes("drawGownHairline"), "gown draws dark hairline border");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
 assert(composeCode.includes("drawGownStaticFrameBackground"), "compose rebuilds gown triple mat");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
