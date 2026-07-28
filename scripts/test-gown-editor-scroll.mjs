@@ -20,10 +20,10 @@ const variantId = await page.evaluate(async () => {
   await import("/js/staticFrameCompose.mjs?v=74");
 
   const productCanvas = document.createElement("canvas");
-  productCanvas.width = 561;
-  productCanvas.height = 841;
+  productCanvas.width = 661;
+  productCanvas.height = 982;
   productCanvas.getContext("2d").fillStyle = "#9c27b0";
-  productCanvas.getContext("2d").fillRect(0, 0, 561, 841);
+  productCanvas.getContext("2d").fillRect(0, 0, 661, 982);
   const productOnly = productCanvas.toDataURL("image/jpeg", 0.92);
 
   const frameCanvas = document.createElement("canvas");
@@ -34,7 +34,7 @@ const variantId = await page.evaluate(async () => {
   fctx.fillRect(0, 0, 773, 1094);
   fctx.fillStyle = "#fff";
   fctx.fillRect(19, 19, 735, 1056);
-  fctx.drawImage(productCanvas, 106, 126, 561, 841);
+  fctx.drawImage(productCanvas, 56, 56, 661, 982);
   const full = frameCanvas.toDataURL("image/jpeg", 0.92);
 
   const badges = [
@@ -60,21 +60,21 @@ const variantId = await page.evaluate(async () => {
         style: "gown_static",
         frameType: "tall",
         border: 19,
-        whitePad: 87,
+        whitePad: 37,
         baseBorder: 19,
-        baseWhitePad: 87,
-        basePx: 106,
-        basePy: 126,
-        baseDw: 561,
-        baseDh: 841,
+        baseWhitePad: 37,
+        basePx: 56,
+        basePy: 56,
+        baseDw: 661,
+        baseDh: 982,
         baseWhiteX: 19,
         baseWhiteY: 19,
         baseWhiteW: 735,
         baseWhiteH: 1056,
-        px: 106,
-        py: 126,
-        dw: 561,
-        dh: 841,
+        px: 56,
+        py: 56,
+        dw: 661,
+        dh: 982,
         outerW: 773,
         outerH: 1094,
         whiteX: 19,

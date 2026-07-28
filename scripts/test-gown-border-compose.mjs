@@ -33,34 +33,34 @@ const result = await page.evaluate(async () => {
 
   // Minimal 2x2 product patch (red / blue) for visible diff
   const productCanvas = document.createElement("canvas");
-  productCanvas.width = 561;
-  productCanvas.height = 841;
+  productCanvas.width = 661;
+  productCanvas.height = 982;
   const pctx = productCanvas.getContext("2d");
   pctx.fillStyle = "#cc0000";
-  pctx.fillRect(0, 0, 280, 841);
+  pctx.fillRect(0, 0, 330, 982);
   pctx.fillStyle = "#0000cc";
-  pctx.fillRect(280, 0, 281, 841);
+  pctx.fillRect(330, 0, 331, 982);
   const productOnly = productCanvas.toDataURL("image/jpeg", 0.92);
 
   const frame = {
     style: "gown_static",
     frameType: "tall",
     border: 19,
-    whitePad: 87,
+    whitePad: 37,
     baseBorder: 19,
-    baseWhitePad: 87,
-    basePx: 106,
-    basePy: 126,
-    baseDw: 561,
-    baseDh: 841,
+    baseWhitePad: 37,
+    basePx: 56,
+    basePy: 56,
+    baseDw: 661,
+    baseDh: 982,
     baseWhiteX: 19,
     baseWhiteY: 19,
     baseWhiteW: 735,
     baseWhiteH: 1056,
-    px: 106,
-    py: 126,
-    dw: 561,
-    dh: 841,
+    px: 56,
+    py: 56,
+    dw: 661,
+    dh: 982,
     outerW: 773,
     outerH: 1094,
     whiteX: 19,

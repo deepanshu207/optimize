@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=76";
-import { blobToDataUrl } from "./lib/encoder.js?v=76";
-import { estimateImageShipping } from "./lib/shipping.js?v=76";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=76";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=77";
+import { blobToDataUrl } from "./lib/encoder.js?v=77";
+import { estimateImageShipping } from "./lib/shipping.js?v=77";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=77";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -15,8 +15,9 @@ export const GOWN_STATIC_VARIANT_COUNT = 25;
 const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
 const GOWN_TEAL_RATIO = 0.025;
-/** White mat per side (~11.2%) — tuned so lifestyle photo fills ~73% of canvas width. */
-const GOWN_WHITE_PAD_RATIO = 0.112;
+/** Thin white mat (~4.8% per side) — competitor photo nearly edge-to-edge inside white. */
+const GOWN_WHITE_PAD_RATIO = 0.048;
+const GOWN_WHITE_PAD_MIN = 28;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -85,7 +86,7 @@ function buildGownStaticFrameCanvas(img) {
   const ref = Math.min(outerW, outerH);
 
   const tealOuter = Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
-  const whitePad = Math.max(64, Math.round(ref * GOWN_WHITE_PAD_RATIO));
+  const whitePad = Math.max(GOWN_WHITE_PAD_MIN, Math.round(ref * GOWN_WHITE_PAD_RATIO));
   const whiteX = tealOuter;
   const whiteY = tealOuter;
   const whiteW = outerW - tealOuter * 2;
@@ -93,12 +94,14 @@ function buildGownStaticFrameCanvas(img) {
 
   const maxProdW = whiteW - whitePad * 2;
   const maxProdH = whiteH - whitePad * 2;
-  const fitScale = Math.min(maxProdW / base.width, maxProdH / base.height);
+  const slotX = tealOuter + whitePad;
+  const slotY = tealOuter + whitePad;
+  // Cover-fit: fill the mat like competitor listings (crop sky/pavement, not shrink model).
+  const fitScale = Math.max(maxProdW / base.width, maxProdH / base.height);
   const sw = Math.round(base.width * fitScale);
   const sh = Math.round(base.height * fitScale);
-
-  const px = tealOuter + whitePad + Math.round((maxProdW - sw) / 2);
-  const py = tealOuter + whitePad + Math.round((maxProdH - sh) / 2);
+  const px = slotX + Math.round((maxProdW - sw) / 2);
+  const py = slotY + Math.round((maxProdH - sh) / 2);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
@@ -110,16 +113,21 @@ function buildGownStaticFrameCanvas(img) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(slotX, slotY, maxProdW, maxProdH);
+  ctx.clip();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(base, 0, 0, base.width, base.height, px, py, sw, sh);
+  ctx.restore();
 
   return {
     canvas,
-    px,
-    py,
-    dw: sw,
-    dh: sh,
+    px: slotX,
+    py: slotY,
+    dw: maxProdW,
+    dh: maxProdH,
     border: tealOuter,
     whitePad,
     whiteX,
@@ -235,14 +243,14 @@ async function buildGownStaticLayers(img) {
   productOnlyCanvas.height = dh;
   productOnlyCanvas
     .getContext("2d")
-    .drawImage(source, 0, 0, source.width, source.height, 0, 0, dw, dh);
+    .drawImage(canvas, px, py, dw, dh, 0, 0, dw, dh);
   const productOnly = dataUrlFromCanvas(productOnlyCanvas);
 
   const noBorderCanvas = document.createElement("canvas");
   noBorderCanvas.width = dw;
   noBorderCanvas.height = dh;
   const nbCtx = noBorderCanvas.getContext("2d");
-  nbCtx.drawImage(source, 0, 0, source.width, source.height, 0, 0, dw, dh);
+  nbCtx.drawImage(canvas, px, py, dw, dh, 0, 0, dw, dh);
   const shifted = badgePlacements.map((p) => ({
     ...p,
     x: (p.x || 0) - px,
