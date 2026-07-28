@@ -13,7 +13,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=102";
+} from "./liveGownStatic.mjs?v=103";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -755,7 +755,7 @@ function scaleBorderThicknessPx(base, pct, minPx = 0) {
   return Math.max(minPx, Math.round(base + base * (maxMul - 1) * u));
 }
 
-/** Gown: scale each frame band outward from a fixed product slot. */
+/** Gown: scale frame bands from canvas edge inward; product slot stays fixed. */
 function applyGownFrameLayers(frame) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -764,7 +764,6 @@ function applyGownFrameLayers(frame) {
   const baseDw = frame.baseDw ?? frame.dw ?? 0;
   const baseDh = frame.baseDh ?? frame.dh ?? 0;
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
-  const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
   const baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 0;
   const baseHairline = frame.baseInnerStroke ?? frame.innerStroke ?? 3;
 
@@ -776,46 +775,54 @@ function applyGownFrameLayers(frame) {
   frame.dw = baseDw;
   frame.dh = baseDh;
 
-  frame.border = scaleGownLayerPx(baseBorder, p.border, 2);
-  frame.outerMatPad = scaleGownLayerPx(baseOuterMatPad, p.outerMat, 0);
+  frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
   frame.innerStroke = scaleGownLayerPx(
     baseHairline,
     p.innerAccent,
     p.innerAccent > 0 ? 1 : 0,
   );
-  frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
 
   const slotInset = frame.innerMatPad + frame.innerStroke;
-  frame.innerFrameX = basePx - slotInset;
-  frame.innerFrameY = basePy - slotInset;
-  frame.innerFrameW = baseDw + slotInset * 2;
-  frame.innerFrameH = baseDh + slotInset * 2;
+  const innerFrameX = basePx - slotInset;
+  const innerFrameY = basePy - slotInset;
+  const innerFrameW = baseDw + slotInset * 2;
+  const innerFrameH = baseDh + slotInset * 2;
+  const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
 
-  frame.whiteX = frame.innerFrameX - frame.outerMatPad;
-  frame.whiteY = frame.innerFrameY - frame.outerMatPad;
-  frame.whiteW = frame.innerFrameW + frame.outerMatPad * 2;
-  frame.whiteH = frame.innerFrameH + frame.outerMatPad * 2;
-  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
+  const maxBorder = Math.max(
+    2,
+    Math.min(
+      innerFrameX,
+      innerFrameY,
+      outerW - innerFrameX - innerFrameW,
+      outerH - innerFrameY - innerFrameH,
+    ),
+  );
 
-  if (frame.whiteX < 0 || frame.whiteY < 0 || frame.whiteX + frame.whiteW > outerW || frame.whiteY + frame.whiteH > outerH) {
-    const maxOuter = Math.max(
-      0,
-      Math.min(
-        basePx,
-        basePy,
-        outerW - basePx - baseDw,
-        outerH - basePy - baseDh,
-      ) - slotInset,
-    );
-    if (frame.outerMatPad > maxOuter) {
-      frame.outerMatPad = maxOuter;
-      frame.whiteX = frame.innerFrameX - frame.outerMatPad;
-      frame.whiteY = frame.innerFrameY - frame.outerMatPad;
-      frame.whiteW = frame.innerFrameW + frame.outerMatPad * 2;
-      frame.whiteH = frame.innerFrameH + frame.outerMatPad * 2;
-      frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
-    }
+  const borderScaled = scaleGownLayerPx(baseBorder, p.border, 2);
+  const outerScaled = scaleGownLayerPx(baseOuterMatPad, p.outerMat, 0);
+  let border;
+  let outerMatPad;
+  if (p.border === p.outerMat) {
+    border = Math.min(borderScaled, maxBorder);
+    outerMatPad = Math.max(0, innerFrameX - border);
+  } else {
+    outerMatPad = Math.min(outerScaled, Math.max(0, innerFrameX - 2));
+    border = Math.min(Math.max(2, innerFrameX - outerMatPad), maxBorder);
+    outerMatPad = Math.max(0, innerFrameX - border);
   }
+
+  frame.border = border;
+  frame.outerMatPad = outerMatPad;
+  frame.whiteX = border;
+  frame.whiteY = border;
+  frame.innerFrameX = innerFrameX;
+  frame.innerFrameY = innerFrameY;
+  frame.innerFrameW = innerFrameW;
+  frame.innerFrameH = innerFrameH;
+  frame.whiteW = innerFrameW + frame.outerMatPad * 2;
+  frame.whiteH = innerFrameH + frame.outerMatPad * 2;
+  frame.whitePad = frame.outerMatPad + slotInset;
 
   return frame;
 }
@@ -942,12 +949,22 @@ export function applyBorderThickness(frame, options = {}) {
     frame.style === "live_framed";
 
   if (isTall) {
-    frame.border = scaledBorder;
+    const slotInset = scaledWhitePad;
+    const maxBorder = Math.max(
+      2,
+      Math.min(
+        basePx - slotInset,
+        basePy - slotInset,
+        outerW - basePx - baseDw - slotInset,
+        outerH - basePy - baseDh - slotInset,
+      ),
+    );
+    frame.border = Math.min(scaledBorder, maxBorder);
     frame.whitePad = scaledWhitePad;
-    frame.whiteX = scaledBorder;
-    frame.whiteY = scaledBorder;
-    frame.whiteW = Math.max(1, outerW - scaledBorder * 2);
-    frame.whiteH = Math.max(1, outerH - scaledBorder * 2);
+    frame.whiteX = frame.border;
+    frame.whiteY = frame.border;
+    frame.whiteW = Math.max(1, outerW - frame.border * 2);
+    frame.whiteH = Math.max(1, outerH - frame.border * 2);
   } else {
     frame.border = scaledBorder;
     if (baseWhitePad > 0) frame.whitePad = scaledWhitePad;
