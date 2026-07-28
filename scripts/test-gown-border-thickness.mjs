@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
-import { applyBorderThickness } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
+import {
+  applyBorderThickness,
+  updateFrameAppearance,
+} from "../app.suppliersden.com/js/staticFrameCompose.mjs";
 import { computeGownFrameGeometry } from "../app.suppliersden.com/js/liveGownStatic.mjs";
 
 let failed = 0;
@@ -74,6 +77,7 @@ assert(gownFrame.innerStroke === 3, "100 keeps teal accent");
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border < 19, "50 thins teal border");
+assert(gownFrame.outerMatPad < 19, "50 thins outer white mat");
 assert(gownFrame.dw === 657, "50 does not shrink product width");
 assert(gownFrame.dh === 978, "50 does not shrink product height");
 assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed");
@@ -82,6 +86,7 @@ assert(gownFrame.innerStroke === 3, "50 keeps teal accent fixed");
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
+assert(gownFrame.outerMatPad >= 40, "500 thickens outer white mat");
 assert(
   gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 58,
   "500 increases total frame inset",
@@ -90,6 +95,21 @@ assert(gownFrame.dw === 657, "500 does not shrink product width");
 assert(gownFrame.dh === 978, "500 does not shrink product height");
 
 gownFrame.borderThicknessPct = 100;
+applyBorderThickness(gownFrame);
+
+const layerFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 50, innerAccent: 100, innerMat: 100 } };
+updateFrameAppearance({ _staticFrame: layerFrame }, { gownLayerPct: { outerMat: 50 } });
+assert(layerFrame.border === 19, "layer edit keeps outer border at default");
+assert(layerFrame.outerMatPad < 19, "layer edit thins outer mat only");
+assert(layerFrame.innerStroke === 3, "layer edit keeps inner accent");
+
+const accentFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 50, innerMat: 100 } };
+updateFrameAppearance({ _staticFrame: accentFrame }, { gownLayerPct: { innerAccent: 50 } });
+assert(accentFrame.innerStroke < 3, "inner accent scales independently");
+assert(accentFrame.outerMatPad === 19, "inner accent edit keeps outer mat");
+
+gownFrame.borderThicknessPct = 100;
+gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMat: 100 };
 applyBorderThickness(gownFrame);
 assert(gownFrame.border === 19, "restore 100 returns exact base border");
 assert(gownFrame.dw === 657, "restore 100 returns exact product width");
@@ -122,14 +142,20 @@ assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
 assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent");
 assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
-assert(composeCode.includes("drawGownStaticFrameBackground"), "compose rebuilds gown triple mat");
+assert(composeCode.includes("ensureGownLayerPcts"), "compose has gown layer pct helper");
+assert(composeCode.includes("applyGownFrameLayers"), "compose applies gown layers independently");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
 assert(contentCode.includes("borderThicknessLocked"), "border lock stored on frame");
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes('dataset.staticEditorV = "7"'), "editor panel layout v7");
-assert(contentCode.includes("pinch-zoom"), "preview uses native pinch-zoom");
+assert(contentCode.includes('dataset.staticEditorV = "8"'), "editor panel layout v8");
+assert(contentCode.includes("static-gown-layer-pct"), "gown has per-layer frame sliders");
+assert(contentCode.includes("openVariantFullPreview"), "preview tap opens full size");
+assert(contentCode.includes("max-height:180px"), "editor preview stays compact on open");
+assert(contentCode.includes("variant-edit-preview-wrap"), "preview has tap wrapper");
+assert(contentCode.includes("queueStaticGownLayerPct"), "gown layer slider debounced");
+assert(contentCode.includes("pinch-zoom"), "full preview supports pinch-zoom");
 assert(!contentCode.includes("bindVariantPreviewZoom"), "no blurry transform zoom");
 assert(contentCode.includes("static-slider-locked"), "locked sliders use class not whole-row fade");
 assert(contentCode.includes("min-height:0"), "flex scroll child can shrink");

@@ -41,6 +41,7 @@ class MeeshoShippingOptimizer {
     this.modal = null;
     this.autoPopupShown = false;
     this._borderThicknessTimer = null;
+    this._gownLayerTimer = null;
     this._borderComposeGen = 0;
     this._staticControlsVariantId = null;
     this.init();
@@ -66,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=85";
+      return "/js/liveAnalysisBridge.mjs?v=86";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=85");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=86");
     }
-    return "/js/liveAnalysisBridge.mjs?v=85";
+    return "/js/liveAnalysisBridge.mjs?v=86";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=85";
+      return "/js/staticFrameCompose.mjs?v=86";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=85");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=86");
     }
-    return "/js/staticFrameCompose.mjs?v=85";
+    return "/js/staticFrameCompose.mjs?v=86";
   }
 
   async preloadStaticComposeModule() {
@@ -3014,6 +3015,42 @@ Please share payment details and license key.`;
     });
   }
 
+  openVariantFullPreview(row) {
+    if (!row) return;
+    const src =
+      document.getElementById("variant-edit-preview")?.src ||
+      this.resolveResultImageSrc(row);
+    if (!src) {
+      OptimizerUtils.showNotification("No preview for this variant", "error");
+      return;
+    }
+
+    let overlay = document.getElementById("variant-full-preview-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "variant-full-preview-overlay";
+      overlay.style.cssText =
+        "position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;";
+      overlay.innerHTML = `
+        <button type="button" id="variant-full-preview-close" style="position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;z-index:1;">Close</button>
+        <img id="variant-full-preview-img" alt="Full preview" style="max-width:100%;max-height:92vh;object-fit:contain;border-radius:8px;background:#fff;touch-action:pan-x pan-y pinch-zoom;">
+        <div id="variant-full-preview-title" style="color:#fff;font-size:13px;margin-top:10px;text-align:center;max-width:90vw;"></div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#variant-full-preview-close").onclick = () => {
+        overlay.style.display = "none";
+      };
+      overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.style.display = "none";
+      };
+    }
+
+    const img = overlay.querySelector("#variant-full-preview-img");
+    const title = overlay.querySelector("#variant-full-preview-title");
+    if (img) img.src = src;
+    if (title) title.textContent = row.name || "Variant preview";
+    overlay.style.display = "flex";
+  }
+
   openTestLabImagePreview(row) {
     if (!row) return;
     const src = this.resolveResultImageSrc(row);
@@ -3571,6 +3608,81 @@ Please share payment details and license key.`;
     await this.applyStaticBorderThickness(variantId, pct);
   }
 
+  updateGownFrameLayersLockUI(container, frame) {
+    if (!container || !frame) return;
+    const locked = frame.gownFrameLayersLocked !== false;
+    const btn = container.querySelector("#static-gown-layers-lock");
+    const wrap = container.querySelector(".static-gown-layers-wrap");
+    if (btn) {
+      btn.textContent = locked ? "🔒" : "🔓";
+      btn.title = locked ? "Unlock frame layers to adjust" : "Lock frame layers";
+      btn.setAttribute("aria-pressed", locked ? "true" : "false");
+    }
+    if (wrap) wrap.classList.toggle("static-slider-locked", locked);
+    container.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      slider.disabled = locked;
+    });
+  }
+
+  toggleStaticGownFrameLayersLock(variantId) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    frame.gownFrameLayersLocked = frame.gownFrameLayersLocked === false;
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updateGownFrameLayersLockUI(container, frame);
+  }
+
+  queueStaticGownLayerPct(variantId, layerKey, pct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    if (frame.gownFrameLayersLocked !== false) return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector(
+      `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+    );
+    if (val) val.textContent = String(pct);
+
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = setTimeout(() => {
+      void this.applyStaticGownLayerPct(variantId, layerKey, pct);
+    }, 150);
+  }
+
+  async applyStaticGownLayerPct(variantId, layerKey, pct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    if (frame.gownFrameLayersLocked !== false) return;
+    if (!["border", "outerMat", "innerAccent", "innerMat"].includes(layerKey)) return;
+
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, {
+      gownLayerPct: { [layerKey]: pct },
+    });
+    if (window.StaticFrameCompose.reanchorPlacements) {
+      window.StaticFrameCompose.reanchorPlacements(row.layers);
+    }
+    row._staticAppearanceEdited = true;
+
+    try {
+      const url = await this.composePreviewForRow(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
+    } catch (e) {
+      console.warn("Gown frame layer preview failed:", e);
+      await this.refreshStaticPreview(variantId);
+    }
+  }
+
+  async setStaticGownLayerPct(variantId, layerKey, pct) {
+    clearTimeout(this._gownLayerTimer);
+    await this.applyStaticGownLayerPct(variantId, layerKey, pct);
+  }
+
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
@@ -3937,15 +4049,76 @@ Please share payment details and license key.`;
     }
 
     const borderPct = frame.borderThicknessPct ?? 100;
-    if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
-    const borderLocked = frame.borderThicknessLocked !== false;
-    html += `<div class="static-border-wrap${borderLocked ? " static-slider-locked" : ""}" style="margin-bottom:8px;touch-action:none;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-        <button type="button" id="static-border-lock" aria-pressed="${borderLocked ? "true" : "false"}" title="${borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${borderLocked ? "🔒" : "🔓"}</button>
-        <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
-      </div>
-      <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;"${borderLocked ? " disabled" : ""}>
-    </div>`;
+    if (style === "gown_static") {
+      if (window.StaticFrameCompose?.ensureGownLayerPcts) {
+        window.StaticFrameCompose.ensureGownLayerPcts(frame);
+      } else if (!frame.gownLayerPct) {
+        frame.gownLayerPct = {
+          border: 100,
+          outerMat: 100,
+          innerAccent: 100,
+          innerMat: 100,
+        };
+      }
+      const lp = frame.gownLayerPct;
+      if (frame.gownFrameLayersLocked == null) frame.gownFrameLayersLocked = true;
+      const frameLocked = frame.gownFrameLayersLocked !== false;
+      const gownLayers = [
+        { key: "border", label: "Outer border (teal)" },
+        { key: "outerMat", label: "Outer mat (white)" },
+        { key: "innerAccent", label: "Inner accent (teal)" },
+        { key: "innerMat", label: "Photo pad (white)" },
+      ];
+      html += `<div class="static-gown-layers-wrap${
+        frameLocked ? " static-slider-locked" : ""
+      }" style="margin-bottom:8px;touch-action:none;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <button type="button" id="static-gown-layers-lock" aria-pressed="${
+            frameLocked ? "true" : "false"
+          }" title="${
+        frameLocked ? "Unlock frame layers to adjust" : "Lock frame layers"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        frameLocked ? "🔒" : "🔓"
+      }</button>
+          <span style="font-size:10px;font-weight:600;">Frame layers (100 = default each)</span>
+        </div>`;
+      for (const layer of gownLayers) {
+        const v = lp[layer.key] ?? 100;
+        html += `<div class="static-gown-layer-row" data-gown-layer="${
+          layer.key
+        }" style="margin-bottom:6px;">
+          <span style="font-size:10px;">${layer.label} <span class="static-gown-layer-val" data-gown-layer="${
+          layer.key
+        }">${v}</span></span>
+          <input type="range" class="static-gown-layer-pct" data-gown-layer="${
+            layer.key
+          }" min="0" max="1000" value="${v}" style="width:100%;touch-action:none;"${
+          frameLocked ? " disabled" : ""
+        }>
+        </div>`;
+      }
+      html += `</div>`;
+    } else {
+      if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
+      const borderLocked = frame.borderThicknessLocked !== false;
+      html += `<div class="static-border-wrap${
+        borderLocked ? " static-slider-locked" : ""
+      }" style="margin-bottom:8px;touch-action:none;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <button type="button" id="static-border-lock" aria-pressed="${
+            borderLocked ? "true" : "false"
+          }" title="${
+        borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        borderLocked ? "🔒" : "🔓"
+      }</button>
+          <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
+        </div>
+        <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;"${
+        borderLocked ? " disabled" : ""
+      }>
+      </div>`;
+    }
     }
 
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
@@ -4086,6 +4259,49 @@ Please share payment details and license key.`;
       borderThickness.addEventListener("pointerup", commitBorder);
       borderThickness.addEventListener("touchend", commitBorder, { passive: true });
     }
+
+    const gownLayersWrap = container.querySelector(".static-gown-layers-wrap");
+    const gownLayersLock = container.querySelector("#static-gown-layers-lock");
+    if (gownLayersWrap) {
+      gownLayersWrap.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!e.target.closest(".static-gown-layer-pct")?.disabled) e.stopPropagation();
+        },
+        { passive: true },
+      );
+    }
+    if (gownLayersLock) {
+      gownLayersLock.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticGownFrameLayersLock(vid);
+      };
+    }
+    container.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      const layerKey = slider.dataset.gownLayer;
+      const commitLayer = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const valSpan = container.querySelector(
+          `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+        );
+        if (valSpan) valSpan.textContent = String(v);
+        void this.setStaticGownLayerPct(vid, layerKey, v);
+      };
+      slider.oninput = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const valSpan = container.querySelector(
+          `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+        );
+        if (valSpan) valSpan.textContent = String(v);
+        this.queueStaticGownLayerPct(vid, layerKey, v);
+      };
+      slider.onchange = commitLayer;
+      slider.addEventListener("pointerup", commitLayer);
+      slider.addEventListener("touchend", commitLayer, { passive: true });
+    });
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
@@ -4229,6 +4445,8 @@ Please share payment details and license key.`;
     if (panel) panel.style.display = "none";
     clearTimeout(this._borderThicknessTimer);
     this._borderThicknessTimer = null;
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = null;
     this._staticControlsVariantId = null;
     this._editingVariantId = null;
   }
@@ -4345,7 +4563,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "7") {
+    if (panel && panel.dataset.staticEditorV !== "8") {
       panel.remove();
       panel = null;
     }
@@ -4353,7 +4571,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "7";
+    panel.dataset.staticEditorV = "8";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -4366,18 +4584,25 @@ Please share payment details and license key.`;
           overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
           padding:0 16px 12px;overscroll-behavior:contain;
         }
+        #variant-edit-panel #variant-edit-preview-wrap {
+          position:sticky;top:0;z-index:2;margin:0 0 6px;padding:4px 0 0;
+          background:linear-gradient(#fff 88%, rgba(255,255,255,0));
+          cursor:pointer;
+        }
         #variant-edit-panel #variant-edit-preview {
-          position:sticky;top:0;z-index:2;width:100%;
-          max-height:min(52vh, 420px);height:auto;object-fit:contain;
-          border-radius:8px;background:#fff;margin:0 0 10px;padding:4px 0;
-          box-shadow:0 6px 16px rgba(255,255,255,0.92);
-          touch-action:pan-x pan-y pinch-zoom;
+          width:100%;max-height:180px;height:auto;object-fit:contain;
+          border-radius:8px;background:#f9fafb;display:block;
+          box-shadow:0 2px 8px rgba(0,0,0,0.08);
+        }
+        #variant-edit-panel #variant-edit-preview-hint {
+          font-size:10px;color:#6b7280;text-align:center;margin:4px 0 0;
         }
         #variant-edit-panel .static-slider-locked input[type="range"]:disabled {
           opacity:0.5;cursor:not-allowed;
         }
         #variant-edit-panel .static-sticker-card input[type="range"],
-        #variant-edit-panel #static-border-thickness {
+        #variant-edit-panel #static-border-thickness,
+        #variant-edit-panel .static-gown-layer-pct {
           accent-color:#10b981;
         }
       </style>
@@ -4389,7 +4614,10 @@ Please share payment details and license key.`;
           </div>
         </div>
         <div id="variant-edit-scroll">
-          <img id="variant-edit-preview" alt="Preview">
+          <div id="variant-edit-preview-wrap" title="Tap for full size">
+            <img id="variant-edit-preview" alt="Preview">
+            <div id="variant-edit-preview-hint">Tap image for full size</div>
+          </div>
           <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin:0 0 12px;"></p>
           <div id="variant-edit-remove-section" style="margin-bottom:10px;">
             <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
@@ -4446,6 +4674,17 @@ Please share payment details and license key.`;
     panel.onclick = (e) => {
       if (e.target === panel) this.closeVariantEditor();
     };
+
+    const previewWrap = panel.querySelector("#variant-edit-preview-wrap");
+    if (previewWrap) {
+      previewWrap.onclick = (e) => {
+        e.stopPropagation();
+        const id = this._editingVariantId;
+        if (!id) return;
+        const row = this.findResultRow(id);
+        if (row) this.openVariantFullPreview(row);
+      };
+    }
 
     const onEditChange = (ev) => {
       const id = this._editingVariantId;
