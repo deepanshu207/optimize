@@ -73,6 +73,8 @@ const layers = {
     innerFrameH: 1018,
     borderColor: "#71cbd3",
     outerMatColor: "#ffffff",
+    fillMatColor: "#ffffff",
+    fillMatEnabled: true,
     padColor: "#ffffff",
     matColor: "#ffffff",
     gownLayerPct: { border: 100, outerMat: 100, innerMat: 100 },
@@ -89,11 +91,21 @@ assert(
   layers._staticDefaults?.frame?.padColor === "#ffffff",
   "snapshot stores default pad color",
 );
+assert(
+  layers._staticDefaults?.frame?.fillMatColor === "#ffffff",
+  "snapshot stores default fill mat color",
+);
+assert(
+  layers._staticDefaults?.frame?.fillMatEnabled !== false,
+  "snapshot stores default fill mat enabled",
+);
 
 updateFrameAppearance(layers, {
   gownLayerPct: { border: 200, outerMat: 200, innerMat: 100 },
   borderColor: "#ff0000",
   outerMatColor: "#eeeeee",
+  fillMatColor: "#cccccc",
+  fillMatEnabled: false,
   padColor: "#dddddd",
 });
 assert(layers._staticFrame.border > 19, "layer edit thickens border before reset");
@@ -116,6 +128,8 @@ assert(
   "reset restores default outer mat color",
 );
 assert(layers._staticFrame.padColor === "#ffffff", "reset restores default pad color");
+assert(layers._staticFrame.fillMatColor === "#ffffff", "reset restores default fill mat color");
+assert(layers._staticFrame.fillMatEnabled !== false, "reset restores fill mat enabled");
 assert(layers._staticFrame.gownLayerPct.innerAccent == null, "reset drops legacy inner accent pct");
 
 const legacyLayers = {

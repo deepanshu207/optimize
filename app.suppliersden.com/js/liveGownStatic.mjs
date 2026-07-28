@@ -131,7 +131,31 @@ function gownBorderFillStyle(ctx, frame, outerW, outerH) {
   return grad;
 }
 
-/** Teal border + white mat + teal inner accent (no photo). */
+function drawGownPhotoPadRing(ctx, frame, padColor) {
+  const pad = Math.max(0, frame.innerMatPad ?? 0);
+  if (pad <= 0) return;
+  const { x: px, y: py, w: dw, h: dh } = productPhotoRect(frame);
+  if (dw <= 0 || dh <= 0) return;
+  ctx.fillStyle = padColor;
+  ctx.fillRect(px, py - pad, dw, pad);
+  ctx.fillRect(px, py + dh, dw, pad);
+  ctx.fillRect(px - pad, py, pad, dh);
+  ctx.fillRect(px + dw, py, pad, dh);
+}
+
+/** Resolve gown mat colors with legacy fallbacks (padColor used when fillMatColor unset). */
+export function resolveGownMatColors(frame) {
+  const mat = frame?.matColor ?? "#ffffff";
+  const pad = frame?.padColor ?? frame?.innerMatColor ?? mat;
+  return {
+    outerMatColor: frame?.outerMatColor ?? mat,
+    fillMatColor: frame?.fillMatColor ?? pad,
+    padColor: pad,
+    fillMatEnabled: frame?.fillMatEnabled !== false,
+  };
+}
+
+/** Teal border + white mat + optional fill mat board + photo pad ring (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -145,9 +169,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   const ify = frame.innerFrameY ?? wy + omp;
   const ifw = frame.innerFrameW ?? ww - omp * 2;
   const ifh = frame.innerFrameH ?? wh - omp * 2;
-  const stroke = frame.innerStroke ?? 0;
-  const outerMatColor = frame.outerMatColor ?? frame.matColor ?? "#ffffff";
-  const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
+  const { outerMatColor, fillMatColor, padColor, fillMatEnabled } = resolveGownMatColors(frame);
 
   ctx.fillStyle = gownBorderFillStyle(ctx, frame, outerW, outerH);
   ctx.fillRect(0, 0, outerW, outerH);
@@ -160,10 +182,12 @@ export function drawGownStaticFrameBackground(ctx, frame) {
     ctx.fillRect(wx + ww - omp, wy + omp, omp, wh - 2 * omp);
   }
 
-  if (ifw > 0 && ifh > 0) {
-    ctx.fillStyle = padColor;
+  if (fillMatEnabled && ifw > 0 && ifh > 0) {
+    ctx.fillStyle = fillMatColor;
     ctx.fillRect(ifx, ify, ifw, ifh);
   }
+
+  drawGownPhotoPadRing(ctx, frame, padColor);
 }
 
 /** Fixed lifestyle photo box — size stays at baseDw×baseDh; frame layers only move it. */
@@ -205,6 +229,9 @@ function buildGownStaticFrameCanvas(img) {
     ...geom,
     borderColor: BORDER_TEAL,
     matColor: "#ffffff",
+    fillMatColor: "#ffffff",
+    fillMatEnabled: true,
+    padColor: "#ffffff",
     innerStroke: GOWN_INNER_STROKE,
     innerStrokeColor: GOWN_INNER_STROKE_COLOR,
   });
@@ -361,6 +388,8 @@ async function buildGownStaticLayers(img) {
         borderColor: BORDER_TEAL,
         matColor: "#ffffff",
         outerMatColor: "#ffffff",
+        fillMatColor: "#ffffff",
+        fillMatEnabled: true,
         padColor: "#ffffff",
         innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         gradientTop: BORDER_TEAL,

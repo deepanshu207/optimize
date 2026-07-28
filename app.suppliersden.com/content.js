@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=106";
+      return "/js/staticFrameCompose.mjs?v=107";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=106");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=107");
     }
-    return "/js/staticFrameCompose.mjs?v=106";
+    return "/js/staticFrameCompose.mjs?v=107";
   }
 
   async preloadStaticComposeModule() {
@@ -3768,6 +3768,30 @@ Please share payment details and license key.`;
     }
   }
 
+  updateFillMatUI(container, frame) {
+    if (!container || !frame) return;
+    const enabled = frame.fillMatEnabled !== false;
+    const checkbox = container.querySelector("#static-fill-mat-enabled");
+    const wrap = container.querySelector(".static-fill-mat-wrap");
+    if (checkbox) checkbox.checked = enabled;
+    if (wrap) wrap.classList.toggle("static-fill-mat-disabled", !enabled);
+    wrap?.querySelectorAll(".static-color-row button, .static-color-row input").forEach((el) => {
+      el.disabled = !enabled;
+    });
+  }
+
+  async setStaticFillMatEnabled(variantId, enabled) {
+    const row = this.findResultRow(variantId);
+    if (!row?.layers?._staticFrame) return;
+
+    await this.setStaticFrameColors(variantId, { fillMatEnabled: !!enabled });
+
+    if (this._editingVariantId === variantId) {
+      const container = document.querySelector("#variant-edit-static-badges");
+      if (container) this.updateFillMatUI(container, row.layers._staticFrame);
+    }
+  }
+
   updateBorderThicknessLockUI(container, frame) {
     if (!container || !frame) return;
     const locked = frame.borderThicknessLocked !== false;
@@ -4354,6 +4378,7 @@ Please share payment details and license key.`;
       "static-color-mat": { patchKey: "matColor" },
       "static-color-outer-mat": { patchKey: "outerMatColor" },
       "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-fill-mat": { patchKey: "fillMatColor" },
       "static-color-pad": { patchKey: "padColor" },
     };
     return map[fieldId] || null;
@@ -4426,6 +4451,7 @@ Please share payment details and license key.`;
       "static-color-mat": { patchKey: "matColor" },
       "static-color-outer-mat": { patchKey: "outerMatColor" },
       "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-fill-mat": { patchKey: "fillMatColor" },
       "static-color-pad": { patchKey: "padColor" },
     };
 
@@ -4555,6 +4581,23 @@ Please share payment details and license key.`;
         frame.outerMatColor ?? frame.matColor,
         "#ffffff",
       );
+      const fillMatEnabled = frame.fillMatEnabled !== false;
+      const fillMatColor =
+        frame.fillMatColor ?? frame.padColor ?? frame.matColor ?? "#ffffff";
+      html += `<div class="static-fill-mat-wrap${
+        fillMatEnabled ? "" : " static-fill-mat-disabled"
+      }" style="margin-bottom:6px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px;">
+          <input type="checkbox" id="static-fill-mat-enabled"${fillMatEnabled ? " checked" : ""}>
+          Fill mat (board between photo and border)
+        </label>`;
+      html += this.buildStaticColorFieldHtml(
+        "static-color-fill-mat",
+        "Fill mat color",
+        fillMatColor,
+        "#ffffff",
+      );
+      html += `</div>`;
       html += this.buildStaticColorFieldHtml(
         "static-color-pad",
         "Photo pad",
@@ -4608,7 +4651,7 @@ Please share payment details and license key.`;
       }</button>
           <span style="font-size:10px;font-weight:600;">Frame layers (100 = default · photo size fixed)</span>
         </div>
-        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Teal border → white mat → white photo pad around the lifestyle photo. Unlock 🔓 then drag a slider — only that band changes; the photo box stays the same size.</p>`;
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Teal border → outer mat → fill mat board → photo pad around the lifestyle photo. Unlock 🔓 then drag a slider — only that band changes; the photo box stays the same size.</p>`;
       for (const layer of gownLayers) {
         const v = lp[layer.key] ?? 100;
         html += `<div class="static-gown-layer-row" data-gown-layer="${
@@ -4821,6 +4864,16 @@ Please share payment details and license key.`;
     }
 
     this.bindStaticColorFields(container, { variantId: vid, style });
+
+    const fillMatCheckbox = container.querySelector("#static-fill-mat-enabled");
+    if (fillMatCheckbox) {
+      fillMatCheckbox.onchange = () => {
+        void this.setStaticFillMatEnabled(vid, fillMatCheckbox.checked);
+      };
+    }
+    if (style === "gown_static") {
+      this.updateFillMatUI(container, frame);
+    }
 
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
