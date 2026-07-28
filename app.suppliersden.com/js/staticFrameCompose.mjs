@@ -1190,6 +1190,23 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   ensurePlacementDefaults(p);
 
   const raw = String(badgeValue ?? "").trim();
+  if (raw === "gown-art") {
+    if (!p.id?.startsWith("gown-")) return false;
+    p.kind = "gownArt";
+    p.gownSlot = p.id;
+    p.num = undefined;
+    p.defaultW = undefined;
+    p.defaultH = undefined;
+    p.defaultSize = undefined;
+    p.size = undefined;
+    p.drawn = true;
+    if (p.id === "gown-best") p.label = "Best PRICE";
+    else if (p.id === "gown-flash") p.label = "FLASH SALE";
+    else if (p.id === "gown-popular") p.label = "MOST POPULAR";
+    else p.label = "Gown art";
+    if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
+    return true;
+  }
   if (raw === FREE_SHIPPING_BADGE_VALUE) {
     if (!isFreeShippingSlot(p)) return false;
     const { w } = placementSize(p);
@@ -1209,8 +1226,9 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   const num = Math.max(1, Math.min(25, parseInt(raw, 10) || 0));
   if (!num) return false;
 
-  if (p.kind === "freeShipping") {
+  if (p.kind === "freeShipping" || p.kind === "gownArt") {
     const { w, h } = placementSize(p);
+    if (!p.gownSlot && p.id?.startsWith("gown-")) p.gownSlot = p.id;
     p.kind = "badge";
     p.defaultW = w;
     p.defaultH = h;
@@ -1503,6 +1521,13 @@ export function resetStaticPlacements(layers) {
         p.kind = "freeShipping";
         p.num = undefined;
         p.label = "FREE SHIPPING";
+      } else if (pDef.kind === "gownArt") {
+        p.kind = "gownArt";
+        p.gownSlot = p.id;
+        p.num = undefined;
+        if (p.id === "gown-best") p.label = "Best PRICE";
+        else if (p.id === "gown-flash") p.label = "FLASH SALE";
+        else if (p.id === "gown-popular") p.label = "MOST POPULAR";
       } else {
         p.kind = pDef.kind || "badge";
         p.num = pDef.num;

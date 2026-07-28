@@ -33,6 +33,14 @@ const gownCode = readFileSync(
 assert(gownCode.includes("GOWN_WHITE_PAD_RATIO = 0.048"), "thin white mat ratio");
 assert(gownCode.includes("GOWN_WHITE_PAD_MIN = 28"), "low white mat floor");
 assert(gownCode.includes("Math.max(maxProdW / base.width, maxProdH / base.height)"), "cover-fit fills mat");
+assert(
+  gownCode.includes("drawImage(noStickersCanvas, px, py, dw, dh"),
+  "productOnly/noBorder crop pre-badge frame (not post-sticker canvas)",
+);
+assert(
+  !gownCode.includes(".drawImage(canvas, px, py, dw, dh"),
+  "productOnly does not copy post-badge canvas region",
+);
 
 const ref = Math.min(773, 1094);
 const teal = Math.max(14, Math.round(ref * 0.025));
