@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=78";
+      return "/js/liveAnalysisBridge.mjs?v=79";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=78");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=79");
     }
-    return "/js/liveAnalysisBridge.mjs?v=78";
+    return "/js/liveAnalysisBridge.mjs?v=79";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=78";
+      return "/js/staticFrameCompose.mjs?v=79";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=78");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=79");
     }
-    return "/js/staticFrameCompose.mjs?v=78";
+    return "/js/staticFrameCompose.mjs?v=79";
   }
 
   async preloadStaticComposeModule() {
@@ -3452,7 +3452,8 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
     if (this._editingVariantId === variantId) {
-      this.renderVariantEditorPanel(row);
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview && row.imageUrl) preview.src = row.imageUrl;
     }
   }
 
@@ -3969,15 +3970,13 @@ Please share payment details and license key.`;
       const lockSize = p?.lockSize !== false;
       const freeValue =
         window.StaticFrameCompose?.FREE_SHIPPING_BADGE_VALUE || "free";
-      const gownLabels = window.StaticFrameCompose?.GOWN_SLOT_LABELS || {};
-      const gownArtValue = window.StaticFrameCompose?.gownArtBadgeValue;
       const showFreeOption = slot.freeShippingSlot || p?._freeShippingSlot;
       const isFreeShipActive = p?.kind === "freeShipping";
       const isGownArt = p?.kind === "gownArt";
       const selectedBadge = isFreeShipActive
         ? freeValue
         : isGownArt
-        ? (gownArtValue ? gownArtValue(slot.id) : `gown-art:${slot.id}`)
+        ? "gown-art"
         : String(p?.num || slot.num || 1);
 
       html += `<div class="static-sticker-card" data-badge-id="${slot.id}" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
@@ -3998,11 +3997,10 @@ Please share payment details and license key.`;
           isFreeShipActive ? " selected" : ""
         }>Free shipping (red circle)</option>`;
       }
-      if (style === "gown_static" && gownLabels[slot.id]) {
-        const artVal = gownArtValue ? gownArtValue(slot.id) : `gown-art:${slot.id}`;
-        html += `<option value="${artVal}"${
-          selectedBadge === artVal ? " selected" : ""
-        }>${gownLabels[slot.id]} (default art)</option>`;
+      if (style === "gown_static" && slot.id?.startsWith("gown-")) {
+        html += `<option value="gown-art"${
+          isGownArt ? " selected" : ""
+        }>${slot.label} (default art)</option>`;
       }
       for (let n = 1; n <= 25; n++) {
         html += `<option value="${n}"${

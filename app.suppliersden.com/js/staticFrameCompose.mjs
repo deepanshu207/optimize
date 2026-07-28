@@ -7,20 +7,6 @@ import { drawTallBadge } from "./tallStaticBadges.mjs?v=67";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
-
-export const GOWN_SLOT_LABELS = {
-  "gown-best": "Best PRICE",
-  "gown-flash": "FLASH SALE",
-  "gown-popular": "MOST POPULAR",
-};
-
-export function gownArtBadgeValue(slotId) {
-  return `gown-art:${slotId}`;
-}
-
-export function isGownArtBadgeValue(value) {
-  return String(value ?? "").startsWith("gown-art:");
-}
 export const BORDER_THICKNESS_DEFAULT = 100;
 export const BORDER_THICKNESS_MAX = 1000;
 
@@ -882,12 +868,12 @@ async function drawPlacementsOnCtx(ctx, placements) {
       } else if (p.kind === "badge" && p.num != null) {
         const badge = await loadBadge(p.num);
         if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
-      } else if (p.id?.startsWith("gown-") || p.kind === "gownArt") {
-        const copy = { ...p, w, h };
-        await drawGownBadge(ctx, loadBadge, copy);
       } else if (p.id?.startsWith("tall-")) {
         const copy = { ...p, w, h };
         await drawTallBadge(ctx, loadBadge, copy);
+      } else if (p.id?.startsWith("gown-") || p.kind === "gownArt") {
+        const copy = { ...p, w, h };
+        await drawGownBadge(ctx, loadBadge, copy);
       } else if (p.num != null) {
         const badge = await loadBadge(p.num);
         if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
@@ -1042,7 +1028,7 @@ export function pickStaticBaseLayer(layers, flags = {}) {
       rebuild: true,
     };
   }
-  return { url: layers.noStickers || layers.full, drawBadges: true, rebuild: true };
+  return { url: layers.noStickers || layers.productOnly, drawBadges: true, rebuild: true };
 }
 
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
@@ -1057,23 +1043,13 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   const frameEdited = shouldRebuildStaticFrame(layers, {
     staticAppearanceEdited: !!options.staticAppearanceEdited,
-    badgesRepositioned: !!options.badgesRepositioned,
   });
-  const stickerPlacements = (layers._badgePlacements || []).filter(
-    (p) => !p.hidden && p.drawn !== false,
-  );
-  const forceCleanFrame =
-    hasStickers &&
-    stickerPlacements.length > 0 &&
-    layers._staticFrame &&
-    (layers.productOnly || layers.noStickers);
 
   let canvas = null;
   let frame = layers._staticFrame;
   const picked = pickStaticBaseLayer(layers, flags);
-  const rebuildFrame = frameEdited || forceCleanFrame;
 
-  if (rebuildFrame && layers._staticFrame) {
+  if (frameEdited && layers._staticFrame) {
     const rebuilt = await rebuildFrameCanvas(layers);
     if (rebuilt) {
       canvas = rebuilt.canvas;
@@ -1082,16 +1058,14 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   }
 
   if (!canvas) {
-    if (!picked.drawBadges && !rebuildFrame) {
+    if (!picked.drawBadges && !frameEdited) {
       return picked.url || layers.full || "";
     }
     let baseUrl = picked.url;
     if (!baseUrl) {
-      if (hasStickers) {
-        baseUrl = layers.noStickers || layers.productOnly;
-      } else {
-        baseUrl = layers.noStickers || layers.full;
-      }
+      if (hasBorder && !hasStickers) baseUrl = layers.noStickers || layers.full;
+      else if (!hasBorder && hasStickers) baseUrl = layers.noBorder || layers.productOnly || layers.full;
+      else baseUrl = layers.noStickers || layers.productOnly;
     } else if (hasStickers && baseUrl === layers.full && layers.noStickers) {
       baseUrl = layers.noStickers;
     }
@@ -1227,18 +1201,20 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   ensurePlacementDefaults(p);
 
   const raw = String(badgeValue ?? "").trim();
-  if (isGownArtBadgeValue(raw)) {
-    const slotId = raw.slice("gown-art:".length);
-    if (!slotId || (p.id !== slotId && p.gownSlot !== slotId)) return false;
+  if (raw === "gown-art") {
+    if (!p.id?.startsWith("gown-")) return false;
     p.kind = "gownArt";
-    p.gownSlot = slotId;
+    p.gownSlot = p.id;
     p.num = undefined;
     p.defaultW = undefined;
     p.defaultH = undefined;
     p.defaultSize = undefined;
     p.size = undefined;
     p.drawn = true;
-    p.label = GOWN_SLOT_LABELS[slotId] || "Gown art";
+    if (p.id === "gown-best") p.label = "Best PRICE";
+    else if (p.id === "gown-flash") p.label = "FLASH SALE";
+    else if (p.id === "gown-popular") p.label = "MOST POPULAR";
+    else p.label = "Gown art";
     if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
     return true;
   }
@@ -1556,6 +1532,13 @@ export function resetStaticPlacements(layers) {
         p.kind = "freeShipping";
         p.num = undefined;
         p.label = "FREE SHIPPING";
+      } else if (pDef.kind === "gownArt") {
+        p.kind = "gownArt";
+        p.gownSlot = p.id;
+        p.num = undefined;
+        if (p.id === "gown-best") p.label = "Best PRICE";
+        else if (p.id === "gown-flash") p.label = "FLASH SALE";
+        else if (p.id === "gown-popular") p.label = "MOST POPULAR";
       } else {
         p.kind = pDef.kind || "badge";
         p.num = pDef.num;
@@ -1615,9 +1598,6 @@ if (typeof window !== "undefined") {
     updatePlacementSize,
     updatePlacementBadge,
     FREE_SHIPPING_BADGE_VALUE,
-    GOWN_SLOT_LABELS,
-    gownArtBadgeValue,
-    isGownArtBadgeValue,
     isFreeShippingSlot,
     setPlacementHidden,
     setAllPlacementsHidden,

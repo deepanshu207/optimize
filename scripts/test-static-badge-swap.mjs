@@ -1,5 +1,5 @@
 /**
- * Badge dropdown swap — no overlap / correct kind routing (gown, tall, lifestyle).
+ * Badge dropdown swap — no stacked stickers on static promos.
  */
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -13,13 +13,7 @@ const SFC = await import(
   pathToFileURL(resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs")).href
 );
 
-const {
-  updatePlacementBadge,
-  gownArtBadgeValue,
-  isGownArtBadgeValue,
-  GOWN_SLOT_LABELS,
-  shouldRebuildStaticFrame,
-} = SFC;
+const { updatePlacementBadge, shouldRebuildStaticFrame } = SFC;
 
 let failed = 0;
 function assert(cond, msg) {
@@ -31,9 +25,10 @@ function assert(cond, msg) {
   }
 }
 
-const gownLayers = {
+const layers = {
   productOnly: "data:image/jpeg;base64,/9j/4AAQ",
   noStickers: "data:image/jpeg;base64,/9j/4AAQ",
+  full: "data:image/jpeg;base64,/9j/4BBQ",
   _staticFrame: {
     style: "gown_static",
     outerW: 773,
@@ -44,6 +39,7 @@ const gownLayers = {
     dh: 982,
     border: 19,
     whitePad: 37,
+    borderThicknessPct: 100,
   },
   _badgePlacements: [
     {
@@ -65,52 +61,38 @@ const gownLayers = {
   },
 };
 
-const best = () => gownLayers._badgePlacements[0];
+const p = () => layers._badgePlacements[0];
 
-assert(isGownArtBadgeValue("gown-art:gown-best"), "detect gown art value");
-assert(gownArtBadgeValue("gown-flash") === "gown-art:gown-flash", "gown art value helper");
-assert(GOWN_SLOT_LABELS["gown-best"] === "Best PRICE", "gown label map");
+assert(updatePlacementBadge(layers, "gown-best", "7"), "gown art -> badge 7");
+assert(p().kind === "badge" && p().num === 7, "numbered badge kind");
 
-assert(
-  updatePlacementBadge(gownLayers, "gown-best", "7"),
-  "gown art -> badge 7",
-);
-assert(best().kind === "badge" && best().num === 7, "gown converts to numbered badge");
-assert(best().gownSlot === "gown-best", "gown slot preserved for restore");
+assert(updatePlacementBadge(layers, "gown-best", "gown-art"), "badge 7 -> gown art");
+assert(p().kind === "gownArt" && p().num == null, "restored gown art");
 
 assert(
-  updatePlacementBadge(gownLayers, "gown-best", gownArtBadgeValue("gown-best")),
-  "badge 7 -> gown default art",
-);
-assert(best().kind === "gownArt" && best().num == null, "restored gown art kind");
-
-assert(
-  !updatePlacementBadge(gownLayers, "gown-best", gownArtBadgeValue("gown-flash")),
-  "reject wrong slot gown art",
+  shouldRebuildStaticFrame(layers, { staticAppearanceEdited: true }),
+  "appearance edit rebuilds",
 );
 
-assert(
-  shouldRebuildStaticFrame(gownLayers, { staticAppearanceEdited: true }),
-  "appearance edit rebuilds frame",
-);
-best().num = 12;
-assert(
-  shouldRebuildStaticFrame(gownLayers, {}),
-  "badge num change triggers rebuild via placement diff",
-);
-
-const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
 const composeCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs"),
   "utf8",
 );
-assert(contentCode.includes("gownLabels[slot.id]"), "editor shows gown default art option");
-assert(contentCode.includes("badgesRepositioned"), "compose passes badge reposition flag");
+const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
+
 assert(
   composeCode.includes('p.kind === "badge" && p.num != null'),
-  "numbered badges drawn before gown/tall art fallback",
+  "numbered badges drawn before gown slot art",
 );
-assert(composeCode.includes("forceCleanFrame"), "compose rebuilds clean frame for stickers");
+assert(
+  composeCode.includes("url: layers.noStickers || layers.productOnly, drawBadges: true"),
+  "sticker compose base uses noStickers not full",
+);
+assert(contentCode.includes('value="gown-art"'), "gown default art dropdown option");
+assert(
+  contentCode.includes('if (preview && row.imageUrl) preview.src = row.imageUrl'),
+  "badge swap updates preview only",
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

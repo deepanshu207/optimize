@@ -2183,8 +2183,7 @@ const MeeshoAPI = {
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
-          const appearanceEdited =
-            !!result._staticAppearanceEdited || !!result._badgesRepositioned;
+          const appearanceEdited = !!result._staticAppearanceEdited;
           const preserveKb = result.meta?.targetKb
             ? 0
             : result.blob?.size
@@ -2200,8 +2199,7 @@ const MeeshoAPI = {
                 ? result.meta?.jpegQuality || 0.82
                 : result.meta?.jpegQuality,
               style: staticFrame?.style,
-              staticAppearanceEdited: !!result._staticAppearanceEdited,
-              badgesRepositioned: !!result._badgesRepositioned,
+              staticAppearanceEdited: appearanceEdited,
               preview: appearanceEdited,
             },
           );
