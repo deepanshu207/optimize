@@ -144,13 +144,15 @@ assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent")
 assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
 assert(composeCode.includes("ensureGownLayerPcts"), "compose has gown layer pct helper");
+assert(composeCode.includes("drawGownProductInSlot"), "compose clips gown photo to pad slot");
 assert(composeCode.includes("applyGownFrameLayers"), "compose applies gown layers independently");
+assert(gownCode.includes("export function drawGownProductInSlot"), "gown exports clipped product draw");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
 assert(contentCode.includes("borderThicknessLocked"), "border lock stored on frame");
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes('dataset.staticEditorV = "9"'), "editor panel layout v9");
+assert(contentCode.includes('dataset.staticEditorV = "10"'), "editor panel layout v10");
 assert(contentCode.includes("static-color-outer-mat"), "gown has outer mat color");
 assert(contentCode.includes("static-color-inner-accent"), "gown has inner accent color");
 assert(contentCode.includes("static-color-pad"), "gown has photo pad color");
