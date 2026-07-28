@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=77";
+      return "/js/liveAnalysisBridge.mjs?v=79";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=77");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=79");
     }
-    return "/js/liveAnalysisBridge.mjs?v=77";
+    return "/js/liveAnalysisBridge.mjs?v=79";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=77";
+      return "/js/staticFrameCompose.mjs?v=79";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=77");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=79");
     }
-    return "/js/staticFrameCompose.mjs?v=77";
+    return "/js/staticFrameCompose.mjs?v=79";
   }
 
   async preloadStaticComposeModule() {
@@ -3203,6 +3203,7 @@ Please share payment details and license key.`;
       {
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
+        badgesRepositioned: !!row._badgesRepositioned,
         ...options,
       },
     );
@@ -3229,6 +3230,7 @@ Please share payment details and license key.`;
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
+      badgesRepositioned: !!row._badgesRepositioned,
     };
 
     if (
@@ -3237,6 +3239,7 @@ Please share payment details and license key.`;
         row._badgesRepositioned ||
         window.StaticFrameCompose.shouldRebuildStaticFrame?.(row.layers, {
           staticAppearanceEdited: !!row._staticAppearanceEdited,
+          badgesRepositioned: !!row._badgesRepositioned,
         }))
     ) {
       try {
@@ -3449,7 +3452,8 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
     if (this._editingVariantId === variantId) {
-      this.renderVariantEditorPanel(row);
+      const preview = document.getElementById("variant-edit-preview");
+      if (preview && row.imageUrl) preview.src = row.imageUrl;
     }
   }
 
@@ -3968,7 +3972,12 @@ Please share payment details and license key.`;
         window.StaticFrameCompose?.FREE_SHIPPING_BADGE_VALUE || "free";
       const showFreeOption = slot.freeShippingSlot || p?._freeShippingSlot;
       const isFreeShipActive = p?.kind === "freeShipping";
-      const selectedBadge = isFreeShipActive ? freeValue : String(p?.num || slot.num || 1);
+      const isGownArt = p?.kind === "gownArt";
+      const selectedBadge = isFreeShipActive
+        ? freeValue
+        : isGownArt
+        ? "gown-art"
+        : String(p?.num || slot.num || 1);
 
       html += `<div class="static-sticker-card" data-badge-id="${slot.id}" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3988,9 +3997,14 @@ Please share payment details and license key.`;
           isFreeShipActive ? " selected" : ""
         }>Free shipping (red circle)</option>`;
       }
+      if (style === "gown_static" && slot.id?.startsWith("gown-")) {
+        html += `<option value="gown-art"${
+          isGownArt ? " selected" : ""
+        }>${slot.label} (default art)</option>`;
+      }
       for (let n = 1; n <= 25; n++) {
         html += `<option value="${n}"${
-          !isFreeShipActive && parseInt(selectedBadge, 10) === n ? " selected" : ""
+          !isFreeShipActive && !isGownArt && parseInt(selectedBadge, 10) === n ? " selected" : ""
         }>Badge ${n}</option>`;
       }
       html += `</select></label>`;
