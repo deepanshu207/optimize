@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=86";
-import { blobToDataUrl } from "./lib/encoder.js?v=86";
-import { estimateImageShipping } from "./lib/shipping.js?v=86";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=86";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=87";
+import { blobToDataUrl } from "./lib/encoder.js?v=87";
+import { estimateImageShipping } from "./lib/shipping.js?v=87";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=87";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -150,23 +150,37 @@ function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
 
 /** Teal border + white mat + teal inner accent (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
-  const wx = frame.whiteX ?? frame.border ?? 0;
-  const wy = frame.whiteY ?? frame.border ?? 0;
-  const ww = frame.whiteW ?? (frame.outerW || 0) - (frame.border || 0) * 2;
-  const wh = frame.whiteH ?? (frame.outerH || 0) - (frame.border || 0) * 2;
+  const outerW = frame.outerW || 0;
+  const outerH = frame.outerH || 0;
+  const border = frame.border ?? 0;
+  const wx = frame.whiteX ?? border;
+  const wy = frame.whiteY ?? border;
+  const ww = frame.whiteW ?? outerW - border * 2;
+  const wh = frame.whiteH ?? outerH - border * 2;
   const ifx = frame.innerFrameX ?? wx + (frame.outerMatPad ?? 0);
   const ify = frame.innerFrameY ?? wy + (frame.outerMatPad ?? 0);
   const ifw = frame.innerFrameW ?? ww - (frame.outerMatPad ?? 0) * 2;
   const ifh = frame.innerFrameH ?? wh - (frame.outerMatPad ?? 0) * 2;
   const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const outerMatColor = frame.outerMatColor ?? frame.matColor ?? "#ffffff";
+  const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
   const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
 
   ctx.fillStyle = frame.borderColor || BORDER_TEAL;
-  ctx.fillRect(0, 0, frame.outerW, frame.outerH);
-  ctx.fillStyle = frame.matColor || "#ffffff";
+  ctx.fillRect(0, 0, outerW, outerH);
+
+  ctx.fillStyle = outerMatColor;
   ctx.fillRect(wx, wy, ww, wh);
 
   if (ifw > 0 && ifh > 0) {
+    const padX = ifx + stroke;
+    const padY = ify + stroke;
+    const padW = ifw - 2 * stroke;
+    const padH = ifh - 2 * stroke;
+    if (padW > 0 && padH > 0) {
+      ctx.fillStyle = padColor;
+      ctx.fillRect(padX, padY, padW, padH);
+    }
     drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
   }
 }
@@ -358,6 +372,9 @@ async function buildGownStaticLayers(img) {
         frameType: "tall",
         borderColor: BORDER_TEAL,
         matColor: "#ffffff",
+        outerMatColor: "#ffffff",
+        padColor: "#ffffff",
+        innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         gradientTop: BORDER_TEAL,
         gradientBottom: BORDER_TEAL_DARK,
         gradientPreset: null,
@@ -374,7 +391,6 @@ async function buildGownStaticLayers(img) {
         innerFrameW,
         innerFrameH,
         innerStroke,
-        innerStrokeColor,
         baseBorder: border,
         baseOuterMatPad: outerMatPad,
         baseInnerMatPad: innerMatPad,

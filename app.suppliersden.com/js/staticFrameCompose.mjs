@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=86";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=86";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=86";
-import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=86";
+import { compressFramedToKb } from "./lib/encoder.js?v=87";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=87";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=87";
+import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=87";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -699,22 +699,44 @@ function applyGownFrameLayers(frame) {
   );
   frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
 
-  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
   frame.whiteX = frame.border;
   frame.whiteY = frame.border;
   frame.whiteW = outerW - frame.border * 2;
   frame.whiteH = outerH - frame.border * 2;
+
+  const minInnerFrame = Math.max(24, Math.round(baseDw * 0.35));
+  let slotInset = frame.innerMatPad + frame.innerStroke;
+  let innerFrameW = frame.whiteW - frame.outerMatPad * 2;
+  if (innerFrameW < minInnerFrame + slotInset * 2) {
+    const maxOuter = Math.max(0, Math.floor((frame.whiteW - minInnerFrame - slotInset * 2) / 2));
+    frame.outerMatPad = Math.min(frame.outerMatPad, maxOuter);
+    innerFrameW = frame.whiteW - frame.outerMatPad * 2;
+  }
+  if (innerFrameW < minInnerFrame + slotInset * 2) {
+    const maxInset = Math.max(0, Math.floor((innerFrameW - minInnerFrame) / 2));
+    if (frame.innerMatPad + frame.innerStroke > maxInset) {
+      const ratio =
+        frame.innerMatPad + frame.innerStroke > 0
+          ? frame.innerMatPad / (frame.innerMatPad + frame.innerStroke)
+          : 0.5;
+      frame.innerMatPad = Math.max(0, Math.round(maxInset * ratio));
+      frame.innerStroke = Math.max(frame.innerAccent > 0 ? 1 : 0, maxInset - frame.innerMatPad);
+      slotInset = frame.innerMatPad + frame.innerStroke;
+    }
+  }
+
+  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
 
   frame.innerFrameX = frame.whiteX + frame.outerMatPad;
   frame.innerFrameY = frame.whiteY + frame.outerMatPad;
   frame.innerFrameW = frame.whiteW - frame.outerMatPad * 2;
   frame.innerFrameH = frame.whiteH - frame.outerMatPad * 2;
 
-  const slotInset = frame.innerMatPad + frame.innerStroke;
-  const innerW = frame.innerFrameW - slotInset * 2;
-  const innerH = frame.innerFrameH - slotInset * 2;
-  frame.px = frame.innerFrameX + slotInset + Math.round((innerW - baseDw) / 2);
-  frame.py = frame.innerFrameY + slotInset + Math.round((innerH - baseDh) / 2);
+  const slotInsetFinal = frame.innerMatPad + frame.innerStroke;
+  const innerW = frame.innerFrameW - slotInsetFinal * 2;
+  const innerH = frame.innerFrameH - slotInsetFinal * 2;
+  frame.px = frame.innerFrameX + slotInsetFinal + Math.round((innerW - baseDw) / 2);
+  frame.py = frame.innerFrameY + slotInsetFinal + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 
@@ -754,7 +776,7 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
  * Apply border thickness (0–1000). 100 = exact generated frame.
  * Gown keeps product size fixed; other variants scale border/mat around product.
  */
-export function applyBorderThickness(frame) {
+export function applyBorderThickness(frame, options = {}) {
   if (!frame) return frame;
   ensureFrameBases(frame);
   const pct = clamp(frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT, 0, BORDER_THICKNESS_MAX);
@@ -765,7 +787,12 @@ export function applyBorderThickness(frame) {
   }
 
   if (frame.style === "gown_static") {
-    syncGownLayerPctFromLegacySlider(frame, pct);
+    if (!gownFrameLayersEdited(frame)) {
+      syncGownLayerPctFromLegacySlider(frame, pct);
+    }
+    if (options.syncLegacyGownSlider) {
+      syncGownLayerPctFromLegacySlider(frame, pct);
+    }
     return applyGownFrameLayers(frame);
   }
 
@@ -1089,6 +1116,9 @@ export function frameAppearanceChanged(frame, defaults) {
     "gradientBottom",
     "borderColor",
     "matColor",
+    "outerMatColor",
+    "innerStrokeColor",
+    "padColor",
     "gradientPreset",
     "borderThicknessPct",
   ];
@@ -1414,14 +1444,29 @@ export function updateFrameAppearance(layers, patch) {
   }
   if (patch.borderColor != null) {
     const hex = normalizeFrameColor(patch.borderColor);
-    if (hex) {
-      frame.borderColor = hex;
-      if (frame.style === "gown_static") frame.innerStrokeColor = hex;
-    }
+    if (hex) frame.borderColor = hex;
+  }
+  if (patch.outerMatColor != null) {
+    const hex = normalizeFrameColor(patch.outerMatColor);
+    if (hex) frame.outerMatColor = hex;
+  }
+  if (patch.innerStrokeColor != null) {
+    const hex = normalizeFrameColor(patch.innerStrokeColor);
+    if (hex) frame.innerStrokeColor = hex;
+  }
+  if (patch.padColor != null) {
+    const hex = normalizeFrameColor(patch.padColor);
+    if (hex) frame.padColor = hex;
   }
   if (patch.matColor != null) {
     const hex = normalizeFrameColor(patch.matColor);
-    if (hex) frame.matColor = hex;
+    if (hex) {
+      frame.matColor = hex;
+      if (frame.style === "gown_static") {
+        if (patch.outerMatColor == null && frame.outerMatColor == null) frame.outerMatColor = hex;
+        if (patch.padColor == null && frame.padColor == null) frame.padColor = hex;
+      }
+    }
   }
   if (patch.gradientPreset !== undefined) frame.gradientPreset = patch.gradientPreset || null;
   if (patch.gownLayerPct != null && frame.style === "gown_static") {
@@ -1431,7 +1476,7 @@ export function updateFrameAppearance(layers, patch) {
   }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
-    applyBorderThickness(frame);
+    applyBorderThickness(frame, { syncLegacyGownSlider: frame.style === "gown_static" });
   }
   return true;
 }
@@ -1439,6 +1484,7 @@ export function updateFrameAppearance(layers, patch) {
 export function applyGradientPreset(layers, presetId) {
   const preset = GRADIENT_PRESETS.find((g) => g.id === presetId);
   if (!preset || !layers?._staticFrame) return false;
+  if (layers._staticFrame.style === "gown_static") return false;
   return updateFrameAppearance(layers, {
     frameType: "gradient",
     gradientTop: preset.top,
@@ -1478,6 +1524,9 @@ function snapshotDefaults(layers, style) {
         gradientPreset: frame.gradientPreset,
         borderThicknessPct: frame.borderThicknessPct ?? 100,
         borderThicknessLocked: frame.borderThicknessLocked !== false,
+        outerMatColor: frame.outerMatColor,
+        innerStrokeColor: frame.innerStrokeColor,
+        padColor: frame.padColor,
         gownLayerPct: frame.gownLayerPct
           ? { ...frame.gownLayerPct }
           : {
