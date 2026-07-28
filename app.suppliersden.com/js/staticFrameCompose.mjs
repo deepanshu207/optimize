@@ -21,6 +21,23 @@ export const GRADIENT_PRESETS = [
   { id: "mint", label: "Mint", top: "#00BFA5", bottom: "#69F0AE" },
 ];
 
+/** Quick-pick swatches (Meesho generator + frame defaults). */
+export const FRAME_COLOR_SWATCHES = [
+  { label: "Orange", hex: "#ff9800" },
+  { label: "Red", hex: "#ef4444" },
+  { label: "Royal Blue", hex: "#2563eb" },
+  { label: "Green", hex: "#22c55e" },
+  { label: "Purple", hex: "#7c3aed" },
+  { label: "Olive", hex: "#84cc16" },
+  { label: "Teal", hex: "#06b6d4" },
+  { label: "Navy", hex: "#1e293b" },
+  { label: "Gown Teal", hex: "#71cbd3" },
+  { label: "Lifestyle Green", hex: "#32d74b" },
+  { label: "Tall Blue", hex: "#45a9e5" },
+  { label: "White", hex: "#ffffff" },
+  { label: "Black", hex: "#000000" },
+];
+
 function clampByte(n) {
   return Math.max(0, Math.min(255, Math.round(Number(n) || 0)));
 }
@@ -59,6 +76,13 @@ export function parseCssColor(input) {
   if (longHex) {
     const hex = `#${longHex[1]}`.toLowerCase();
     const n = parseInt(longHex[1], 16);
+    return rgbPartsToColor((n >> 16) & 255, (n >> 8) & 255, n & 255, hex);
+  }
+
+  const bareHex = /^([0-9a-f]{6})$/i.exec(raw);
+  if (bareHex) {
+    const hex = `#${bareHex[1]}`.toLowerCase();
+    const n = parseInt(bareHex[1], 16);
     return rgbPartsToColor((n >> 16) & 255, (n >> 8) & 255, n & 255, hex);
   }
 
@@ -1506,6 +1530,7 @@ if (typeof window !== "undefined") {
     getBadgeSlots,
     BADGE_ANCHOR_OPTIONS,
     GRADIENT_PRESETS,
+    FRAME_COLOR_SWATCHES,
     getStaticEffectiveFlags,
     positionForAnchor,
     slidersToXY,

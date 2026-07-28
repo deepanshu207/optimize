@@ -17,7 +17,7 @@ await page.goto(`${BASE}/`, { waitUntil: "networkidle0", timeout: 30000 });
 await page.waitForFunction(() => window.meeshoOptimizer, { timeout: 15000 });
 
 const variantId = await page.evaluate(async () => {
-  await import("/js/staticFrameCompose.mjs?v=73");
+  await import("/js/staticFrameCompose.mjs?v=74");
 
   const productCanvas = document.createElement("canvas");
   productCanvas.width = 477;
@@ -124,7 +124,8 @@ const metrics = await page.evaluate(() => {
       : false,
     scrollClientHeight: scroll?.clientHeight || 0,
     scrollScrollHeight: scroll?.scrollHeight || 0,
-    borderRgb: document.getElementById("static-color-border-rgb")?.value || "",
+    borderHex: document.getElementById("static-color-border-hex")?.value || "",
+    chipCount: document.querySelectorAll(".static-color-chip").length,
     borderR: document.getElementById("static-color-border-r")?.value || "",
     borderG: document.getElementById("static-color-border-g")?.value || "",
     borderB: document.getElementById("static-color-border-b")?.value || "",
@@ -151,7 +152,8 @@ assert(metrics.sizeLocks === 3, "all badge size locks rendered");
 assert(metrics.borderDisabled === true, "border slider locked by default");
 assert(metrics.scrollable, "controls taller than viewport scroll inside panel");
 assert(metrics.scrollScrollHeight > metrics.scrollClientHeight + 40, "scroll area has room for all controls");
-assert(metrics.borderRgb === "113, 203, 211", "existing border RGB paste field shown");
+assert(metrics.borderHex === "#71cbd3", "existing border hex field shown");
+assert(metrics.chipCount >= 8, "preset color chips rendered");
 assert(metrics.borderR === "113" && metrics.borderG === "203" && metrics.borderB === "211", "existing border RGB shown");
 
 if (failed) {

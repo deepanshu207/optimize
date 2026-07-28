@@ -60,13 +60,20 @@ const contentCode = readFileSync(
   resolve(root, "app.suppliersden.com/content.js"),
   "utf8",
 );
-assert(contentCode.includes("buildStaticColorFieldHtml"), "editor builds RGB rows");
+assert(contentCode.includes("buildStaticColorFieldHtml"), "editor builds color rows");
+assert(parseCssColor("fff000")?.hex === "#fff000", "bare 6-digit hex without hash");
 assert(parseCssColor("113, 203, 211")?.hex === "#71cbd3", "comma-separated RGB triplet");
 assert(contentCode.includes("static-color-r"), "editor has R inputs");
-assert(contentCode.includes("static-color-rgb"), "editor has RGB paste field");
-assert(!contentCode.includes("static-color-hex"), "hex code not shown for manual entry");
-assert(contentCode.includes("bindStaticColorFields"), "editor wires RGB sync");
-assert(contentCode.includes("readStaticColorField"), "editor reads RGB values");
+assert(contentCode.includes("static-color-hex-input"), "editor has HEX input field");
+assert(contentCode.includes("static-color-chip"), "editor has preset color chips");
+assert(contentCode.includes("FRAME_COLOR_SWATCHES"), "frame color swatch list exported");
+const composeCode = readFileSync(
+  resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs"),
+  "utf8",
+);
+assert(composeCode.includes("#06b6d4"), "reference teal swatch available");
+assert(contentCode.includes("bindStaticColorFields"), "editor wires color sync");
+assert(contentCode.includes("readStaticColorField"), "editor reads color values");
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
