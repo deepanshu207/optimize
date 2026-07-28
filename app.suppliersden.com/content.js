@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=89";
+      return "/js/liveAnalysisBridge.mjs?v=90";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=89");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=90");
     }
-    return "/js/liveAnalysisBridge.mjs?v=89";
+    return "/js/liveAnalysisBridge.mjs?v=90";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=89";
+      return "/js/staticFrameCompose.mjs?v=90";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=89");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=90");
     }
-    return "/js/staticFrameCompose.mjs?v=89";
+    return "/js/staticFrameCompose.mjs?v=90";
   }
 
   async preloadStaticComposeModule() {
@@ -3125,17 +3125,18 @@ Please share payment details and license key.`;
     await this.preloadStaticComposeModule();
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
-        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
+        const url = await MeeshoAPI.resolveDisplayUrlAsync(row);
+        this.applyStaticPreviewToRow(row, url, variantId);
       } catch (e) {
-        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+        const url = MeeshoAPI.resolveDisplayUrl(row);
+        this.applyStaticPreviewToRow(row, url, variantId);
       }
     } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
-      row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      const url = MeeshoAPI.resolveDisplayUrl(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
     } else if (window.StaticFrameCompose?.composeStaticPreview) {
-      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-        row.layers,
-        row.editFlags,
-      );
+      const url = await this.composePreviewForRow(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
     }
 
     if (this._editingVariantId === variantId) {
@@ -3178,24 +3179,32 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
+    clearTimeout(this._borderThicknessTimer);
+    this._borderThicknessTimer = null;
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = null;
+    this._borderComposeGen = (this._borderComposeGen || 0) + 1;
+
     await this.preloadStaticComposeModule();
-    if (
-      window.StaticFrameCompose?.resetStaticPlacements &&
-      (row.layers._staticFrame || (row.layers._badgePlacements || []).length)
-    ) {
+    if (window.StaticFrameCompose?.resetStaticPlacements) {
       window.StaticFrameCompose.resetStaticPlacements(row.layers);
     }
 
     row.editFlags = this.normalizeEditFlags({});
     row._badgesRepositioned = false;
     row._staticAppearanceEdited = false;
-    row.imageUrl =
+
+    const resetUrl =
       row.layers.full ||
       row.pricingImageUrl ||
       row.dataUrl ||
       "";
 
+    row.imageUrl = resetUrl;
+
     if (this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
+      this.applyStaticPreviewToRow(row, resetUrl, variantId);
       this.renderVariantEditorPanel(row);
     } else {
       this.refreshVariantCard(row);
@@ -3252,9 +3261,22 @@ Please share payment details and license key.`;
     row.imageUrl = url;
     if (this._editingVariantId === variantId) {
       const preview = document.getElementById("variant-edit-preview");
-      if (preview) preview.src = url;
+      if (preview) {
+        if (preview.src !== url) preview.src = url;
+        else preview.removeAttribute("src");
+        preview.src = url;
+      }
     }
     this.refreshVariantCard(row);
+  }
+
+  async applyRowStaticPreview(variantId, row = null) {
+    const target = row || this.findResultRow(variantId);
+    if (!target?.layers?._staticFrame) return "";
+    await this.preloadStaticComposeModule();
+    const url = await this.composePreviewForRow(target);
+    if (url) this.applyStaticPreviewToRow(target, url, variantId);
+    return url;
   }
 
   async refreshStaticPreview(variantId) {
@@ -3268,21 +3290,24 @@ Please share payment details and license key.`;
       staticAppearanceEdited: !!row._staticAppearanceEdited,
     };
 
-    if (
-      window.StaticFrameCompose?.composeStaticPreview &&
-      (row._staticAppearanceEdited ||
-        row._badgesRepositioned ||
-        window.StaticFrameCompose.shouldRebuildStaticFrame?.(row.layers, {
-          staticAppearanceEdited: !!row._staticAppearanceEdited,
-        }))
-    ) {
+    const needsCompose =
+      row._staticAppearanceEdited ||
+      row._badgesRepositioned ||
+      window.StaticFrameCompose?.shouldRebuildStaticFrame?.(row.layers, {
+        staticAppearanceEdited: !!row._staticAppearanceEdited,
+      });
+
+    if (needsCompose && window.StaticFrameCompose?.composeStaticPreview) {
       try {
         const url = await this.composePreviewForRow(row, composeOpts);
-        if (url) row.imageUrl = url;
+        if (url) this.applyStaticPreviewToRow(row, url, variantId);
+        return;
       } catch (e) {
         console.warn("Static preview compose failed:", e);
       }
-    } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+    }
+
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
       } catch (e) {
@@ -3290,14 +3315,11 @@ Please share payment details and license key.`;
       }
     } else if (window.StaticFrameCompose?.composeStaticPreview) {
       const url = await this.composePreviewForRow(row, composeOpts);
-      if (url) row.imageUrl = url;
+      if (url) this.applyStaticPreviewToRow(row, url, variantId);
+      return;
     }
 
-    if (this._editingVariantId === variantId) {
-      const preview = document.getElementById("variant-edit-preview");
-      if (preview) preview.src = row.imageUrl;
-    }
-    this.refreshVariantCard(row);
+    this.applyStaticPreviewToRow(row, row.imageUrl, variantId);
   }
 
   async setStaticBadgeAnchor(variantId, placementId, anchor) {
@@ -3529,11 +3551,27 @@ Please share payment details and license key.`;
     if (!row?.layers?._staticFrame) return;
 
     await this.preloadStaticComposeModule();
-    if (!window.StaticFrameCompose?.updateFrameAppearance) return;
+    const SFC = window.StaticFrameCompose;
+    if (!SFC?.updateFrameAppearance) return;
 
-    window.StaticFrameCompose.updateFrameAppearance(row.layers, patch);
+    const frame = row.layers._staticFrame;
+    const hadGownGradient =
+      frame.style === "gown_static" &&
+      SFC.staticStyleUsesGradientColors?.(frame.style, frame);
+
+    SFC.updateFrameAppearance(row.layers, patch);
     row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+
+    const hasGownGradient =
+      frame.style === "gown_static" &&
+      SFC.staticStyleUsesGradientColors?.(frame.style, frame);
+
+    await this.applyRowStaticPreview(variantId, row);
+
+    if (hadGownGradient !== hasGownGradient && this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
+      this.renderVariantEditorPanel(row);
+    }
   }
 
   updateBorderThicknessLockUI(container, frame) {
@@ -3575,7 +3613,7 @@ Please share payment details and license key.`;
     clearTimeout(this._borderThicknessTimer);
     this._borderThicknessTimer = setTimeout(() => {
       void this.applyStaticBorderThickness(variantId, pct);
-    }, 150);
+    }, 50);
   }
 
   async applyStaticBorderThickness(variantId, pct) {
@@ -3595,8 +3633,7 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
 
     try {
-      const url = await this.composePreviewForRow(row);
-      this.applyStaticPreviewToRow(row, url, variantId);
+      await this.applyRowStaticPreview(variantId, row);
     } catch (e) {
       console.warn("Border thickness preview failed:", e);
       await this.refreshStaticPreview(variantId);
@@ -3648,7 +3685,7 @@ Please share payment details and license key.`;
     clearTimeout(this._gownLayerTimer);
     this._gownLayerTimer = setTimeout(() => {
       void this.applyStaticGownLayerPcts(variantId);
-    }, 150);
+    }, 50);
   }
 
   readGownLayerPctFromUI(container) {
@@ -3681,8 +3718,7 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
 
     try {
-      const url = await this.composePreviewForRow(row);
-      this.applyStaticPreviewToRow(row, url, variantId);
+      await this.applyRowStaticPreview(variantId, row);
     } catch (e) {
       console.warn("Gown frame layer preview failed:", e);
       await this.refreshStaticPreview(variantId);
@@ -3720,7 +3756,7 @@ Please share payment details and license key.`;
       SFC.clearGradientPreset(row.layers);
     }
     row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    await this.applyRowStaticPreview(variantId, row);
 
     if (this._editingVariantId === variantId) {
       this._staticControlsVariantId = null;

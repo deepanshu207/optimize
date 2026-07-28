@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=89";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=89";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=89";
-import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=89";
+import { compressFramedToKb } from "./lib/encoder.js?v=90";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=90";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=90";
+import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=90";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -1723,7 +1723,7 @@ export function ensureStaticPlacementMeta(layers, style) {
 }
 
 export function resetStaticPlacements(layers) {
-  if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
+  if (!layers?._staticFrame) return false;
   const style = layers._staticFrame.style;
   const anchorMap = DEFAULT_ANCHORS[style] || {};
 
@@ -1735,7 +1735,10 @@ export function resetStaticPlacements(layers) {
     Object.assign(layers._staticFrame, { ...defs });
   }
 
-  for (const p of layers._badgePlacements) {
+  ensureFrameBases(layers._staticFrame);
+  applyBorderThickness(layers._staticFrame);
+
+  for (const p of layers._badgePlacements || []) {
     if (!p.id) continue;
     const pDef = layers._staticDefaults?.placements?.[p.id];
     if (pDef) {
