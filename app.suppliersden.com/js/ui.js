@@ -123,6 +123,7 @@ const OptimizerUI = {
                         <div class="opt-preview" id="preview-box">
                             <img id="preview-img" alt="Preview">
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
+                            <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
                     </div>
 
@@ -329,6 +330,7 @@ const OptimizerUI = {
                         <div class="opt-preview" id="preview-box">
                             <img id="preview-img" alt="Preview">
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
+                            <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
                     </div>
 
@@ -393,14 +395,21 @@ const OptimizerUI = {
     const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
-    const estInr = r.meta?.estInr || r.estShipping || 0;
+    const frozenEst =
+      r._frozenPricing?.estShipping ??
+      r._frozenPricing?.metaEstInr ??
+      r.meta?.estInr ??
+      r.estShipping ??
+      0;
+    const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
+    const estInr = frozenEst;
     const priceLabel =
       testLabMode || analysisMode
-      ? r.shippingCost > 0
-        ? "₹" + r.shippingCost
+      ? frozenShip > 0
+        ? "₹" + frozenShip
         : "est ₹" + estInr
-      : r.shippingCost > 0
-      ? "₹" + r.shippingCost
+      : frozenShip > 0
+      ? "₹" + frozenShip
       : estInr > 0
       ? "est ₹" + estInr
       : manualMode
@@ -846,7 +855,7 @@ const OptimizerUI = {
             <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
                 <div style="background:rgba(13,148,136,0.1);border:1px solid rgba(94,196,200,0.5);border-radius:10px;padding:12px;margin-bottom:10px;text-align:center;">
                     <div style="font-size:11px;color:#0f766e;">👗 Gown Promo Frames</div>
-                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">773×1094 · teal frame · lifestyle cover-fit · badges</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:4px;">773×1094 · thin teal · lifestyle scene · thick white mat</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px;">38–48 KB · Best/Flash/Popular · est ~₹49</div>
                 </div>
         `;

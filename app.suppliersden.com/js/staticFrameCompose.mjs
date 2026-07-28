@@ -2,15 +2,15 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=74";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=74";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=74";
+import { compressFramedToKb } from "./lib/encoder.js?v=93";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=93";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=93";
 import {
   drawGownStaticFrameBackground,
   drawGownProductInSlot,
   drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=74";
+} from "./liveGownStatic.mjs?v=93";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -278,6 +278,79 @@ function placementSize(p) {
   return { w: s, h: s };
 }
 
+export function isGownArtPlacement(p) {
+  return !!(
+    p &&
+    (p.kind === "gownArt" || p.gownSlot?.startsWith("gown-") || p.id?.startsWith("gown-"))
+  );
+}
+
+/** Gown badge x/y — matches liveGownStatic.mjs gownStaticPlacements (no canvas clamp). */
+export function gownPlacementPosition(slotId, frame, w, h) {
+  const px = frame.px ?? frame.basePx ?? 0;
+  const py = frame.py ?? frame.basePy ?? 0;
+  const dw = frame.dw ?? frame.baseDw ?? 0;
+  const dh = frame.dh ?? frame.baseDh ?? 0;
+  const ref = Math.min(dw, dh);
+  const inset = Math.max(2, Math.round(ref * 0.015));
+  const slot = slotId || "";
+
+  if (slot === "gown-best") {
+    return { x: px + inset, y: py + inset };
+  }
+  if (slot === "gown-flash") {
+    return {
+      x: px + dw - w - inset,
+      y: py + Math.round(dh * 0.03),
+    };
+  }
+  if (slot === "gown-popular") {
+    return {
+      x: px - Math.round(w * 0.08),
+      y: py + Math.round(dh * 0.48) - Math.round(h / 2),
+    };
+  }
+  return { x: px, y: py };
+}
+
+/** Gown vector-art slot box — matches liveGownStatic.mjs geometry. */
+export function gownArtDimensions(slotId, frame) {
+  if (!slotId?.startsWith("gown-") || !frame) return null;
+  const ref = Math.min(frame.dw ?? frame.baseDw, frame.dh ?? frame.baseDh);
+  if (slotId === "gown-best") {
+    const w = Math.round(ref * 0.36);
+    return { w, h: Math.round(w * 0.7) };
+  }
+  if (slotId === "gown-flash") {
+    const w = Math.round(ref * 0.32);
+    return { w, h: Math.round(w * 0.4) };
+  }
+  if (slotId === "gown-popular") {
+    const w = Math.round(ref * 0.42);
+    return { w, h: Math.round(w * 0.26) };
+  }
+  return null;
+}
+
+/** Numbered PNG badges use a square box (tall/showcase pattern) — avoids stretch on wide gown slots. */
+function squareBadgeBox(w, h) {
+  return Math.max(8, Math.round(Math.min(w, h)));
+}
+
+function restoreGownArtSlotSize(p, layers) {
+  const pDef = layers._staticDefaults?.placements?.[p.id];
+  if (pDef?.slotW != null && pDef?.slotH != null) {
+    p.w = pDef.slotW;
+    p.h = pDef.slotH;
+    return;
+  }
+  const dims = gownArtDimensions(p.id, layers._staticFrame);
+  if (dims) {
+    p.w = dims.w;
+    p.h = dims.h;
+  }
+}
+
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -483,6 +556,24 @@ export function applyPositionToPlacement(placement, frame) {
   if (!placement || !frame) return placement;
   const { w, h } = placementSize(placement);
   const { outerW, outerH } = frame;
+
+  if (frame.style === "gown_static" && isGownArtPlacement(placement)) {
+    const locksH = placement.lockH !== false;
+    const locksV = placement.lockV !== false;
+    if (locksH && locksV) {
+      const slot = placement.gownSlot || placement.id;
+      const { x, y } = gownPlacementPosition(slot, frame, w, h);
+      placement.x = x;
+      placement.y = y;
+      return placement;
+    }
+    if (placement.posH != null && placement.posV != null) {
+      const { x, y } = slidersToXY(placement.posH, placement.posV, outerW, outerH, w, h);
+      placement.x = x;
+      placement.y = y;
+      return placement;
+    }
+  }
 
   if (placement.posH != null && placement.posV != null) {
     const { x, y } = slidersToXY(placement.posH, placement.posV, outerW, outerH, w, h);
@@ -716,6 +807,12 @@ function syncGownLayerPctFromLegacySlider(frame, pct) {
   }
 }
 
+/** @deprecated gown uses applyGownFrameLayers — kept for tests calling borderThicknessPct. */
+function applyGownBorderThickness(frame, pct) {
+  syncGownLayerPctFromLegacySlider(frame, pct);
+  return applyGownFrameLayers(frame);
+}
+
 export function staticFrameBorderEdited(frame) {
   if (!frame) return false;
   if (frame.style === "gown_static") return gownFrameLayersEdited(frame);
@@ -723,6 +820,7 @@ export function staticFrameBorderEdited(frame) {
 }
 
 export function shouldRebuildStaticFrame(layers, options = {}) {
+  if (options.badgesOnly) return false;
   const frame = layers?._staticFrame;
   if (!frame?.outerW) return false;
   if (!layers.productOnly && !layers.noStickers) return false;
@@ -731,6 +829,27 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
   return false;
+}
+
+function frozenLayerUrl(layers, key) {
+  return layers?._staticDefaults?.urls?.[key] || layers?.[key] || "";
+}
+
+function canvasFromStaticImage(img, frame) {
+  const canvas = document.createElement("canvas");
+  const outerW = frame?.outerW || img.width;
+  const outerH = frame?.outerH || img.height;
+  canvas.width = outerW;
+  canvas.height = outerH;
+  const ctx = canvas.getContext("2d");
+  if (img.width === outerW && img.height === outerH) {
+    ctx.drawImage(img, 0, 0);
+  } else {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, outerW, outerH);
+  }
+  return canvas;
 }
 
 /**
@@ -868,8 +987,6 @@ function drawFrameBackground(ctx, frame) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(px, py, dw, dh);
     }
-  } else if (style === "gown_static") {
-    drawGownStaticFrameBackground(ctx, frame);
   } else if (
     frame.frameType === "tall" ||
     style === "tall_static" ||
@@ -883,6 +1000,8 @@ function drawFrameBackground(ctx, frame) {
     const ww = frame.whiteW ?? outerW;
     const wh = frame.whiteH ?? outerH;
     ctx.fillRect(wx, wy, ww, wh);
+  } else if (style === "gown_static") {
+    drawGownStaticFrameBackground(ctx, frame);
   } else {
     ctx.fillStyle = frame.borderColor || "#32d74b";
     ctx.fillRect(0, 0, outerW, outerH);
@@ -898,8 +1017,9 @@ async function loadProductForFrame(layers, frame) {
   const dh = frame.baseDh ?? frame.dh;
   const px = frame.basePx ?? frame.px;
   const py = frame.basePy ?? frame.py;
-  if (!layers.noStickers || !dw || !dh || px == null || py == null) return null;
-  const src = await loadImage(layers.noStickers);
+  const noStickersUrl = frozenLayerUrl(layers, "noStickers");
+  if (!noStickersUrl || !dw || !dh || px == null || py == null) return null;
+  const src = await loadImage(noStickersUrl);
   const c = document.createElement("canvas");
   c.width = dw;
   c.height = dh;
@@ -1061,7 +1181,12 @@ async function compressLifestyleToKb(canvas, targetKb) {
 }
 
 async function compressPreview(canvas, options = {}) {
-  const targetKb = options.targetKb || options.preserveKb || 0;
+  if (options.preview) {
+    const q =
+      options.jpegQuality > 0 && options.jpegQuality <= 1 ? options.jpegQuality : 0.92;
+    return canvas.toDataURL("image/jpeg", q);
+  }
+  const targetKb = options.targetKb ?? options.preserveKb ?? 0;
   const style = options.style || "";
   const jpegQuality = options.jpegQuality;
 
@@ -1071,7 +1196,7 @@ async function compressPreview(canvas, options = {}) {
   if (jpegQuality > 0 && jpegQuality <= 1) {
     return canvas.toDataURL("image/jpeg", jpegQuality);
   }
-  return canvas.toDataURL("image/jpeg", 0.82);
+  return canvas.toDataURL("image/jpeg", 0.92);
 }
 
 async function compressToTargetKb(canvas, targetKb, style) {
@@ -1098,6 +1223,9 @@ export function frameAppearanceChanged(frame, defaults) {
     "gradientBottom",
     "borderColor",
     "matColor",
+    "outerMatColor",
+    "innerStrokeColor",
+    "padColor",
     "gradientPreset",
     "borderThicknessPct",
   ];
@@ -1163,16 +1291,19 @@ export function pickStaticBaseLayer(layers, flags = {}) {
 
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!layers) return "";
-  const targetKb = options.targetKb || 0;
+  const targetKb = options.targetKb ?? 0;
+  const preview = !!options.preview;
+  const badgesOnly = !!options.badgesOnly;
   const style = layers._staticFrame?.style || "";
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
 
   if (!hasBorder && !hasStickers) {
-    return layers.productOnly || layers.full || "";
+    return frozenLayerUrl(layers, "productOnly") || layers.productOnly || layers.full || "";
   }
 
   const frameEdited = shouldRebuildStaticFrame(layers, {
     staticAppearanceEdited: !!options.staticAppearanceEdited,
+    badgesOnly,
   });
 
   let canvas = null;
@@ -1189,22 +1320,29 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   if (!canvas) {
     if (!picked.drawBadges && !frameEdited) {
-      return picked.url || layers.full || "";
+      return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
     let baseUrl = picked.url;
+    if (style === "gown_static" && badgesOnly) {
+      baseUrl = frozenLayerUrl(layers, "noStickers") || baseUrl;
+    }
     if (!baseUrl) {
-      if (hasBorder && !hasStickers) baseUrl = layers.noStickers || layers.full;
+      if (hasBorder && !hasStickers) baseUrl = frozenLayerUrl(layers, "noStickers") || layers.noStickers || layers.full;
       else if (!hasBorder && hasStickers) baseUrl = layers.noBorder || layers.productOnly || layers.full;
-      else baseUrl = layers.noStickers || layers.full;
+      else baseUrl = frozenLayerUrl(layers, "noStickers") || layers.noStickers || layers.full;
     }
     try {
       const img = await loadImage(baseUrl);
-      canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      canvas.getContext("2d").drawImage(img, 0, 0);
+      if (frame?.outerW && frame?.outerH) {
+        canvas = canvasFromStaticImage(img, frame);
+      } else {
+        canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+      }
     } catch (e) {
-      return layers.full || "";
+      return frozenLayerUrl(layers, "full") || layers.full || "";
     }
   }
 
@@ -1214,6 +1352,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
       preserveKb: options.preserveKb,
       jpegQuality: options.jpegQuality,
       style,
+      preview,
     });
   }
 
@@ -1224,6 +1363,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
       preserveKb: options.preserveKb,
       jpegQuality: options.jpegQuality,
       style,
+      preview,
     });
   }
 
@@ -1246,6 +1386,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     preserveKb: options.preserveKb,
     jpegQuality: options.jpegQuality,
     style,
+    preview,
   });
 }
 
@@ -1329,6 +1470,24 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   ensurePlacementDefaults(p);
 
   const raw = String(badgeValue ?? "").trim();
+  if (raw === "gown-art") {
+    if (!p.id?.startsWith("gown-")) return false;
+    p.kind = "gownArt";
+    p.gownSlot = p.id;
+    p.num = undefined;
+    p.defaultW = undefined;
+    p.defaultH = undefined;
+    p.defaultSize = undefined;
+    p.size = undefined;
+    restoreGownArtSlotSize(p, layers);
+    p.drawn = true;
+    if (p.id === "gown-best") p.label = "Best PRICE";
+    else if (p.id === "gown-flash") p.label = "FLASH SALE";
+    else if (p.id === "gown-popular") p.label = "MOST POPULAR";
+    else p.label = "Gown art";
+    if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
+    return true;
+  }
   if (raw === FREE_SHIPPING_BADGE_VALUE) {
     if (!isFreeShippingSlot(p)) return false;
     const { w } = placementSize(p);
@@ -1348,13 +1507,22 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   const num = Math.max(1, Math.min(25, parseInt(raw, 10) || 0));
   if (!num) return false;
 
-  if (p.kind === "freeShipping") {
+  if (p.kind === "freeShipping" || p.kind === "gownArt") {
     const { w, h } = placementSize(p);
+    if (!p.gownSlot && p.id?.startsWith("gown-")) p.gownSlot = p.id;
     p.kind = "badge";
-    p.defaultW = w;
-    p.defaultH = h;
-    p.w = w;
-    p.h = h;
+    if (p.id?.startsWith("gown-")) {
+      const side = squareBadgeBox(w, h);
+      p.defaultW = side;
+      p.defaultH = side;
+      p.w = side;
+      p.h = side;
+    } else {
+      p.defaultW = w;
+      p.defaultH = h;
+      p.w = w;
+      p.h = h;
+    }
     p.defaultSize = undefined;
     p.size = undefined;
   }
@@ -1396,10 +1564,19 @@ export function updateFrameAppearance(layers, patch) {
   }
   if (patch.borderColor != null) {
     const hex = normalizeFrameColor(patch.borderColor);
-    if (hex) {
-      frame.borderColor = hex;
-      if (frame.style === "gown_static") frame.innerStrokeColor = hex;
-    }
+    if (hex) frame.borderColor = hex;
+  }
+  if (patch.outerMatColor != null) {
+    const hex = normalizeFrameColor(patch.outerMatColor);
+    if (hex) frame.outerMatColor = hex;
+  }
+  if (patch.innerStrokeColor != null) {
+    const hex = normalizeFrameColor(patch.innerStrokeColor);
+    if (hex) frame.innerStrokeColor = hex;
+  }
+  if (patch.padColor != null) {
+    const hex = normalizeFrameColor(patch.padColor);
+    if (hex) frame.padColor = hex;
   }
   if (patch.matColor != null) {
     const hex = normalizeFrameColor(patch.matColor);
@@ -1436,6 +1613,47 @@ export function applyGradientPreset(layers, presetId) {
   });
 }
 
+export function clearGradientPreset(layers) {
+  if (!layers?._staticFrame) return false;
+  const frame = layers._staticFrame;
+  const style = frame.style;
+  const defs = STYLE_DEFAULTS[style];
+  frame.gradientPreset = null;
+  if (defs?.frameType) frame.frameType = defs.frameType;
+  return true;
+}
+
+export function staticStyleUsesGradientColors(style, frame) {
+  if (style === "showcase" || style === "live_standard") return true;
+  if (style === "gown_static") {
+    return gownUsesBorderGradient(frame);
+  }
+  return !!frame?.gradientPreset;
+}
+
+function finalizePlacementSnapshot(layers) {
+  if (!layers?._staticDefaults?.placements) return;
+  for (const p of layers._badgePlacements || []) {
+    if (!p.id) continue;
+    const existing = layers._staticDefaults.placements[p.id] || {};
+    if (existing._finalized) continue;
+    layers._staticDefaults.placements[p.id] = {
+      ...existing,
+      kind: p.kind,
+      num: p.num,
+      hidden: !!p.hidden,
+      posH: p.posH,
+      posV: p.posV,
+      sizePct: p.sizePct ?? 100,
+      slotW: existing.slotW ?? p.w,
+      slotH: existing.slotH ?? p.h,
+      baseX: p.x,
+      baseY: p.y,
+      _finalized: true,
+    };
+  }
+}
+
 function snapshotDefaults(layers, style) {
   if (!layers?._staticFrame) return;
   if (!layers._staticDefaults) {
@@ -1456,7 +1674,20 @@ function snapshotDefaults(layers, style) {
         padColor: frame.padColor,
         gownLayerPct: frame.gownLayerPct
           ? { ...frame.gownLayerPct }
-          : undefined,
+          : {
+              border: 100,
+              outerMat: 100,
+              innerAccent: 100,
+              innerMat: 100,
+            },
+        gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+      },
+      urls: {
+        full: layers.full || "",
+        noStickers: layers.noStickers || "",
+        productOnly: layers.productOnly || "",
+        noBorder: layers.noBorder || "",
+        gownPhotoSource: layers._gownPhotoSource || "",
       },
       placements: {},
     };
@@ -1470,6 +1701,8 @@ function snapshotDefaults(layers, style) {
         posV: p.posV,
         sizePct: p.sizePct ?? 100,
         freeShippingSlot: isFreeShippingSlot(p),
+        slotW: p.w,
+        slotH: p.h,
       };
     }
   }
@@ -1613,7 +1846,20 @@ export function ensureStaticPlacementMeta(layers, style) {
       else if (p.id.startsWith("live-badge-")) p.label = `Badge ${parseInt(p.id.split("-").pop(), 10) + 1}`;
       else p.label = `Badge ${p.num || ""}`.trim();
     }
-    if (p.posH == null || p.posV == null) {
+    if (style === "gown_static" && isGownArtPlacement(p)) {
+      applyPositionToPlacement(p, layers._staticFrame);
+      const { w, h } = placementSize(p);
+      const sliders = xyToSliders(
+        p.x || 0,
+        p.y || 0,
+        layers._staticFrame.outerW,
+        layers._staticFrame.outerH,
+        w,
+        h,
+      );
+      if (p.posH == null) p.posH = sliders.posH;
+      if (p.posV == null) p.posV = sliders.posV;
+    } else if (p.posH == null || p.posV == null) {
       const { w, h } = placementSize(p);
       const sliders = xyToSliders(p.x || 0, p.y || 0, layers._staticFrame.outerW, layers._staticFrame.outerH, w, h);
       p.posH = sliders.posH;
@@ -1622,11 +1868,11 @@ export function ensureStaticPlacementMeta(layers, style) {
       applyPositionToPlacement(p, layers._staticFrame);
     }
   }
+  finalizePlacementSnapshot(layers);
   return layers;
 }
 
 export function resetStaticPlacements(layers) {
-  if (!layers?._badgePlacements?.length && !layers?._staticFrame) return false;
   if (!layers?._staticFrame) return false;
   const style = layers._staticFrame.style;
   const anchorMap = DEFAULT_ANCHORS[style] || {};
@@ -1634,9 +1880,6 @@ export function resetStaticPlacements(layers) {
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef) {
     Object.assign(layers._staticFrame, { ...frameDef });
-    if (frameDef.gownLayerPct) {
-      layers._staticFrame.gownLayerPct = { ...frameDef.gownLayerPct };
-    }
   } else {
     const defs = STYLE_DEFAULTS[style] || {};
     Object.assign(layers._staticFrame, { ...defs });
@@ -1654,6 +1897,27 @@ export function resetStaticPlacements(layers) {
         p.kind = "freeShipping";
         p.num = undefined;
         p.label = "FREE SHIPPING";
+      } else if (pDef.kind === "gownArt") {
+        p.kind = "gownArt";
+        p.gownSlot = p.id;
+        p.num = undefined;
+        p.defaultW = undefined;
+        p.defaultH = undefined;
+        p.defaultSize = undefined;
+        p.size = undefined;
+        if (pDef.slotW != null && pDef.slotH != null) {
+          p.w = pDef.slotW;
+          p.h = pDef.slotH;
+        } else {
+          const dims = gownArtDimensions(p.id, layers._staticFrame);
+          if (dims) {
+            p.w = dims.w;
+            p.h = dims.h;
+          }
+        }
+        if (p.id === "gown-best") p.label = "Best PRICE";
+        else if (p.id === "gown-flash") p.label = "FLASH SALE";
+        else if (p.id === "gown-popular") p.label = "MOST POPULAR";
       } else {
         p.kind = pDef.kind || "badge";
         p.num = pDef.num;
@@ -1698,6 +1962,9 @@ if (typeof window !== "undefined") {
     GRADIENT_PRESETS,
     FRAME_COLOR_SWATCHES,
     getStaticEffectiveFlags,
+    isGownArtPlacement,
+    gownPlacementPosition,
+    gownArtDimensions,
     positionForAnchor,
     slidersToXY,
     xyToSliders,
@@ -1718,6 +1985,8 @@ if (typeof window !== "undefined") {
     setAllPlacementsHidden,
     updateFrameAppearance,
     applyGradientPreset,
+    clearGradientPreset,
+    staticStyleUsesGradientColors,
     parseCssColor,
     normalizeFrameColor,
     hexToRgb,
@@ -1733,6 +2002,8 @@ if (typeof window !== "undefined") {
     isStaticEdited,
     ensureFrameBases,
     applyBorderThickness,
+    ensureGownLayerPcts,
+    gownFrameLayersEdited,
     reanchorPlacements,
     staticFrameBorderEdited,
     shouldRebuildStaticFrame,

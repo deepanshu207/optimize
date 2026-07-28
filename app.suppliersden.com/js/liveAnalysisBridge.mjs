@@ -16,11 +16,11 @@ import {
 import {
   buildTallStaticVariants,
   TALL_STATIC_VARIANT_COUNT,
-} from "./liveTallStatic.mjs?v=74";
+} from "./liveTallStatic.mjs?v=67";
 import {
   buildGownStaticVariants,
   GOWN_STATIC_VARIANT_COUNT,
-} from "./liveGownStatic.mjs?v=74";
+} from "./liveGownStatic.mjs?v=93";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
