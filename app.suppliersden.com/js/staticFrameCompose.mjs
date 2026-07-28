@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=82";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=82";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=82";
-import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=82";
+import { compressFramedToKb } from "./lib/encoder.js?v=84";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=84";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=84";
+import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=84";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -569,6 +569,12 @@ export function ensureFrameBases(frame) {
   if (frame.baseInnerMatPad == null && frame.innerMatPad != null) {
     frame.baseInnerMatPad = frame.innerMatPad;
   }
+  if (frame.baseInnerStroke == null && frame.innerStroke != null) {
+    frame.baseInnerStroke = frame.innerStroke;
+  }
+  if (frame.style === "gown_static" && frame.baseInnerStroke == null) {
+    frame.baseInnerStroke = 3;
+  }
   if (
     frame.baseOuterMatPad == null &&
     frame.style === "gown_static" &&
@@ -623,9 +629,10 @@ function restoreBaseGeometry(frame) {
   if (frame.baseInnerFrameY != null) frame.innerFrameY = frame.baseInnerFrameY;
   if (frame.baseInnerFrameW != null) frame.innerFrameW = frame.baseInnerFrameW;
   if (frame.baseInnerFrameH != null) frame.innerFrameH = frame.baseInnerFrameH;
+  if (frame.baseInnerStroke != null) frame.innerStroke = frame.baseInnerStroke;
 }
 
-/** Gown: scale teal + outer mat; inner mat + product pixels stay fixed. */
+/** Gown: scale teal + outer mat; inner accent, inner pad + product stay fixed. */
 function applyGownBorderThickness(frame, pct) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -634,15 +641,17 @@ function applyGownBorderThickness(frame, pct) {
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
   const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
   const baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 0;
-  const baseInset = baseBorder + baseOuterMatPad + baseInnerMatPad;
+  const baseHairline = frame.baseInnerStroke ?? frame.innerStroke ?? 3;
+  const baseInset = baseBorder + baseOuterMatPad + baseHairline + baseInnerMatPad;
 
   frame.dw = baseDw;
   frame.dh = baseDh;
   frame.innerMatPad = baseInnerMatPad;
+  frame.innerStroke = baseHairline;
 
   const t = pct / BORDER_THICKNESS_DEFAULT;
   const minBorder = 2;
-  const minInset = minBorder + baseInnerMatPad;
+  const minInset = minBorder + baseHairline + baseInnerMatPad;
   const minProduct = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.22));
   const maxInset = Math.max(
     baseInset + 1,
@@ -659,7 +668,7 @@ function applyGownBorderThickness(frame, pct) {
   }
   targetInset = clamp(targetInset, minInset, maxInset);
 
-  const frameInset = Math.max(0, targetInset - baseInnerMatPad);
+  const frameInset = Math.max(0, targetInset - baseHairline - baseInnerMatPad);
   const borderRatio =
     baseBorder + baseOuterMatPad > 0 ? baseBorder / (baseBorder + baseOuterMatPad) : 0.16;
   if (t <= 1) {
@@ -670,7 +679,7 @@ function applyGownBorderThickness(frame, pct) {
     frame.border = Math.max(minBorder, Math.round(baseBorder + extra * 0.55));
     frame.outerMatPad = Math.max(0, frameInset - frame.border);
   }
-  frame.whitePad = frame.outerMatPad + frame.innerMatPad;
+  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
   frame.whiteX = frame.border;
   frame.whiteY = frame.border;
   frame.whiteW = outerW - frame.border * 2;
@@ -681,10 +690,11 @@ function applyGownBorderThickness(frame, pct) {
   frame.innerFrameW = frame.whiteW - frame.outerMatPad * 2;
   frame.innerFrameH = frame.whiteH - frame.outerMatPad * 2;
 
-  const innerW = frame.innerFrameW - frame.innerMatPad * 2;
-  const innerH = frame.innerFrameH - frame.innerMatPad * 2;
-  frame.px = frame.innerFrameX + frame.innerMatPad + Math.round((innerW - baseDw) / 2);
-  frame.py = frame.innerFrameY + frame.innerMatPad + Math.round((innerH - baseDh) / 2);
+  const slotInset = frame.innerMatPad + frame.innerStroke;
+  const innerW = frame.innerFrameW - slotInset * 2;
+  const innerH = frame.innerFrameH - slotInset * 2;
+  frame.px = frame.innerFrameX + slotInset + Math.round((innerW - baseDw) / 2);
+  frame.py = frame.innerFrameY + slotInset + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 

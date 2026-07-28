@@ -29,6 +29,7 @@ const gownFrame = {
   whitePad: base.whitePad,
   outerMatPad: base.outerMatPad,
   innerMatPad: base.innerMatPad,
+  innerStroke: base.innerStroke,
   innerFrameX: base.innerFrameX,
   innerFrameY: base.innerFrameY,
   innerFrameW: base.innerFrameW,
@@ -36,6 +37,7 @@ const gownFrame = {
   baseBorder: base.border,
   baseOuterMatPad: base.outerMatPad,
   baseInnerMatPad: base.innerMatPad,
+  baseInnerStroke: base.innerStroke,
   baseWhitePad: base.whitePad,
   basePx: base.px,
   basePy: base.py,
@@ -64,28 +66,33 @@ const gownFrame = {
 
 applyBorderThickness(gownFrame);
 assert(gownFrame.border === 19, "100 keeps base teal border");
-assert(gownFrame.dw === 611, "100 keeps product width");
-assert(gownFrame.dh === 932, "100 keeps product height");
-assert(gownFrame.innerMatPad === 12, "100 keeps inner mat band");
+assert(gownFrame.dw === 657, "100 keeps product width");
+assert(gownFrame.dh === 978, "100 keeps product height");
+assert(gownFrame.innerMatPad === 17, "100 keeps inner mat band");
+assert(gownFrame.innerStroke === 3, "100 keeps teal accent");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border < 19, "50 thins teal border");
-assert(gownFrame.dw === 611, "50 does not shrink product width");
-assert(gownFrame.dh === 932, "50 does not shrink product height");
-assert(gownFrame.innerMatPad === 12, "50 keeps inner mat fixed");
+assert(gownFrame.dw === 657, "50 does not shrink product width");
+assert(gownFrame.dh === 978, "50 does not shrink product height");
+assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed");
+assert(gownFrame.innerStroke === 3, "50 keeps teal accent fixed");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(gownFrame.border + gownFrame.outerMatPad + gownFrame.innerMatPad > 80, "500 increases total frame inset");
-assert(gownFrame.dw === 611, "500 does not shrink product width");
-assert(gownFrame.dh === 932, "500 does not shrink product height");
+assert(
+  gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 58,
+  "500 increases total frame inset",
+);
+assert(gownFrame.dw === 657, "500 does not shrink product width");
+assert(gownFrame.dh === 978, "500 does not shrink product height");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border === 19, "restore 100 returns exact base border");
-assert(gownFrame.dw === 611, "restore 100 returns exact product width");
+assert(gownFrame.dw === 657, "restore 100 returns exact product width");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
@@ -112,7 +119,8 @@ assert(
 );
 assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "gown has outer mat band");
 assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
-assert(gownCode.includes("drawGownStaticFrameBackground"), "gown draws inner frame stroke");
+assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent");
+assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
 assert(composeCode.includes("drawGownStaticFrameBackground"), "compose rebuilds gown triple mat");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
@@ -120,9 +128,9 @@ assert(contentCode.includes("borderThicknessLocked"), "border lock stored on fra
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes('dataset.staticEditorV = "6"'), "editor panel layout v6 with preview zoom");
-assert(contentCode.includes("variant-edit-scroll"), "editor has dedicated scroll region");
-assert(contentCode.includes("bindVariantPreviewZoom"), "editor preview pinch-zoom wired");
+assert(contentCode.includes('dataset.staticEditorV = "7"'), "editor panel layout v7");
+assert(contentCode.includes("pinch-zoom"), "preview uses native pinch-zoom");
+assert(!contentCode.includes("bindVariantPreviewZoom"), "no blurry transform zoom");
 assert(contentCode.includes("static-slider-locked"), "locked sliders use class not whole-row fade");
 assert(contentCode.includes("min-height:0"), "flex scroll child can shrink");
 assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");

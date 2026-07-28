@@ -2,27 +2,31 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=82";
-import { blobToDataUrl } from "./lib/encoder.js?v=82";
-import { estimateImageShipping } from "./lib/shipping.js?v=82";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=82";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=84";
+import { blobToDataUrl } from "./lib/encoder.js?v=84";
+import { estimateImageShipping } from "./lib/shipping.js?v=84";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=84";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Reference listing: teal border → outer white mat → inner frame line → photo. */
+/**
+ * Reference frame stack (outside → in):
+ * teal border → white mat (similar weight) → teal inner accent → white pad → photo.
+ */
 export const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
 export const GOWN_TEAL_RATIO = 0.025;
-/** Outer white band inside main mat (visible between teal and inner frame). */
-export const GOWN_OUTER_MAT_RATIO = 0.065;
-export const GOWN_OUTER_MAT_MIN = 44;
-/** Inner white band inside frame stroke, before lifestyle photo. */
-export const GOWN_INNER_MAT_RATIO = 0.016;
-export const GOWN_INNER_MAT_MIN = 12;
-export const GOWN_INNER_STROKE = 2;
-export const GOWN_INNER_STROKE_COLOR = "#d6d6d6";
+/** Primary white mat — similar thickness to outer teal ring. */
+export const GOWN_OUTER_MAT_RATIO = 0.025;
+export const GOWN_OUTER_MAT_MIN = 18;
+/** White padding between inner teal accent and lifestyle photo. */
+export const GOWN_INNER_MAT_RATIO = 0.022;
+export const GOWN_INNER_MAT_MIN = 14;
+/** Thin teal inner accent line (visible third layer on reference listing). */
+export const GOWN_INNER_STROKE = 3;
+export const GOWN_INNER_STROKE_COLOR = BORDER_TEAL;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -93,6 +97,7 @@ export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
   const innerMatPad =
     overrides.innerMatPad ??
     Math.max(GOWN_INNER_MAT_MIN, Math.round(ref * GOWN_INNER_MAT_RATIO));
+  const innerStroke = overrides.innerStroke ?? GOWN_INNER_STROKE;
 
   const whiteX = border;
   const whiteY = border;
@@ -104,16 +109,19 @@ export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
   const innerFrameW = whiteW - outerMatPad * 2;
   const innerFrameH = whiteH - outerMatPad * 2;
 
-  const slotX = innerFrameX + innerMatPad;
-  const slotY = innerFrameY + innerMatPad;
-  const maxProdW = innerFrameW - innerMatPad * 2;
-  const maxProdH = innerFrameH - innerMatPad * 2;
+  const slotInset = innerMatPad + innerStroke;
+  const slotX = innerFrameX + slotInset;
+  const slotY = innerFrameY + slotInset;
+  const maxProdW = innerFrameW - slotInset * 2;
+  const maxProdH = innerFrameH - slotInset * 2;
 
   return {
     border,
     outerMatPad,
     innerMatPad,
-    whitePad: outerMatPad + innerMatPad,
+    innerStroke,
+    innerStrokeColor: overrides.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR,
+    whitePad: outerMatPad + innerMatPad + innerStroke,
     whiteX,
     whiteY,
     whiteW,
@@ -131,7 +139,16 @@ export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
   };
 }
 
-/** Teal + double white mat + inner frame stroke (no photo). */
+function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
+  const t = Math.max(2, Math.round(thickness));
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, t);
+  ctx.fillRect(x, y + h - t, w, t);
+  ctx.fillRect(x, y, t, h);
+  ctx.fillRect(x + w - t, y, t, h);
+}
+
+/** Teal border + white mat + teal inner accent (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const wx = frame.whiteX ?? frame.border ?? 0;
   const wy = frame.whiteY ?? frame.border ?? 0;
@@ -150,14 +167,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   ctx.fillRect(wx, wy, ww, wh);
 
   if (ifw > 0 && ifh > 0) {
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = stroke;
-    ctx.strokeRect(
-      ifx + stroke / 2,
-      ify + stroke / 2,
-      ifw - stroke,
-      ifh - stroke,
-    );
+    drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
   }
 }
 
@@ -366,6 +376,7 @@ async function buildGownStaticLayers(img) {
         baseBorder: border,
         baseOuterMatPad: outerMatPad,
         baseInnerMatPad: innerMatPad,
+        baseInnerStroke: innerStroke ?? GOWN_INNER_STROKE,
         baseWhitePad: whitePad,
         basePx: px,
         basePy: py,
