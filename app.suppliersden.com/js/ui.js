@@ -395,14 +395,21 @@ const OptimizerUI = {
     const applyLabel = isWeb ? "Save" : "Apply";
     const isBest = !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
-    const estInr = r.meta?.estInr || r.estShipping || 0;
+    const frozenEst =
+      r._frozenPricing?.estShipping ??
+      r._frozenPricing?.metaEstInr ??
+      r.meta?.estInr ??
+      r.estShipping ??
+      0;
+    const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
+    const estInr = frozenEst;
     const priceLabel =
       testLabMode || analysisMode
-      ? r.shippingCost > 0
-        ? "₹" + r.shippingCost
+      ? frozenShip > 0
+        ? "₹" + frozenShip
         : "est ₹" + estInr
-      : r.shippingCost > 0
-      ? "₹" + r.shippingCost
+      : frozenShip > 0
+      ? "₹" + frozenShip
       : estInr > 0
       ? "est ₹" + estInr
       : manualMode
