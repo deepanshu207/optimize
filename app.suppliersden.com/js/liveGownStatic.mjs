@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=85";
-import { blobToDataUrl } from "./lib/encoder.js?v=85";
-import { estimateImageShipping } from "./lib/shipping.js?v=85";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=85";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=86";
+import { blobToDataUrl } from "./lib/encoder.js?v=86";
+import { estimateImageShipping } from "./lib/shipping.js?v=86";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=86";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -394,6 +394,13 @@ async function buildGownStaticLayers(img) {
         baseInnerFrameH: innerFrameH,
         borderThicknessPct: 100,
         borderThicknessLocked: true,
+        gownLayerPct: {
+          border: 100,
+          outerMat: 100,
+          innerAccent: 100,
+          innerMat: 100,
+        },
+        gownFrameLayersLocked: true,
         outerW,
         outerH,
         whiteX,

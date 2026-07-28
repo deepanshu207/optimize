@@ -29,8 +29,9 @@ const index = readFileSync(
 
 assert(!content.includes("bindVariantPreviewZoom"), "removed blurry transform zoom");
 assert(!content.includes("variant-edit-preview-stage"), "preview stage wrapper removed");
-assert(content.includes("pinch-zoom"), "preview allows native pinch-zoom");
-assert(content.includes('dataset.staticEditorV = "7"'), "editor panel version bumped");
+assert(content.includes("openVariantFullPreview"), "tap opens full-size preview overlay");
+assert(content.includes("max-height:180px"), "compact preview on editor open");
+assert(content.includes('dataset.staticEditorV = "8"'), "editor panel version bumped");
 assert(!index.includes("maximum-scale=1.0"), "viewport allows mobile pinch zoom");
 
 if (failed) {

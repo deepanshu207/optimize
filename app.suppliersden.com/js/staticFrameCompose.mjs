@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=85";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=85";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=85";
-import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=85";
+import { compressFramedToKb } from "./lib/encoder.js?v=86";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=86";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=86";
+import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=86";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -581,7 +581,11 @@ export function ensureFrameBases(frame) {
     frame.baseWhitePad != null
   ) {
     frame.baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 12;
-    frame.baseOuterMatPad = Math.max(0, frame.baseWhitePad - frame.baseInnerMatPad);
+    const hairline = frame.baseInnerStroke ?? frame.innerStroke ?? 3;
+    frame.baseOuterMatPad = Math.max(
+      0,
+      frame.baseWhitePad - frame.baseInnerMatPad - hairline,
+    );
   }
   if (frame.baseInnerFrameX == null && frame.innerFrameX != null) {
     frame.baseInnerFrameX = frame.innerFrameX;
@@ -632,8 +636,46 @@ function restoreBaseGeometry(frame) {
   if (frame.baseInnerStroke != null) frame.innerStroke = frame.baseInnerStroke;
 }
 
-/** Gown: scale teal + outer mat; inner accent, inner pad + product stay fixed. */
-function applyGownBorderThickness(frame, pct) {
+/** Per-layer gown frame controls (100 = generated default for each band). */
+export function ensureGownLayerPcts(frame) {
+  if (!frame) return frame;
+  if (!frame.gownLayerPct) {
+    frame.gownLayerPct = {
+      border: BORDER_THICKNESS_DEFAULT,
+      outerMat: BORDER_THICKNESS_DEFAULT,
+      innerAccent: BORDER_THICKNESS_DEFAULT,
+      innerMat: BORDER_THICKNESS_DEFAULT,
+    };
+  }
+  const p = frame.gownLayerPct;
+  if (p.border == null) p.border = BORDER_THICKNESS_DEFAULT;
+  if (p.outerMat == null) p.outerMat = BORDER_THICKNESS_DEFAULT;
+  if (p.innerAccent == null) p.innerAccent = BORDER_THICKNESS_DEFAULT;
+  if (p.innerMat == null) p.innerMat = BORDER_THICKNESS_DEFAULT;
+  return frame;
+}
+
+export function gownFrameLayersEdited(frame) {
+  if (!frame || frame.style !== "gown_static") return false;
+  ensureGownLayerPcts(frame);
+  const p = frame.gownLayerPct;
+  return (
+    p.border !== BORDER_THICKNESS_DEFAULT ||
+    p.outerMat !== BORDER_THICKNESS_DEFAULT ||
+    p.innerAccent !== BORDER_THICKNESS_DEFAULT ||
+    p.innerMat !== BORDER_THICKNESS_DEFAULT
+  );
+}
+
+function scaleGownLayerPx(base, pct, minPx = 0) {
+  const t = clamp(pct, 0, BORDER_THICKNESS_MAX) / BORDER_THICKNESS_DEFAULT;
+  if (t <= 0) return 0;
+  const scaled = Math.round(base * t);
+  return minPx > 0 ? Math.max(minPx, scaled) : scaled;
+}
+
+/** Gown: scale each frame band independently; product slot stays fixed. */
+function applyGownFrameLayers(frame) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
   const baseDw = frame.baseDw ?? frame.dw ?? 0;
@@ -642,43 +684,21 @@ function applyGownBorderThickness(frame, pct) {
   const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
   const baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 0;
   const baseHairline = frame.baseInnerStroke ?? frame.innerStroke ?? 3;
-  const baseInset = baseBorder + baseOuterMatPad + baseHairline + baseInnerMatPad;
+
+  ensureGownLayerPcts(frame);
+  const p = frame.gownLayerPct;
 
   frame.dw = baseDw;
   frame.dh = baseDh;
-  frame.innerMatPad = baseInnerMatPad;
-  frame.innerStroke = baseHairline;
-
-  const t = pct / BORDER_THICKNESS_DEFAULT;
-  const minBorder = 2;
-  const minInset = minBorder + baseHairline + baseInnerMatPad;
-  const minProduct = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.22));
-  const maxInset = Math.max(
-    baseInset + 1,
-    Math.floor((Math.min(outerW, outerH) - minProduct) / 2),
+  frame.border = scaleGownLayerPx(baseBorder, p.border, 2);
+  frame.outerMatPad = scaleGownLayerPx(baseOuterMatPad, p.outerMat, 0);
+  frame.innerStroke = scaleGownLayerPx(
+    baseHairline,
+    p.innerAccent,
+    p.innerAccent > 0 ? 1 : 0,
   );
+  frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
 
-  let targetInset;
-  if (t <= 1) {
-    targetInset = Math.round(minInset + (baseInset - minInset) * t);
-  } else {
-    const hi = BORDER_THICKNESS_MAX / BORDER_THICKNESS_DEFAULT;
-    const u = (t - 1) / (hi - 1);
-    targetInset = Math.round(baseInset + (maxInset - baseInset) * u);
-  }
-  targetInset = clamp(targetInset, minInset, maxInset);
-
-  const frameInset = Math.max(0, targetInset - baseHairline - baseInnerMatPad);
-  const borderRatio =
-    baseBorder + baseOuterMatPad > 0 ? baseBorder / (baseBorder + baseOuterMatPad) : 0.16;
-  if (t <= 1) {
-    frame.border = Math.max(minBorder, Math.round(frameInset * borderRatio));
-    frame.outerMatPad = Math.max(0, frameInset - frame.border);
-  } else {
-    const extra = Math.max(0, frameInset - (baseBorder + baseOuterMatPad));
-    frame.border = Math.max(minBorder, Math.round(baseBorder + extra * 0.55));
-    frame.outerMatPad = Math.max(0, frameInset - frame.border);
-  }
   frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
   frame.whiteX = frame.border;
   frame.whiteY = frame.border;
@@ -698,8 +718,24 @@ function applyGownBorderThickness(frame, pct) {
   return frame;
 }
 
+function syncGownLayerPctFromLegacySlider(frame, pct) {
+  ensureGownLayerPcts(frame);
+  const p = frame.gownLayerPct;
+  if (p.innerAccent === BORDER_THICKNESS_DEFAULT && p.innerMat === BORDER_THICKNESS_DEFAULT) {
+    p.border = pct;
+    p.outerMat = pct;
+  }
+}
+
+/** @deprecated gown uses applyGownFrameLayers — kept for tests calling borderThicknessPct. */
+function applyGownBorderThickness(frame, pct) {
+  syncGownLayerPctFromLegacySlider(frame, pct);
+  return applyGownFrameLayers(frame);
+}
+
 export function staticFrameBorderEdited(frame) {
   if (!frame) return false;
+  if (frame.style === "gown_static") return gownFrameLayersEdited(frame);
   return (frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT) !== BORDER_THICKNESS_DEFAULT;
 }
 
@@ -723,13 +759,14 @@ export function applyBorderThickness(frame) {
   ensureFrameBases(frame);
   const pct = clamp(frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT, 0, BORDER_THICKNESS_MAX);
 
-  if (pct === BORDER_THICKNESS_DEFAULT) {
+  if (pct === BORDER_THICKNESS_DEFAULT && !gownFrameLayersEdited(frame)) {
     restoreBaseGeometry(frame);
     return frame;
   }
 
   if (frame.style === "gown_static") {
-    return applyGownBorderThickness(frame, pct);
+    syncGownLayerPctFromLegacySlider(frame, pct);
+    return applyGownFrameLayers(frame);
   }
 
   const outerW = frame.outerW || 0;
@@ -1377,13 +1414,21 @@ export function updateFrameAppearance(layers, patch) {
   }
   if (patch.borderColor != null) {
     const hex = normalizeFrameColor(patch.borderColor);
-    if (hex) frame.borderColor = hex;
+    if (hex) {
+      frame.borderColor = hex;
+      if (frame.style === "gown_static") frame.innerStrokeColor = hex;
+    }
   }
   if (patch.matColor != null) {
     const hex = normalizeFrameColor(patch.matColor);
     if (hex) frame.matColor = hex;
   }
   if (patch.gradientPreset !== undefined) frame.gradientPreset = patch.gradientPreset || null;
+  if (patch.gownLayerPct != null && frame.style === "gown_static") {
+    ensureGownLayerPcts(frame);
+    Object.assign(frame.gownLayerPct, patch.gownLayerPct);
+    applyGownFrameLayers(frame);
+  }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame);
@@ -1433,6 +1478,15 @@ function snapshotDefaults(layers, style) {
         gradientPreset: frame.gradientPreset,
         borderThicknessPct: frame.borderThicknessPct ?? 100,
         borderThicknessLocked: frame.borderThicknessLocked !== false,
+        gownLayerPct: frame.gownLayerPct
+          ? { ...frame.gownLayerPct }
+          : {
+              border: 100,
+              outerMat: 100,
+              innerAccent: 100,
+              innerMat: 100,
+            },
+        gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
       },
       placements: {},
     };
@@ -1727,6 +1781,8 @@ if (typeof window !== "undefined") {
     isStaticEdited,
     ensureFrameBases,
     applyBorderThickness,
+    ensureGownLayerPcts,
+    gownFrameLayersEdited,
     reanchorPlacements,
     staticFrameBorderEdited,
     shouldRebuildStaticFrame,
