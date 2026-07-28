@@ -3,6 +3,10 @@
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
 import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
+import {
+  drawProductPhotoCoverFit,
+  frameHasProductSlot,
+} from "./lib/productPhotoFit.mjs?v=1";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -10,7 +14,7 @@ import {
   drawGownProductInSlot,
   drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=97";
+} from "./liveGownStatic.mjs?v=98";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -1083,8 +1087,8 @@ async function rebuildFrameCanvas(layers) {
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  if (frame.style === "gown_static") {
-    drawGownPhotoCoverFit(ctx, productImg, frame);
+  if (frameHasProductSlot(frame)) {
+    drawProductPhotoCoverFit(ctx, productImg, frame);
   } else {
     ctx.drawImage(
       productImg,
@@ -1262,6 +1266,9 @@ export function frameAppearanceChanged(frame, defaults) {
     "photoZoomPct",
     "photoPanH",
     "photoPanV",
+    "photoZoomLocked",
+    "photoPanHLocked",
+    "photoPanVLocked",
   ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
@@ -1632,15 +1639,18 @@ export function updateFrameAppearance(layers, patch) {
     Object.assign(frame.gownLayerPct, patch.gownLayerPct);
     applyGownFrameLayers(frame);
   }
-  if (patch.photoZoomPct != null && frame.style === "gown_static") {
+  if (patch.photoZoomPct != null && frameHasProductSlot(frame)) {
     frame.photoZoomPct = clamp(patch.photoZoomPct, 50, 200);
   }
-  if (patch.photoPanH != null && frame.style === "gown_static") {
+  if (patch.photoPanH != null && frameHasProductSlot(frame)) {
     frame.photoPanH = clamp(patch.photoPanH, 0, 100);
   }
-  if (patch.photoPanV != null && frame.style === "gown_static") {
+  if (patch.photoPanV != null && frameHasProductSlot(frame)) {
     frame.photoPanV = clamp(patch.photoPanV, 0, 100);
   }
+  if (patch.photoZoomLocked != null) frame.photoZoomLocked = !!patch.photoZoomLocked;
+  if (patch.photoPanHLocked != null) frame.photoPanHLocked = !!patch.photoPanHLocked;
+  if (patch.photoPanVLocked != null) frame.photoPanVLocked = !!patch.photoPanVLocked;
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame, { syncLegacyGownSlider: frame.style === "gown_static" });
@@ -1731,6 +1741,8 @@ function snapshotDefaults(layers, style) {
         photoZoomLocked: frame.photoZoomLocked !== false,
         photoPanH: frame.photoPanH ?? 50,
         photoPanV: frame.photoPanV ?? 50,
+        photoPanHLocked: frame.photoPanHLocked !== false,
+        photoPanVLocked: frame.photoPanVLocked !== false,
         gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
       },
       urls: {
@@ -1842,6 +1854,16 @@ export function bootstrapLiveFrame(row) {
       outerH,
     };
   }
+
+  const photoDefaults = {
+    photoZoomPct: 100,
+    photoZoomLocked: true,
+    photoPanH: 50,
+    photoPanV: 50,
+    photoPanHLocked: true,
+    photoPanVLocked: true,
+  };
+  Object.assign(layers._staticFrame, photoDefaults);
 
   layers._badgePlacements.forEach((p, i) => {
     if (!p.id) p.id = `live-badge-${i}`;
@@ -2020,6 +2042,8 @@ export function isStaticEdited(flags, badgesRepositioned, staticAppearanceEdited
 
 if (typeof window !== "undefined") {
   window.StaticFrameCompose = {
+    frameHasProductSlot,
+    drawProductPhotoCoverFit,
     isStaticPromoVariant,
     isEditableVariant,
     getBadgeSlots,

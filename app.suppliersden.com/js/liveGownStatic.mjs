@@ -5,6 +5,11 @@
 import { imageToCanvas } from "./lib/canvas-utils.js?v=95";
 import { blobToDataUrl, compressGownToKb } from "./lib/encoder.js?v=96";
 import { estimateImageShipping } from "./lib/shipping.js?v=95";
+import {
+  clampPhotoZoom,
+  drawProductPhotoCoverFit,
+  productPhotoRect,
+} from "./lib/productPhotoFit.mjs?v=1";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 
 export const GOWN_STATIC_OUTER_W = 773;
@@ -32,7 +37,7 @@ export const GOWN_PHOTO_ZOOM_MIN = 50;
 export const GOWN_PHOTO_ZOOM_MAX = 200;
 
 function clampGownZoom(pct) {
-  return Math.max(GOWN_PHOTO_ZOOM_MIN, Math.min(GOWN_PHOTO_ZOOM_MAX, pct ?? GOWN_PHOTO_ZOOM_DEFAULT));
+  return clampPhotoZoom(pct);
 }
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
@@ -171,40 +176,12 @@ export function drawGownStaticFrameBackground(ctx, frame) {
 
 /** Fixed lifestyle photo box — size stays at baseDw×baseDh; frame layers only move it. */
 export function gownFixedPhotoRect(frame) {
-  const dw = frame.baseDw ?? frame.dw ?? 0;
-  const dh = frame.baseDh ?? frame.dh ?? 0;
-  return {
-    x: frame.px ?? frame.basePx ?? 0,
-    y: frame.py ?? frame.basePy ?? 0,
-    w: dw,
-    h: dh,
-  };
+  return productPhotoRect(frame);
 }
 
 /** Cover-fit into fixed photo rect; zoom scales inside clip without resizing the box. */
 export function drawGownPhotoInFixedRect(ctx, productImg, frame) {
-  const { x, y, w, h } = gownFixedPhotoRect(frame);
-  if (w <= 0 || h <= 0 || !productImg?.width) return;
-
-  const zoom = clampGownZoom(frame.photoZoomPct) / 100;
-  const fitScale = Math.max(w / productImg.width, h / productImg.height) * zoom;
-  const sw = Math.round(productImg.width * fitScale);
-  const sh = Math.round(productImg.height * fitScale);
-  const maxPanX = Math.max(0, sw - w);
-  const maxPanY = Math.max(0, sh - h);
-  const panH = Math.max(0, Math.min(100, frame.photoPanH ?? 50));
-  const panV = Math.max(0, Math.min(100, frame.photoPanV ?? 50));
-  const imgX = x - Math.round(maxPanX * (panH / 100));
-  const imgY = y - Math.round(maxPanY * (panV / 100));
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, imgX, imgY, sw, sh);
-  ctx.restore();
+  drawProductPhotoCoverFit(ctx, productImg, frame);
 }
 
 /** Cover-fit lifestyle photo clipped to the fixed gown photo pad. */
@@ -439,6 +416,8 @@ async function buildGownStaticLayers(img) {
         photoZoomLocked: true,
         photoPanH: 50,
         photoPanV: 50,
+        photoPanHLocked: true,
+        photoPanVLocked: true,
         gownFrameLayersLocked: true,
         outerW,
         outerH,

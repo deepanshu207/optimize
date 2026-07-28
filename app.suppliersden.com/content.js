@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=98";
+      return "/js/staticFrameCompose.mjs?v=99";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=98");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=99");
     }
-    return "/js/staticFrameCompose.mjs?v=98";
+    return "/js/staticFrameCompose.mjs?v=99";
   }
 
   async preloadStaticComposeModule() {
@@ -3384,8 +3384,26 @@ Please share payment details and license key.`;
     this.updateVariantEditorResetButton(row);
     if (this._editingVariantId === variantId) {
       this.syncPlacementSlidersFromRow(row);
-      this.syncGownPhotoControlsFromRow(row);
+      this.syncPhotoControlsFromRow(row);
     }
+  }
+
+  frameSupportsPhotoControls(frame) {
+    if (!frame) return false;
+    if (window.StaticFrameCompose?.frameHasProductSlot) {
+      return window.StaticFrameCompose.frameHasProductSlot(frame);
+    }
+    return (frame.dw > 0 || frame.baseDw > 0) && (frame.dh > 0 || frame.baseDh > 0);
+  }
+
+  ensurePhotoControlDefaults(frame) {
+    if (!frame) return;
+    if (frame.photoZoomPct == null) frame.photoZoomPct = 100;
+    if (frame.photoPanH == null) frame.photoPanH = 50;
+    if (frame.photoPanV == null) frame.photoPanV = 50;
+    if (frame.photoZoomLocked == null) frame.photoZoomLocked = true;
+    if (frame.photoPanHLocked == null) frame.photoPanHLocked = true;
+    if (frame.photoPanVLocked == null) frame.photoPanVLocked = true;
   }
 
   syncPlacementSlidersFromRow(row) {
@@ -3411,21 +3429,22 @@ Please share payment details and license key.`;
     }
   }
 
-  syncGownPhotoControlsFromRow(row) {
+  syncPhotoControlsFromRow(row) {
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
     const container = document.querySelector("#variant-edit-static-badges");
     if (!container) return;
 
+    this.ensurePhotoControlDefaults(frame);
     const zoom = frame.photoZoomPct ?? 100;
     const panH = frame.photoPanH ?? 50;
     const panV = frame.photoPanV ?? 50;
-    const zoomSlider = container.querySelector("#static-gown-photo-zoom");
-    const zoomVal = container.querySelector("#static-gown-photo-zoom-val");
-    const panHSlider = container.querySelector("#static-gown-photo-pan-h");
-    const panVSlider = container.querySelector("#static-gown-photo-pan-v");
-    const panHVal = container.querySelector("#static-gown-photo-pan-h-val");
-    const panVVal = container.querySelector("#static-gown-photo-pan-v-val");
+    const zoomSlider = container.querySelector("#static-photo-zoom");
+    const zoomVal = container.querySelector("#static-photo-zoom-val");
+    const panHSlider = container.querySelector("#static-photo-pan-h");
+    const panVSlider = container.querySelector("#static-photo-pan-v");
+    const panHVal = container.querySelector("#static-photo-pan-h-val");
+    const panVVal = container.querySelector("#static-photo-pan-v-val");
 
     if (zoomSlider && document.activeElement !== zoomSlider) zoomSlider.value = String(zoom);
     if (zoomVal && document.activeElement !== zoomSlider) zoomVal.textContent = String(zoom);
@@ -3433,7 +3452,7 @@ Please share payment details and license key.`;
     if (panVSlider && document.activeElement !== panVSlider) panVSlider.value = String(panV);
     if (panHVal && document.activeElement !== panHSlider) panHVal.textContent = String(panH);
     if (panVVal && document.activeElement !== panVSlider) panVVal.textContent = String(panV);
-    this.updateGownPhotoZoomLockUI(container, frame);
+    this.updatePhotoControlsLockUI(container, frame);
   }
 
   async applyRowStaticPreview(variantId, row = null) {
@@ -3650,7 +3669,7 @@ Please share payment details and license key.`;
     if (lockBtn) {
       lockBtn.textContent = lockSize ? "🔒" : "🔓";
       lockBtn.title = lockSize
-        ? "Unlock size to adjust (locks again after change)"
+        ? "Unlock size to adjust"
         : "Lock badge size";
       lockBtn.setAttribute("aria-pressed", lockSize ? "true" : "false");
     }
@@ -3907,56 +3926,83 @@ Please share payment details and license key.`;
     await this.applyStaticGownLayerPct(variantId, layerKey, pct);
   }
 
-  updateGownPhotoZoomLockUI(container, frame) {
+  updatePhotoControlsLockUI(container, frame) {
     if (!container || !frame) return;
-    const locked = frame.photoZoomLocked !== false;
-    const btn = container.querySelector("#static-gown-photo-zoom-lock");
-    const slider = container.querySelector("#static-gown-photo-zoom");
-    const panHSlider = container.querySelector("#static-gown-photo-pan-h");
-    const panVSlider = container.querySelector("#static-gown-photo-pan-v");
-    const wrap = container.querySelector(".static-gown-zoom-wrap");
-    if (btn) {
-      btn.textContent = locked ? "🔒" : "🔓";
-      btn.title = locked
-        ? "Unlock photo zoom & pan to adjust"
-        : "Lock photo zoom & pan";
-      btn.setAttribute("aria-pressed", locked ? "true" : "false");
+    const zoomLocked = frame.photoZoomLocked !== false;
+    const panHLocked = frame.photoPanHLocked !== false;
+    const panVLocked = frame.photoPanVLocked !== false;
+    const zoomBtn = container.querySelector("#static-photo-zoom-lock");
+    const zoomSlider = container.querySelector("#static-photo-zoom");
+    const panHBtn = container.querySelector("#static-photo-pan-h-lock");
+    const panVBtn = container.querySelector("#static-photo-pan-v-lock");
+    const panHSlider = container.querySelector("#static-photo-pan-h");
+    const panVSlider = container.querySelector("#static-photo-pan-v");
+    const zoomWrap = container.querySelector(".static-photo-zoom-wrap");
+    const panHWrap = container.querySelector(".static-photo-pan-h-wrap");
+    const panVWrap = container.querySelector(".static-photo-pan-v-wrap");
+
+    if (zoomBtn) {
+      zoomBtn.textContent = zoomLocked ? "🔒" : "🔓";
+      zoomBtn.title = zoomLocked ? "Unlock photo zoom to adjust" : "Lock photo zoom";
+      zoomBtn.setAttribute("aria-pressed", zoomLocked ? "true" : "false");
     }
-    if (slider) slider.disabled = locked;
-    if (panHSlider) panHSlider.disabled = locked;
-    if (panVSlider) panVSlider.disabled = locked;
-    if (wrap) wrap.classList.toggle("static-slider-locked", locked);
+    if (panHBtn) {
+      panHBtn.textContent = panHLocked ? "🔒" : "🔓";
+      panHBtn.title = panHLocked ? "Unlock horizontal pan to adjust" : "Lock horizontal pan";
+      panHBtn.setAttribute("aria-pressed", panHLocked ? "true" : "false");
+    }
+    if (panVBtn) {
+      panVBtn.textContent = panVLocked ? "🔒" : "🔓";
+      panVBtn.title = panVLocked ? "Unlock vertical pan to adjust" : "Lock vertical pan";
+      panVBtn.setAttribute("aria-pressed", panVLocked ? "true" : "false");
+    }
+    if (zoomSlider) zoomSlider.disabled = zoomLocked;
+    if (panHSlider) panHSlider.disabled = panHLocked;
+    if (panVSlider) panVSlider.disabled = panVLocked;
+    if (zoomWrap) zoomWrap.classList.toggle("static-slider-locked", zoomLocked);
+    if (panHWrap) panHWrap.classList.toggle("static-slider-locked", panHLocked);
+    if (panVWrap) panVWrap.classList.toggle("static-slider-locked", panVLocked);
   }
 
-  toggleStaticGownPhotoZoomLock(variantId) {
+  toggleStaticPhotoZoomLock(variantId) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
     frame.photoZoomLocked = frame.photoZoomLocked === false;
     const container = document.querySelector("#variant-edit-static-badges");
-    if (container) this.updateGownPhotoZoomLockUI(container, frame);
+    if (container) this.updatePhotoControlsLockUI(container, frame);
   }
 
-  queueStaticGownPhotoZoom(variantId, zoomPct) {
+  toggleStaticPhotoPanLock(variantId, axis) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    if (axis === "h") frame.photoPanHLocked = frame.photoPanHLocked === false;
+    else if (axis === "v") frame.photoPanVLocked = frame.photoPanVLocked === false;
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updatePhotoControlsLockUI(container, frame);
+  }
+
+  queueStaticPhotoZoom(variantId, zoomPct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!this.frameSupportsPhotoControls(frame)) return;
     if (frame.photoZoomLocked !== false) return;
 
     const container = document.querySelector("#variant-edit-static-badges");
-    const val = container?.querySelector("#static-gown-photo-zoom-val");
+    const val = container?.querySelector("#static-photo-zoom-val");
     if (val) val.textContent = String(zoomPct);
 
     clearTimeout(this._gownPhotoZoomTimer);
     this._gownPhotoZoomTimer = setTimeout(() => {
-      void this.applyStaticGownPhotoZoom(variantId, zoomPct);
+      void this.applyStaticPhotoZoom(variantId, zoomPct);
     }, 50);
   }
 
-  async applyStaticGownPhotoZoom(variantId, zoomPct) {
+  async applyStaticPhotoZoom(variantId, zoomPct) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
     if (frame.photoZoomLocked !== false) return;
 
     const loaded = await this.preloadStaticComposeModule();
@@ -3968,34 +4014,36 @@ Please share payment details and license key.`;
     try {
       await this.applyRowStaticPreview(variantId, row);
     } catch (e) {
-      console.warn("Gown photo zoom preview failed:", e);
+      console.warn("Photo zoom preview failed:", e);
       await this.refreshStaticPreview(variantId);
     }
   }
 
-  queueStaticGownPhotoPan(variantId, axis, value) {
+  queueStaticPhotoPan(variantId, axis, value) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
-    if (frame.photoZoomLocked !== false) return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    if (axis === "h" && frame.photoPanHLocked !== false) return;
+    if (axis === "v" && frame.photoPanVLocked !== false) return;
 
     const container = document.querySelector("#variant-edit-static-badges");
     const val = container?.querySelector(
-      axis === "h" ? "#static-gown-photo-pan-h-val" : "#static-gown-photo-pan-v-val",
+      axis === "h" ? "#static-photo-pan-h-val" : "#static-photo-pan-v-val",
     );
     if (val) val.textContent = String(value);
 
     clearTimeout(this._gownPhotoPanTimer);
     this._gownPhotoPanTimer = setTimeout(() => {
-      void this.applyStaticGownPhotoPan(variantId, axis, value);
+      void this.applyStaticPhotoPan(variantId, axis, value);
     }, 50);
   }
 
-  async applyStaticGownPhotoPan(variantId, axis, value) {
+  async applyStaticPhotoPan(variantId, axis, value) {
     const row = this.findResultRow(variantId);
     const frame = row?.layers?._staticFrame;
-    if (!frame || frame.style !== "gown_static") return;
-    if (frame.photoZoomLocked !== false) return;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    if (axis === "h" && frame.photoPanHLocked !== false) return;
+    if (axis === "v" && frame.photoPanVLocked !== false) return;
 
     const loaded = await this.preloadStaticComposeModule();
     if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
@@ -4007,19 +4055,19 @@ Please share payment details and license key.`;
     try {
       await this.applyRowStaticPreview(variantId, row);
     } catch (e) {
-      console.warn("Gown photo pan preview failed:", e);
+      console.warn("Photo pan preview failed:", e);
       await this.refreshStaticPreview(variantId);
     }
   }
 
-  async setStaticGownPhotoPan(variantId, axis, value) {
+  async setStaticPhotoPan(variantId, axis, value) {
     clearTimeout(this._gownPhotoPanTimer);
-    await this.applyStaticGownPhotoPan(variantId, axis, value);
+    await this.applyStaticPhotoPan(variantId, axis, value);
   }
 
-  async setStaticGownPhotoZoom(variantId, zoomPct) {
+  async setStaticPhotoZoom(variantId, zoomPct) {
     clearTimeout(this._gownPhotoZoomTimer);
-    await this.applyStaticGownPhotoZoom(variantId, zoomPct);
+    await this.applyStaticPhotoZoom(variantId, zoomPct);
   }
 
   async setStaticGradientPreset(variantId, presetId) {
@@ -4577,45 +4625,7 @@ Please share payment details and license key.`;
         </div>`;
       }
       html += `</div>`;
-      if (frame.photoZoomPct == null) frame.photoZoomPct = 100;
-      if (frame.photoPanH == null) frame.photoPanH = 50;
-      if (frame.photoPanV == null) frame.photoPanV = 50;
-      if (frame.photoZoomLocked == null) frame.photoZoomLocked = true;
-      const zoomLocked = frame.photoZoomLocked !== false;
-      const photoZoom = frame.photoZoomPct ?? 100;
-      const photoPanH = frame.photoPanH ?? 50;
-      const photoPanV = frame.photoPanV ?? 50;
-      html += `<div class="static-gown-zoom-wrap${
-        zoomLocked ? " static-slider-locked" : ""
-      }" style="margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-          <button type="button" id="static-gown-photo-zoom-lock" aria-pressed="${
-            zoomLocked ? "true" : "false"
-          }" title="${
-        zoomLocked ? "Unlock photo zoom & pan to adjust" : "Lock photo zoom & pan"
-      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
-        zoomLocked ? "🔒" : "🔓"
-      }</button>
-          <span style="font-size:10px;">Photo zoom <span id="static-gown-photo-zoom-val">${photoZoom}</span>% (100 = cover-fit)</span>
-        </div>
-        <input type="range" id="static-gown-photo-zoom" min="50" max="200" value="${photoZoom}" style="width:100%;"${
-        zoomLocked ? " disabled" : ""
-      }>
-        <p style="font-size:9px;color:#6b7280;margin:6px 0 4px;line-height:1.35;">When zoomed in, pan to keep the face visible — 50 is centered.</p>
-        <div style="margin-bottom:4px;">
-          <span style="font-size:10px;">Pan horizontal <span id="static-gown-photo-pan-h-val">${photoPanH}</span></span>
-          <input type="range" id="static-gown-photo-pan-h" min="0" max="100" value="${photoPanH}" style="width:100%;"${
-        zoomLocked ? " disabled" : ""
-      }>
-        </div>
-        <div>
-          <span style="font-size:10px;">Pan vertical <span id="static-gown-photo-pan-v-val">${photoPanV}</span></span>
-          <input type="range" id="static-gown-photo-pan-v" min="0" max="100" value="${photoPanV}" style="width:100%;"${
-        zoomLocked ? " disabled" : ""
-      }>
-        </div>
-      </div>`;
-    } else {
+    } else if (style !== "gown_static") {
       if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
       const borderLocked = frame.borderThicknessLocked !== false;
       html += `<div class="static-border-wrap${
@@ -4634,6 +4644,71 @@ Please share payment details and license key.`;
         <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;"${
         borderLocked ? " disabled" : ""
       }>
+      </div>`;
+    }
+
+    if (this.frameSupportsPhotoControls(frame)) {
+      this.ensurePhotoControlDefaults(frame);
+      const zoomLocked = frame.photoZoomLocked !== false;
+      const panHLocked = frame.photoPanHLocked !== false;
+      const panVLocked = frame.photoPanVLocked !== false;
+      const photoZoom = frame.photoZoomPct ?? 100;
+      const photoPanH = frame.photoPanH ?? 50;
+      const photoPanV = frame.photoPanV ?? 50;
+      html += `<div class="static-photo-controls-wrap" style="margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:600;margin-bottom:4px;">Photo zoom & pan</div>
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each slider to adjust. When zoomed in, pan to keep the face visible — 50 is centered.</p>
+        <div class="static-photo-zoom-wrap${
+          zoomLocked ? " static-slider-locked" : ""
+        }" style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <button type="button" id="static-photo-zoom-lock" aria-pressed="${
+              zoomLocked ? "true" : "false"
+            }" title="${
+        zoomLocked ? "Unlock photo zoom to adjust" : "Lock photo zoom"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        zoomLocked ? "🔒" : "🔓"
+      }</button>
+            <span style="font-size:10px;">Zoom <span id="static-photo-zoom-val">${photoZoom}</span>% (100 = cover-fit)</span>
+          </div>
+          <input type="range" id="static-photo-zoom" min="50" max="200" value="${photoZoom}" style="width:100%;"${
+        zoomLocked ? " disabled" : ""
+      }>
+        </div>
+        <div class="static-photo-pan-h-wrap${
+          panHLocked ? " static-slider-locked" : ""
+        }" style="margin-bottom:4px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <button type="button" id="static-photo-pan-h-lock" aria-pressed="${
+              panHLocked ? "true" : "false"
+            }" title="${
+        panHLocked ? "Unlock horizontal pan to adjust" : "Lock horizontal pan"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        panHLocked ? "🔒" : "🔓"
+      }</button>
+            <span style="font-size:10px;">Pan horizontal <span id="static-photo-pan-h-val">${photoPanH}</span></span>
+          </div>
+          <input type="range" id="static-photo-pan-h" min="0" max="100" value="${photoPanH}" style="width:100%;"${
+        panHLocked ? " disabled" : ""
+      }>
+        </div>
+        <div class="static-photo-pan-v-wrap${
+          panVLocked ? " static-slider-locked" : ""
+        }">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <button type="button" id="static-photo-pan-v-lock" aria-pressed="${
+              panVLocked ? "true" : "false"
+            }" title="${
+        panVLocked ? "Unlock vertical pan to adjust" : "Lock vertical pan"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        panVLocked ? "🔒" : "🔓"
+      }</button>
+            <span style="font-size:10px;">Pan vertical <span id="static-photo-pan-v-val">${photoPanV}</span></span>
+          </div>
+          <input type="range" id="static-photo-pan-v" min="0" max="100" value="${photoPanV}" style="width:100%;"${
+        panVLocked ? " disabled" : ""
+      }>
+        </div>
       </div>`;
     }
     }
@@ -4808,54 +4883,68 @@ Please share payment details and license key.`;
       slider.addEventListener("touchend", commitLayer, { passive: true });
     });
 
-    const photoZoomLock = container.querySelector("#static-gown-photo-zoom-lock");
+    const photoZoomLock = container.querySelector("#static-photo-zoom-lock");
     if (photoZoomLock) {
       photoZoomLock.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.toggleStaticGownPhotoZoomLock(vid);
+        this.toggleStaticPhotoZoomLock(vid);
       };
     }
-    const photoZoomSlider = container.querySelector("#static-gown-photo-zoom");
+    const photoZoomSlider = container.querySelector("#static-photo-zoom");
     if (photoZoomSlider) {
       const commitZoom = () => {
         if (photoZoomSlider.disabled) return;
         const v = parseInt(photoZoomSlider.value, 10);
-        const val = container.querySelector("#static-gown-photo-zoom-val");
+        const val = container.querySelector("#static-photo-zoom-val");
         if (val) val.textContent = String(v);
-        void this.setStaticGownPhotoZoom(vid, v);
+        void this.setStaticPhotoZoom(vid, v);
       };
       photoZoomSlider.oninput = () => {
         if (photoZoomSlider.disabled) return;
         const v = parseInt(photoZoomSlider.value, 10);
-        const val = container.querySelector("#static-gown-photo-zoom-val");
+        const val = container.querySelector("#static-photo-zoom-val");
         if (val) val.textContent = String(v);
-        this.queueStaticGownPhotoZoom(vid, v);
+        this.queueStaticPhotoZoom(vid, v);
       };
       photoZoomSlider.onchange = commitZoom;
       photoZoomSlider.addEventListener("pointerup", commitZoom);
       photoZoomSlider.addEventListener("touchend", commitZoom, { passive: true });
     }
 
+    const bindPhotoPanLock = (axis) => {
+      const btn = container.querySelector(
+        axis === "h" ? "#static-photo-pan-h-lock" : "#static-photo-pan-v-lock",
+      );
+      if (!btn) return;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticPhotoPanLock(vid, axis);
+      };
+    };
+    bindPhotoPanLock("h");
+    bindPhotoPanLock("v");
+
     const bindPhotoPan = (axis) => {
       const slider = container.querySelector(
-        axis === "h" ? "#static-gown-photo-pan-h" : "#static-gown-photo-pan-v",
+        axis === "h" ? "#static-photo-pan-h" : "#static-photo-pan-v",
       );
       if (!slider) return;
-      const valId = axis === "h" ? "#static-gown-photo-pan-h-val" : "#static-gown-photo-pan-v-val";
+      const valId = axis === "h" ? "#static-photo-pan-h-val" : "#static-photo-pan-v-val";
       const commitPan = () => {
         if (slider.disabled) return;
         const v = parseInt(slider.value, 10);
         const val = container.querySelector(valId);
         if (val) val.textContent = String(v);
-        void this.setStaticGownPhotoPan(vid, axis, v);
+        void this.setStaticPhotoPan(vid, axis, v);
       };
       slider.oninput = () => {
         if (slider.disabled) return;
         const v = parseInt(slider.value, 10);
         const val = container.querySelector(valId);
         if (val) val.textContent = String(v);
-        this.queueStaticGownPhotoPan(vid, axis, v);
+        this.queueStaticPhotoPan(vid, axis, v);
       };
       slider.onchange = commitPan;
       slider.addEventListener("pointerup", commitPan);
@@ -5124,7 +5213,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "16") {
+    if (panel && panel.dataset.staticEditorV !== "17") {
       panel.remove();
       panel = null;
     }
@@ -5132,7 +5221,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "16";
+    panel.dataset.staticEditorV = "17";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -5169,9 +5258,9 @@ Please share payment details and license key.`;
         #variant-edit-panel .static-sticker-card input[type="range"],
         #variant-edit-panel #static-border-thickness,
         #variant-edit-panel .static-gown-layer-pct,
-        #variant-edit-panel #static-gown-photo-zoom,
-        #variant-edit-panel #static-gown-photo-pan-h,
-        #variant-edit-panel #static-gown-photo-pan-v {
+        #variant-edit-panel #static-photo-zoom,
+        #variant-edit-panel #static-photo-pan-h,
+        #variant-edit-panel #static-photo-pan-v {
           accent-color:#10b981;
         }
       </style>
