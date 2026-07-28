@@ -78,12 +78,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=95";
+      return "/js/staticFrameCompose.mjs?v=96";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=95");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=96");
     }
-    return "/js/staticFrameCompose.mjs?v=95";
+    return "/js/staticFrameCompose.mjs?v=96";
   }
 
   async preloadStaticComposeModule() {
@@ -3260,9 +3260,14 @@ Please share payment details and license key.`;
     return this.isStaticPromoRow(row) || !!(row?.layers?._badgePlacements || []).length;
   }
 
+  variantBadgesOnlyCompose(row) {
+    return !!row?._badgesRepositioned && !row?._staticAppearanceEdited;
+  }
+
   getVariantComposeOptions(row, { preview = false } = {}) {
+    const frozenKb = row?._frozenPricing?.targetKb ?? row?.meta?.targetKb ?? 0;
     const preserveKb =
-      !row?.meta?.targetKb && row?.blob?.size
+      !frozenKb && row?.blob?.size
         ? Math.ceil(row.blob.size / 1024)
         : row?.meta?.actualKb || 0;
     if (preview) {
@@ -3275,10 +3280,11 @@ Please share payment details and license key.`;
       };
     }
     return {
-      targetKb: row?.meta?.targetKb || 0,
-      preserveKb: row?.meta?.targetKb ? 0 : preserveKb,
+      targetKb: frozenKb,
+      preserveKb: frozenKb ? 0 : preserveKb,
       jpegQuality: row?.meta?.jpegQuality,
       style: row?.layers?._staticFrame?.style,
+      preview: false,
     };
   }
 
@@ -3299,7 +3305,7 @@ Please share payment details and license key.`;
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     const gen = ++this._borderComposeGen;
-    const badgesOnly = !!row._badgesRepositioned && !row._staticAppearanceEdited;
+    const badgesOnly = this.variantBadgesOnlyCompose(row);
     const url = await window.StaticFrameCompose.composeStaticPreview(
       row.layers,
       row.editFlags || {},
@@ -3312,6 +3318,26 @@ Please share payment details and license key.`;
     );
     if (gen !== this._borderComposeGen) return row.imageUrl || url;
     return url;
+  }
+
+  async composeSaveForRow(row) {
+    if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) {
+      return this.resolveDownloadUrl(row);
+    }
+    const edited = this.isVariantEdited(row.editFlags, row.layers, row);
+    if (!edited) return this.resolveDownloadUrl(row);
+
+    await this.preloadStaticComposeModule();
+    const url = await window.StaticFrameCompose.composeStaticPreview(
+      row.layers,
+      row.editFlags || {},
+      {
+        ...this.getVariantComposeOptions(row, { preview: false }),
+        staticAppearanceEdited: !!row._staticAppearanceEdited,
+        badgesOnly: this.variantBadgesOnlyCompose(row),
+      },
+    );
+    return url || this.resolveDownloadUrl(row);
   }
 
   applyStaticPreviewToRow(row, url, variantId) {
@@ -3347,7 +3373,7 @@ Please share payment details and license key.`;
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
-      badgesOnly: !!row._badgesRepositioned && !row._staticAppearanceEdited,
+      badgesOnly: this.variantBadgesOnlyCompose(row),
     };
 
     const needsCompose =
@@ -4544,16 +4570,21 @@ Please share payment details and license key.`;
       html += `</div>`;
     });
 
-    const priceLock = row._frozenPricing?.targetKb
-      ? `est ₹ at ${row._frozenPricing.targetKb}KB`
-      : (() => {
-          const ship = this.getRowDisplayShipping(row);
-          return ship.amount > 0
-            ? ship.verified
-              ? `shipping ₹${ship.amount}`
-              : `est ₹${ship.amount}`
-            : "original pricing";
-        })();
+    const priceLock = (() => {
+      const ship = this.getRowDisplayShipping(row);
+      if (ship.amount > 0) {
+        const kbNote = row._frozenPricing?.targetKb
+          ? ` (${row._frozenPricing.targetKb}KB)`
+          : "";
+        return ship.verified
+          ? `shipping ₹${ship.amount}${kbNote}`
+          : `est ₹${ship.amount}${kbNote}`;
+      }
+      if (row._frozenPricing?.targetKb) {
+        return `est ₹ at ${row._frozenPricing.targetKb}KB`;
+      }
+      return "original pricing";
+    })();
     html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep ${priceLock} unchanged.</p>`;
     container.innerHTML = html;
 
@@ -4777,6 +4808,17 @@ Please share payment details and license key.`;
     if (badge) {
       const edited = this.isVariantEdited(row.editFlags, row.layers, row);
       badge.style.display = edited ? "block" : "none";
+    }
+    const priceEl = document.querySelector(
+      `.result-card[data-variant-id="${row.variantId}"] .result-price-label`
+    );
+    if (priceEl) {
+      const ship = this.getRowDisplayShipping(row);
+      if (ship.amount > 0) {
+        priceEl.textContent = ship.verified
+          ? `₹${ship.amount}`
+          : `est ₹${ship.amount}`;
+      }
     }
   }
 
@@ -5417,12 +5459,22 @@ Please share payment details and license key.`;
 
     const name = (result.name || "variant").replace(/\s+/g, "-");
     const filename = "meesho-" + name + "-" + Date.now() + ".jpg";
-    const url =
-      result.imageUrl ||
-      result.pricingImageUrl ||
-      result.dataUrl ||
-      result.uploadedUrl ||
-      "";
+    let url = "";
+    const edited = this.isVariantEdited(
+      result.editFlags,
+      result.layers,
+      result,
+    );
+    if (edited && result.layers?._staticFrame) {
+      try {
+        url = await this.composeSaveForRow(result);
+      } catch (e) {
+        console.warn("Save compose failed, using pricing image:", e);
+      }
+    }
+    if (!url) {
+      url = this.resolveDownloadUrl(result);
+    }
 
     if (!url) {
       OptimizerUtils.showNotification(
