@@ -13,7 +13,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=101";
+} from "./liveGownStatic.mjs?v=102";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -741,10 +741,26 @@ function scaleGownLayerPx(base, pct, minPx = 0) {
   return minPx > 0 ? Math.max(minPx, scaled) : scaled;
 }
 
-/** Gown: scale each frame band independently; product slot stays fixed. */
+/** Scale a frame band from border-thickness % (100 = generated default). */
+function scaleBorderThicknessPx(base, pct, minPx = 0) {
+  const t = clamp(pct, 0, BORDER_THICKNESS_MAX) / BORDER_THICKNESS_DEFAULT;
+  if (t <= 0) return minPx;
+  if (t <= 1) {
+    const floor = minPx > 0 ? minPx : 0;
+    return Math.max(floor, Math.round(base * t));
+  }
+  const hi = BORDER_THICKNESS_MAX / BORDER_THICKNESS_DEFAULT;
+  const u = (t - 1) / (hi - 1);
+  const maxMul = 5;
+  return Math.max(minPx, Math.round(base + base * (maxMul - 1) * u));
+}
+
+/** Gown: scale each frame band outward from a fixed product slot. */
 function applyGownFrameLayers(frame) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
+  const basePx = frame.basePx ?? frame.px ?? 0;
+  const basePy = frame.basePy ?? frame.py ?? 0;
   const baseDw = frame.baseDw ?? frame.dw ?? 0;
   const baseDh = frame.baseDh ?? frame.dh ?? 0;
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
@@ -755,8 +771,11 @@ function applyGownFrameLayers(frame) {
   ensureGownLayerPcts(frame);
   const p = frame.gownLayerPct;
 
+  frame.px = basePx;
+  frame.py = basePy;
   frame.dw = baseDw;
   frame.dh = baseDh;
+
   frame.border = scaleGownLayerPx(baseBorder, p.border, 2);
   frame.outerMatPad = scaleGownLayerPx(baseOuterMatPad, p.outerMat, 0);
   frame.innerStroke = scaleGownLayerPx(
@@ -766,44 +785,38 @@ function applyGownFrameLayers(frame) {
   );
   frame.innerMatPad = scaleGownLayerPx(baseInnerMatPad, p.innerMat, 0);
 
-  frame.whiteX = frame.border;
-  frame.whiteY = frame.border;
-  frame.whiteW = outerW - frame.border * 2;
-  frame.whiteH = outerH - frame.border * 2;
+  const slotInset = frame.innerMatPad + frame.innerStroke;
+  frame.innerFrameX = basePx - slotInset;
+  frame.innerFrameY = basePy - slotInset;
+  frame.innerFrameW = baseDw + slotInset * 2;
+  frame.innerFrameH = baseDh + slotInset * 2;
 
-  const minInnerFrame = Math.max(24, Math.round(baseDw * 0.35));
-  let slotInset = frame.innerMatPad + frame.innerStroke;
-  let innerFrameW = frame.whiteW - frame.outerMatPad * 2;
-  if (innerFrameW < minInnerFrame + slotInset * 2) {
-    const maxOuter = Math.max(0, Math.floor((frame.whiteW - minInnerFrame - slotInset * 2) / 2));
-    frame.outerMatPad = Math.min(frame.outerMatPad, maxOuter);
-    innerFrameW = frame.whiteW - frame.outerMatPad * 2;
-  }
-  if (innerFrameW < minInnerFrame + slotInset * 2) {
-    const maxInset = Math.max(0, Math.floor((innerFrameW - minInnerFrame) / 2));
-    if (frame.innerMatPad + frame.innerStroke > maxInset) {
-      const ratio =
-        frame.innerMatPad + frame.innerStroke > 0
-          ? frame.innerMatPad / (frame.innerMatPad + frame.innerStroke)
-          : 0.5;
-      frame.innerMatPad = Math.max(0, Math.round(maxInset * ratio));
-      frame.innerStroke = Math.max(frame.innerAccent > 0 ? 1 : 0, maxInset - frame.innerMatPad);
-      slotInset = frame.innerMatPad + frame.innerStroke;
+  frame.whiteX = frame.innerFrameX - frame.outerMatPad;
+  frame.whiteY = frame.innerFrameY - frame.outerMatPad;
+  frame.whiteW = frame.innerFrameW + frame.outerMatPad * 2;
+  frame.whiteH = frame.innerFrameH + frame.outerMatPad * 2;
+  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
+
+  if (frame.whiteX < 0 || frame.whiteY < 0 || frame.whiteX + frame.whiteW > outerW || frame.whiteY + frame.whiteH > outerH) {
+    const maxOuter = Math.max(
+      0,
+      Math.min(
+        basePx,
+        basePy,
+        outerW - basePx - baseDw,
+        outerH - basePy - baseDh,
+      ) - slotInset,
+    );
+    if (frame.outerMatPad > maxOuter) {
+      frame.outerMatPad = maxOuter;
+      frame.whiteX = frame.innerFrameX - frame.outerMatPad;
+      frame.whiteY = frame.innerFrameY - frame.outerMatPad;
+      frame.whiteW = frame.innerFrameW + frame.outerMatPad * 2;
+      frame.whiteH = frame.innerFrameH + frame.outerMatPad * 2;
+      frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
     }
   }
 
-  frame.whitePad = frame.outerMatPad + frame.innerMatPad + frame.innerStroke;
-
-  frame.innerFrameX = frame.whiteX + frame.outerMatPad;
-  frame.innerFrameY = frame.whiteY + frame.outerMatPad;
-  frame.innerFrameW = frame.whiteW - frame.outerMatPad * 2;
-  frame.innerFrameH = frame.whiteH - frame.outerMatPad * 2;
-
-  const slotInsetFinal = frame.innerMatPad + frame.innerStroke;
-  const innerW = frame.innerFrameW - slotInsetFinal * 2;
-  const innerH = frame.innerFrameH - slotInsetFinal * 2;
-  frame.px = frame.innerFrameX + slotInsetFinal + Math.round((innerW - baseDw) / 2);
-  frame.py = frame.innerFrameY + slotInsetFinal + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 
@@ -908,44 +921,20 @@ export function applyBorderThickness(frame, options = {}) {
 
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
+  const basePx = frame.basePx ?? frame.px ?? 0;
+  const basePy = frame.basePy ?? frame.py ?? 0;
   const baseDw = frame.baseDw ?? frame.dw ?? 0;
   const baseDh = frame.baseDh ?? frame.dh ?? 0;
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
   const baseWhitePad = frame.baseWhitePad ?? frame.whitePad ?? 0;
-  const baseInset = baseBorder + baseWhitePad;
-  const t = pct / BORDER_THICKNESS_DEFAULT;
-  const minInset = 2;
-  const minProduct = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.22));
-  const maxInset = Math.max(
-    baseInset + 1,
-    Math.floor((Math.min(outerW, outerH) - minProduct) / 2),
-  );
 
-  let targetInset;
-  if (t <= 1) {
-    targetInset = Math.round(minInset + (baseInset - minInset) * t);
-  } else {
-    const hi = BORDER_THICKNESS_MAX / BORDER_THICKNESS_DEFAULT;
-    const u = (t - 1) / (hi - 1);
-    targetInset = Math.round(baseInset + (maxInset - baseInset) * u);
-  }
-  targetInset = clamp(targetInset, minInset, maxInset);
+  frame.px = basePx;
+  frame.py = basePy;
+  frame.dw = baseDw;
+  frame.dh = baseDh;
 
-  const innerW = Math.max(1, outerW - targetInset * 2);
-  const innerH = Math.max(1, outerH - targetInset * 2);
-  let newDw = baseDw;
-  let newDh = baseDh;
-  if (baseDw > 0 && baseDh > 0) {
-    const fitScale = Math.min(innerW / baseDw, innerH / baseDh);
-    if (fitScale < 1) {
-      newDw = Math.max(minProduct, Math.round(baseDw * fitScale));
-      newDh = Math.max(minProduct, Math.round(baseDh * fitScale));
-    } else if (t < 1) {
-      const grow = Math.min(fitScale, 1.28);
-      newDw = Math.round(baseDw * grow);
-      newDh = Math.round(baseDh * grow);
-    }
-  }
+  const scaledBorder = scaleBorderThicknessPx(baseBorder, pct, 2);
+  const scaledWhitePad = scaleBorderThicknessPx(baseWhitePad, pct, 0);
 
   const isTall =
     frame.frameType === "tall" ||
@@ -953,28 +942,28 @@ export function applyBorderThickness(frame, options = {}) {
     frame.style === "live_framed";
 
   if (isTall) {
-    const borderRatio = baseInset > 0 ? baseBorder / baseInset : 0.14;
-    frame.border = Math.max(2, Math.round(targetInset * borderRatio));
-    frame.whitePad = Math.max(0, targetInset - frame.border);
-    frame.whiteX = frame.border;
-    frame.whiteY = frame.border;
-    frame.whiteW = outerW - frame.border * 2;
-    frame.whiteH = outerH - frame.border * 2;
+    frame.border = scaledBorder;
+    frame.whitePad = scaledWhitePad;
+    frame.whiteX = scaledBorder;
+    frame.whiteY = scaledBorder;
+    frame.whiteW = Math.max(1, outerW - scaledBorder * 2);
+    frame.whiteH = Math.max(1, outerH - scaledBorder * 2);
   } else {
-    frame.border = targetInset;
+    frame.border = scaledBorder;
+    if (baseWhitePad > 0) frame.whitePad = scaledWhitePad;
   }
 
-  frame.dw = newDw;
-  frame.dh = newDh;
-  frame.px = targetInset + Math.round((innerW - newDw) / 2);
-  frame.py = targetInset + Math.round((innerH - newDh) / 2);
   return frame;
 }
 
 export function reanchorPlacements(layers) {
   if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
   for (const p of layers._badgePlacements) {
-    if (p.posH != null && p.posV != null) {
+    const locksH = p.lockH !== false;
+    const locksV = p.lockV !== false;
+    if (p.anchor && locksH && locksV) {
+      applyAnchorToPlacement(p, layers._staticFrame);
+    } else if (p.posH != null && p.posV != null) {
       applyPositionToPlacement(p, layers._staticFrame);
     } else if (p.anchor) {
       applyAnchorToPlacement(p, layers._staticFrame);
