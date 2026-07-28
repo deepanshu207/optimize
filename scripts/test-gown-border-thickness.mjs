@@ -78,9 +78,8 @@ gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border < 19, "50 thins teal border");
 assert(gownFrame.outerMatPad < 19, "50 thins outer white mat");
-assert(gownFrame.dw === 657, "50 does not shrink product width");
-assert(gownFrame.dh === 978, "50 does not shrink product height");
-assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed");
+assert(gownFrame.dw > 657, "50 widens photo slot when frame thins");
+assert(gownFrame.innerMatPad === 17, "50 keeps inner mat fixed when only legacy slider syncs border+outerMat");
 assert(gownFrame.innerStroke === 3, "50 keeps teal accent fixed");
 
 gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMat: 100 };
@@ -92,8 +91,8 @@ assert(
   gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 58,
   "500 increases total frame inset",
 );
-assert(gownFrame.dw === 657, "500 does not shrink product width");
-assert(gownFrame.dh === 978, "500 does not shrink product height");
+assert(gownFrame.dw < 657, "500 shrinks photo slot when frame bands thicken");
+assert(gownFrame.dh < 978, "500 shrinks photo slot height");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
@@ -108,6 +107,11 @@ const accentFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, 
 updateFrameAppearance({ _staticFrame: accentFrame }, { gownLayerPct: { innerAccent: 50 } });
 assert(accentFrame.innerStroke < 3, "inner accent scales independently");
 assert(accentFrame.outerMatPad === 19, "inner accent edit keeps outer mat");
+
+const padFrame = { ...gownFrame, gownLayerPct: { border: 100, outerMat: 100, innerAccent: 100, innerMat: 50 } };
+updateFrameAppearance({ _staticFrame: padFrame }, { gownLayerPct: { innerMat: 50 } });
+assert(padFrame.innerMatPad < 17, "photo pad thickness scales");
+assert(padFrame.dw > accentFrame.dw, "thinner photo pad widens image slot");
 
 gownFrame.borderThicknessPct = 100;
 gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMat: 100 };
@@ -142,7 +146,7 @@ assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "gown has outer mat band");
 assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
 assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent");
 assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
-assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
+assert(gownCode.includes("drawGownPhotoCoverFitInSlot"), "gown uses cover-fit");
 assert(composeCode.includes("ensureGownLayerPcts"), "compose has gown layer pct helper");
 assert(composeCode.includes("drawGownProductInSlot"), "compose clips gown photo to pad slot");
 assert(composeCode.includes("applyGownFrameLayers"), "compose applies gown layers independently");
@@ -161,7 +165,9 @@ assert(contentCode.includes("applyStaticGownLayerPcts"), "gown layer preview bat
 assert(!contentCode.includes('id="${id}-r"'), "rgb inputs removed from color rows");
 assert(contentCode.includes("static-gown-layer-pct"), "gown has per-layer frame sliders");
 assert(contentCode.includes("openVariantFullPreview"), "preview tap opens full size");
-assert(gownCode.includes("outerMatColor"), "gown frame stores outer mat color");
+assert(gownCode.includes("photoZoomPct"), "gown frame stores photo zoom");
+assert(gownCode.includes("gownPhotoSlotFromFrame"), "gown photo slot follows layer geometry");
+assert(contentCode.includes("static-gown-photo-zoom"), "editor has photo zoom slider");
 assert(gownCode.includes("padColor"), "gown frame stores photo pad color");
 assert(gownCode.includes("outerMatColor ?? frame.matColor"), "gown draws separate outer mat");
 assert(gownCode.includes("padColor ?? frame.innerMatColor"), "gown draws separate photo pad");
