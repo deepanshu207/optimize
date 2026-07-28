@@ -7,6 +7,20 @@ import { drawTallBadge } from "./tallStaticBadges.mjs?v=67";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
+
+export const GOWN_SLOT_LABELS = {
+  "gown-best": "Best PRICE",
+  "gown-flash": "FLASH SALE",
+  "gown-popular": "MOST POPULAR",
+};
+
+export function gownArtBadgeValue(slotId) {
+  return `gown-art:${slotId}`;
+}
+
+export function isGownArtBadgeValue(value) {
+  return String(value ?? "").startsWith("gown-art:");
+}
 export const BORDER_THICKNESS_DEFAULT = 100;
 export const BORDER_THICKNESS_MAX = 1000;
 
@@ -617,8 +631,14 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
   if (!layers.productOnly && !layers.noStickers) return false;
   if (staticFrameBorderEdited(frame)) return true;
   if (options.staticAppearanceEdited) return true;
+  if (options.badgesRepositioned) return true;
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
+  const placements = layers._badgePlacements || [];
+  const placementDefs = layers._staticDefaults?.placements || {};
+  for (const p of placements) {
+    if (placementChangedFromDefault(p, placementDefs[p.id])) return true;
+  }
   return false;
 }
 
@@ -859,12 +879,15 @@ async function drawPlacementsOnCtx(ctx, placements) {
     try {
       if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, w);
-      } else if (p.id?.startsWith("tall-")) {
-        const copy = { ...p, w, h };
-        await drawTallBadge(ctx, loadBadge, copy);
+      } else if (p.kind === "badge" && p.num != null) {
+        const badge = await loadBadge(p.num);
+        if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
       } else if (p.id?.startsWith("gown-") || p.kind === "gownArt") {
         const copy = { ...p, w, h };
         await drawGownBadge(ctx, loadBadge, copy);
+      } else if (p.id?.startsWith("tall-")) {
+        const copy = { ...p, w, h };
+        await drawTallBadge(ctx, loadBadge, copy);
       } else if (p.num != null) {
         const badge = await loadBadge(p.num);
         if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
@@ -1034,13 +1057,23 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   const frameEdited = shouldRebuildStaticFrame(layers, {
     staticAppearanceEdited: !!options.staticAppearanceEdited,
+    badgesRepositioned: !!options.badgesRepositioned,
   });
+  const stickerPlacements = (layers._badgePlacements || []).filter(
+    (p) => !p.hidden && p.drawn !== false,
+  );
+  const forceCleanFrame =
+    hasStickers &&
+    stickerPlacements.length > 0 &&
+    layers._staticFrame &&
+    (layers.productOnly || layers.noStickers);
 
   let canvas = null;
   let frame = layers._staticFrame;
   const picked = pickStaticBaseLayer(layers, flags);
+  const rebuildFrame = frameEdited || forceCleanFrame;
 
-  if (frameEdited && layers._staticFrame) {
+  if (rebuildFrame && layers._staticFrame) {
     const rebuilt = await rebuildFrameCanvas(layers);
     if (rebuilt) {
       canvas = rebuilt.canvas;
@@ -1049,14 +1082,18 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   }
 
   if (!canvas) {
-    if (!picked.drawBadges && !frameEdited) {
+    if (!picked.drawBadges && !rebuildFrame) {
       return picked.url || layers.full || "";
     }
     let baseUrl = picked.url;
     if (!baseUrl) {
-      if (hasBorder && !hasStickers) baseUrl = layers.noStickers || layers.full;
-      else if (!hasBorder && hasStickers) baseUrl = layers.noBorder || layers.productOnly || layers.full;
-      else baseUrl = layers.noStickers || layers.full;
+      if (hasStickers) {
+        baseUrl = layers.noStickers || layers.productOnly;
+      } else {
+        baseUrl = layers.noStickers || layers.full;
+      }
+    } else if (hasStickers && baseUrl === layers.full && layers.noStickers) {
+      baseUrl = layers.noStickers;
     }
     try {
       const img = await loadImage(baseUrl);
@@ -1190,6 +1227,21 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   ensurePlacementDefaults(p);
 
   const raw = String(badgeValue ?? "").trim();
+  if (isGownArtBadgeValue(raw)) {
+    const slotId = raw.slice("gown-art:".length);
+    if (!slotId || (p.id !== slotId && p.gownSlot !== slotId)) return false;
+    p.kind = "gownArt";
+    p.gownSlot = slotId;
+    p.num = undefined;
+    p.defaultW = undefined;
+    p.defaultH = undefined;
+    p.defaultSize = undefined;
+    p.size = undefined;
+    p.drawn = true;
+    p.label = GOWN_SLOT_LABELS[slotId] || "Gown art";
+    if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
+    return true;
+  }
   if (raw === FREE_SHIPPING_BADGE_VALUE) {
     if (!isFreeShippingSlot(p)) return false;
     const { w } = placementSize(p);
@@ -1209,8 +1261,9 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   const num = Math.max(1, Math.min(25, parseInt(raw, 10) || 0));
   if (!num) return false;
 
-  if (p.kind === "freeShipping") {
+  if (p.kind === "freeShipping" || p.kind === "gownArt") {
     const { w, h } = placementSize(p);
+    if (!p.gownSlot && p.id?.startsWith("gown-")) p.gownSlot = p.id;
     p.kind = "badge";
     p.defaultW = w;
     p.defaultH = h;
@@ -1562,6 +1615,9 @@ if (typeof window !== "undefined") {
     updatePlacementSize,
     updatePlacementBadge,
     FREE_SHIPPING_BADGE_VALUE,
+    GOWN_SLOT_LABELS,
+    gownArtBadgeValue,
+    isGownArtBadgeValue,
     isFreeShippingSlot,
     setPlacementHidden,
     setAllPlacementsHidden,
