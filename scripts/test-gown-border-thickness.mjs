@@ -23,53 +23,53 @@ function assert(cond, msg) {
 const gownFrame = {
   style: "gown_static",
   frameType: "tall",
-  border: 18,
-  whitePad: 95,
-  baseBorder: 18,
-  baseWhitePad: 95,
-  basePx: 113,
-  basePy: 113,
-  baseDw: 477,
-  baseDh: 715,
-  baseWhiteX: 18,
-  baseWhiteY: 18,
-  baseWhiteW: 667,
-  baseWhiteH: 988,
-  px: 113,
-  py: 113,
-  dw: 477,
-  dh: 715,
-  outerW: 703,
-  outerH: 1024,
-  whiteX: 18,
-  whiteY: 18,
-  whiteW: 667,
-  whiteH: 988,
+  border: 19,
+  whitePad: 87,
+  baseBorder: 19,
+  baseWhitePad: 87,
+  basePx: 106,
+  basePy: 126,
+  baseDw: 561,
+  baseDh: 841,
+  baseWhiteX: 19,
+  baseWhiteY: 19,
+  baseWhiteW: 735,
+  baseWhiteH: 1056,
+  px: 106,
+  py: 126,
+  dw: 561,
+  dh: 841,
+  outerW: 773,
+  outerH: 1094,
+  whiteX: 19,
+  whiteY: 19,
+  whiteW: 735,
+  whiteH: 1056,
   borderThicknessPct: 100,
 };
 
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 18, "100 keeps base teal border");
-assert(gownFrame.dw === 477, "100 keeps product width");
-assert(gownFrame.dh === 715, "100 keeps product height");
+assert(gownFrame.border === 19, "100 keeps base teal border");
+assert(gownFrame.dw === 561, "100 keeps product width");
+assert(gownFrame.dh === 841, "100 keeps product height");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border < 18, "50 thins teal border");
-assert(gownFrame.dw === 477, "50 does not shrink product width");
-assert(gownFrame.dh === 715, "50 does not shrink product height");
+assert(gownFrame.border < 19, "50 thins teal border");
+assert(gownFrame.dw === 561, "50 does not shrink product width");
+assert(gownFrame.dh === 841, "50 does not shrink product height");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(gownFrame.border + gownFrame.whitePad > 113, "500 increases total frame inset");
-assert(gownFrame.dw === 477, "500 does not shrink product width");
-assert(gownFrame.dh === 715, "500 does not shrink product height");
+assert(gownFrame.border + gownFrame.whitePad > 106, "500 increases total frame inset");
+assert(gownFrame.dw === 561, "500 does not shrink product width");
+assert(gownFrame.dh === 841, "500 does not shrink product height");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
-assert(gownFrame.border === 18, "restore 100 returns exact base border");
-assert(gownFrame.dw === 477, "restore 100 returns exact product width");
+assert(gownFrame.border === 19, "restore 100 returns exact base border");
+assert(gownFrame.dw === 561, "restore 100 returns exact product width");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
@@ -104,6 +104,8 @@ assert(contentCode.includes("min-height:0"), "flex scroll child can shrink");
 assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");
 assert(contentCode.includes("preview: true"), "editor preview skips targetKb recompress");
 assert(contentCode.includes("pricingImageUrl"), "pricing image kept separate from preview");
+assert(gownCode.includes('GOWN_STATIC_OUTER_W = 773'), "gown canvas width 773");
+assert(gownCode.includes('GOWN_STATIC_OUTER_H = 1094'), "gown canvas height 1094");
 assert(gownCode.includes('BORDER_TEAL = "#71cbd3"'), "gown uses reference teal");
 
 if (failed) {

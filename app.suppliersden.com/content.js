@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=75";
+      return "/js/liveAnalysisBridge.mjs?v=76";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=75");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=76");
     }
-    return "/js/liveAnalysisBridge.mjs?v=75";
+    return "/js/liveAnalysisBridge.mjs?v=76";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=75";
+      return "/js/staticFrameCompose.mjs?v=76";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=75");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=76");
     }
-    return "/js/staticFrameCompose.mjs?v=75";
+    return "/js/staticFrameCompose.mjs?v=76";
   }
 
   async preloadStaticComposeModule() {
@@ -363,7 +363,7 @@ class MeeshoShippingOptimizer {
       processingArea.innerHTML = `
         <div style="text-align:center;padding:24px 16px;">
           <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building gown promo frames…</div>
-          <div style="font-size:12px;color:#666;">703×1024 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
+          <div style="font-size:12px;color:#666;">773×1094 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
         </div>`;
     }
 

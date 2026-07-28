@@ -18,22 +18,22 @@ const result = await page.evaluate(async () => {
   await import("/js/staticFrameCompose.mjs?v=68");
 
   const productCanvas = document.createElement("canvas");
-  productCanvas.width = 477;
-  productCanvas.height = 715;
+  productCanvas.width = 561;
+  productCanvas.height = 841;
   const pctx = productCanvas.getContext("2d");
   pctx.fillStyle = "#e91e63";
-  pctx.fillRect(0, 0, 477, 715);
+  pctx.fillRect(0, 0, 561, 841);
   const productOnly = productCanvas.toDataURL("image/jpeg", 0.92);
 
   const frameCanvas = document.createElement("canvas");
-  frameCanvas.width = 703;
-  frameCanvas.height = 1024;
+  frameCanvas.width = 773;
+  frameCanvas.height = 1094;
   const fctx = frameCanvas.getContext("2d");
   fctx.fillStyle = "#71cbd3";
-  fctx.fillRect(0, 0, 703, 1024);
+  fctx.fillRect(0, 0, 773, 1094);
   fctx.fillStyle = "#ffffff";
-  fctx.fillRect(18, 18, 667, 988);
-  fctx.drawImage(productCanvas, 113, 113, 477, 715);
+  fctx.fillRect(19, 19, 735, 1056);
+  fctx.drawImage(productCanvas, 106, 126, 561, 841);
   const full = frameCanvas.toDataURL("image/jpeg", 0.92);
   const noStickers = full;
 
@@ -59,28 +59,28 @@ const result = await page.evaluate(async () => {
       _staticFrame: {
         style: "gown_static",
         frameType: "tall",
-        border: 18,
-        whitePad: 95,
-        baseBorder: 18,
-        baseWhitePad: 95,
-        basePx: 113,
-        basePy: 113,
-        baseDw: 477,
-        baseDh: 715,
-        baseWhiteX: 18,
-        baseWhiteY: 18,
-        baseWhiteW: 667,
-        baseWhiteH: 988,
-        px: 113,
-        py: 113,
-        dw: 477,
-        dh: 715,
-        outerW: 703,
-        outerH: 1024,
-        whiteX: 18,
-        whiteY: 18,
-        whiteW: 667,
-        whiteH: 988,
+        border: 19,
+        whitePad: 87,
+        baseBorder: 19,
+        baseWhitePad: 87,
+        basePx: 106,
+        basePy: 126,
+        baseDw: 561,
+        baseDh: 841,
+        baseWhiteX: 19,
+        baseWhiteY: 19,
+        baseWhiteW: 735,
+        baseWhiteH: 1056,
+        px: 106,
+        py: 126,
+        dw: 561,
+        dh: 841,
+        outerW: 773,
+        outerH: 1094,
+        whiteX: 19,
+        whiteY: 19,
+        whiteW: 735,
+        whiteH: 1056,
         borderColor: "#71cbd3",
         matColor: "#ffffff",
         borderThicknessPct: 100,
