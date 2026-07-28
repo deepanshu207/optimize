@@ -42,6 +42,7 @@ class MeeshoShippingOptimizer {
     this.autoPopupShown = false;
     this._borderThicknessTimer = null;
     this._gownLayerTimer = null;
+    this._gownPhotoZoomTimer = null;
     this._borderComposeGen = 0;
     this._staticControlsVariantId = null;
     this.init();
@@ -67,22 +68,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=93";
+      return "/js/liveAnalysisBridge.mjs?v=94";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=93");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=94");
     }
-    return "/js/liveAnalysisBridge.mjs?v=93";
+    return "/js/liveAnalysisBridge.mjs?v=94";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=93";
+      return "/js/staticFrameCompose.mjs?v=94";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=93");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=94");
     }
-    return "/js/staticFrameCompose.mjs?v=93";
+    return "/js/staticFrameCompose.mjs?v=94";
   }
 
   async preloadStaticComposeModule() {
@@ -3220,6 +3221,8 @@ Please share payment details and license key.`;
     this._borderThicknessTimer = null;
     clearTimeout(this._gownLayerTimer);
     this._gownLayerTimer = null;
+    clearTimeout(this._gownPhotoZoomTimer);
+    this._gownPhotoZoomTimer = null;
     this._borderComposeGen = (this._borderComposeGen || 0) + 1;
 
     await this.preloadStaticComposeModule();
@@ -3797,6 +3800,48 @@ Please share payment details and license key.`;
     await this.applyStaticGownLayerPct(variantId, layerKey, pct);
   }
 
+  async applyStaticGownPhotoZoom(variantId, zoomPct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, { photoZoomPct: zoomPct });
+    if (window.StaticFrameCompose.reanchorPlacements) {
+      window.StaticFrameCompose.reanchorPlacements(row.layers);
+    }
+    row._staticAppearanceEdited = true;
+
+    try {
+      await this.applyRowStaticPreview(variantId, row);
+    } catch (e) {
+      console.warn("Gown photo zoom preview failed:", e);
+      await this.refreshStaticPreview(variantId);
+    }
+  }
+
+  queueStaticGownPhotoZoom(variantId, zoomPct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector("#static-gown-photo-zoom-val");
+    if (val) val.textContent = String(zoomPct);
+
+    clearTimeout(this._gownPhotoZoomTimer);
+    this._gownPhotoZoomTimer = setTimeout(() => {
+      void this.applyStaticGownPhotoZoom(variantId, zoomPct);
+    }, 50);
+  }
+
+  async setStaticGownPhotoZoom(variantId, zoomPct) {
+    clearTimeout(this._gownPhotoZoomTimer);
+    await this.applyStaticGownPhotoZoom(variantId, zoomPct);
+  }
+
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
@@ -4314,13 +4359,13 @@ Please share payment details and license key.`;
         };
       }
       const lp = frame.gownLayerPct;
-      if (frame.gownFrameLayersLocked == null) frame.gownFrameLayersLocked = true;
+      if (frame.gownFrameLayersLocked == null) frame.gownFrameLayersLocked = false;
       const frameLocked = frame.gownFrameLayersLocked !== false;
       const gownLayers = [
-        { key: "border", label: "Outer border" },
-        { key: "outerMat", label: "Outer mat" },
-        { key: "innerAccent", label: "Inner accent" },
-        { key: "innerMat", label: "Photo pad" },
+        { key: "border", label: "Outer border (teal ring)" },
+        { key: "outerMat", label: "Outer mat (white band)" },
+        { key: "innerAccent", label: "Inner accent (thin teal line)" },
+        { key: "innerMat", label: "Photo pad (white before image)" },
       ];
       html += `<div class="static-gown-layers-wrap${
         frameLocked ? " static-slider-locked" : ""
@@ -4351,6 +4396,11 @@ Please share payment details and license key.`;
         </div>`;
       }
       html += `</div>`;
+      const photoZoom = frame.photoZoomPct ?? 100;
+      html += `<div class="static-gown-zoom-wrap" style="margin-bottom:8px;">
+        <span style="font-size:10px;">Photo zoom <span id="static-gown-photo-zoom-val">${photoZoom}</span>% (100 = cover-fit)</span>
+        <input type="range" id="static-gown-photo-zoom" min="50" max="200" value="${photoZoom}" style="width:100%;">
+      </div>`;
     } else {
       if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
       const borderLocked = frame.borderThicknessLocked !== false;
@@ -4539,6 +4589,25 @@ Please share payment details and license key.`;
       slider.addEventListener("touchend", commitLayer, { passive: true });
     });
 
+    const photoZoomSlider = container.querySelector("#static-gown-photo-zoom");
+    if (photoZoomSlider) {
+      const commitZoom = () => {
+        const v = parseInt(photoZoomSlider.value, 10);
+        const val = container.querySelector("#static-gown-photo-zoom-val");
+        if (val) val.textContent = String(v);
+        void this.setStaticGownPhotoZoom(vid, v);
+      };
+      photoZoomSlider.oninput = () => {
+        const v = parseInt(photoZoomSlider.value, 10);
+        const val = container.querySelector("#static-gown-photo-zoom-val");
+        if (val) val.textContent = String(v);
+        this.queueStaticGownPhotoZoom(vid, v);
+      };
+      photoZoomSlider.onchange = commitZoom;
+      photoZoomSlider.addEventListener("pointerup", commitZoom);
+      photoZoomSlider.addEventListener("touchend", commitZoom, { passive: true });
+    }
+
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
       hideAll.onchange = () => {
@@ -4669,6 +4738,8 @@ Please share payment details and license key.`;
     this._borderThicknessTimer = null;
     clearTimeout(this._gownLayerTimer);
     this._gownLayerTimer = null;
+    clearTimeout(this._gownPhotoZoomTimer);
+    this._gownPhotoZoomTimer = null;
     this._staticControlsVariantId = null;
     this._editingVariantId = null;
   }
@@ -4783,7 +4854,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "12") {
+    if (panel && panel.dataset.staticEditorV !== "13") {
       panel.remove();
       panel = null;
     }
@@ -4791,7 +4862,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "12";
+    panel.dataset.staticEditorV = "13";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
