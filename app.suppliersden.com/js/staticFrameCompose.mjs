@@ -14,7 +14,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=105";
+} from "./liveGownStatic.mjs?v=106";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -622,6 +622,12 @@ function ensureFrameDefaults(frame) {
   if (frame.gradientPreset === undefined) frame.gradientPreset = defs.gradientPreset;
   if (!frame.borderColor) frame.borderColor = defs.borderColor || frame.gradientTop;
   if (!frame.matColor) frame.matColor = defs.matColor || "#ffffff";
+  if (frame.style === "gown_static") {
+    if (!frame.outerMatColor) frame.outerMatColor = frame.matColor;
+    if (!frame.padColor) frame.padColor = frame.matColor;
+    if (!frame.fillMatColor) frame.fillMatColor = frame.padColor ?? frame.matColor;
+    if (frame.fillMatEnabled == null) frame.fillMatEnabled = true;
+  }
   return frame;
 }
 
@@ -738,6 +744,9 @@ export function snapshotGownFrameAppearance(frame) {
     outerMatColor:
       normalizeFrameColor(frame.outerMatColor ?? frame.matColor) || defs.matColor,
     padColor: normalizeFrameColor(frame.padColor ?? frame.matColor) || defs.matColor,
+    fillMatColor:
+      normalizeFrameColor(frame.fillMatColor ?? frame.padColor ?? frame.matColor) || defs.matColor,
+    fillMatEnabled: frame.fillMatEnabled !== false,
     gradientPreset: frame.gradientPreset ?? null,
     borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
     borderThicknessLocked: frame.borderThicknessLocked !== false,
@@ -1331,6 +1340,8 @@ export function frameAppearanceChanged(frame, defaults) {
     "outerMatColor",
     "innerStrokeColor",
     "padColor",
+    "fillMatColor",
+    "fillMatEnabled",
     "gradientPreset",
     "borderThicknessPct",
     "photoZoomPct",
@@ -1689,12 +1700,18 @@ export function updateFrameAppearance(layers, patch) {
     const hex = normalizeFrameColor(patch.padColor);
     if (hex) frame.padColor = hex;
   }
+  if (patch.fillMatColor != null) {
+    const hex = normalizeFrameColor(patch.fillMatColor);
+    if (hex) frame.fillMatColor = hex;
+  }
+  if (patch.fillMatEnabled != null) frame.fillMatEnabled = !!patch.fillMatEnabled;
   if (patch.matColor != null) {
     const hex = normalizeFrameColor(patch.matColor);
     if (hex) {
       frame.matColor = hex;
       if (frame.style === "gown_static") {
         if (patch.outerMatColor == null && frame.outerMatColor == null) frame.outerMatColor = hex;
+        if (patch.fillMatColor == null && frame.fillMatColor == null) frame.fillMatColor = hex;
         if (patch.padColor == null && frame.padColor == null) frame.padColor = hex;
       }
     }
