@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=90";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=90";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=90";
-import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=90";
+import { compressFramedToKb } from "./lib/encoder.js?v=91";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=91";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=91";
+import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=91";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -1093,7 +1093,12 @@ async function compressLifestyleToKb(canvas, targetKb) {
 }
 
 async function compressPreview(canvas, options = {}) {
-  const targetKb = options.targetKb || options.preserveKb || 0;
+  if (options.preview) {
+    const q =
+      options.jpegQuality > 0 && options.jpegQuality <= 1 ? options.jpegQuality : 0.92;
+    return canvas.toDataURL("image/jpeg", q);
+  }
+  const targetKb = options.targetKb ?? options.preserveKb ?? 0;
   const style = options.style || "";
   const jpegQuality = options.jpegQuality;
 
@@ -1103,7 +1108,7 @@ async function compressPreview(canvas, options = {}) {
   if (jpegQuality > 0 && jpegQuality <= 1) {
     return canvas.toDataURL("image/jpeg", jpegQuality);
   }
-  return canvas.toDataURL("image/jpeg", 0.82);
+  return canvas.toDataURL("image/jpeg", 0.92);
 }
 
 async function compressToTargetKb(canvas, targetKb, style) {
@@ -1198,7 +1203,8 @@ export function pickStaticBaseLayer(layers, flags = {}) {
 
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!layers) return "";
-  const targetKb = options.targetKb || 0;
+  const targetKb = options.targetKb ?? 0;
+  const preview = !!options.preview;
   const style = layers._staticFrame?.style || "";
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
 
@@ -1249,6 +1255,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
       preserveKb: options.preserveKb,
       jpegQuality: options.jpegQuality,
       style,
+      preview,
     });
   }
 
@@ -1259,6 +1266,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
       preserveKb: options.preserveKb,
       jpegQuality: options.jpegQuality,
       style,
+      preview,
     });
   }
 
@@ -1281,6 +1289,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     preserveKb: options.preserveKb,
     jpegQuality: options.jpegQuality,
     style,
+    preview,
   });
 }
 

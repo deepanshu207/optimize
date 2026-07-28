@@ -2183,24 +2183,16 @@ const MeeshoAPI = {
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
-          const appearanceEdited = !!result._staticAppearanceEdited;
-          const preserveKb = result.meta?.targetKb
-            ? 0
-            : result.blob?.size
-            ? Math.ceil(result.blob.size / 1024)
-            : result.meta?.actualKb || 0;
           return await window.StaticFrameCompose.composeStaticPreview(
             result.layers,
             result.editFlags || {},
             {
-              targetKb: appearanceEdited ? 0 : result.meta?.targetKb || 0,
-              preserveKb: appearanceEdited ? 0 : preserveKb,
-              jpegQuality: appearanceEdited
-                ? result.meta?.jpegQuality || 0.82
-                : result.meta?.jpegQuality,
+              targetKb: 0,
+              preserveKb: 0,
+              preview: true,
+              jpegQuality: result.meta?.jpegQuality || 0.92,
               style: staticFrame?.style,
-              staticAppearanceEdited: appearanceEdited,
-              preview: appearanceEdited,
+              staticAppearanceEdited: !!result._staticAppearanceEdited,
             },
           );
         } catch (e) {
@@ -2219,15 +2211,14 @@ const MeeshoAPI = {
       window.StaticFrameCompose?.composeStaticPreview
     ) {
       try {
-        const preserveKb = result.blob?.size
-          ? Math.ceil(result.blob.size / 1024)
-          : 0;
         return await window.StaticFrameCompose.composeStaticPreview(
           result.layers,
           result.editFlags || {},
           {
-            preserveKb,
-            jpegQuality: result.meta?.jpegQuality,
+            targetKb: 0,
+            preserveKb: 0,
+            preview: true,
+            jpegQuality: result.meta?.jpegQuality || 0.92,
           },
         );
       } catch (e) {}

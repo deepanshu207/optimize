@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=90";
+      return "/js/liveAnalysisBridge.mjs?v=91";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=90");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=91");
     }
-    return "/js/liveAnalysisBridge.mjs?v=90";
+    return "/js/liveAnalysisBridge.mjs?v=91";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=90";
+      return "/js/staticFrameCompose.mjs?v=91";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=90");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=91");
     }
-    return "/js/staticFrameCompose.mjs?v=90";
+    return "/js/staticFrameCompose.mjs?v=91";
   }
 
   async preloadStaticComposeModule() {
@@ -3227,7 +3227,7 @@ Please share payment details and license key.`;
       return {
         targetKb: 0,
         preserveKb: 0,
-        jpegQuality: row?.meta?.jpegQuality || 0.82,
+        jpegQuality: row?.meta?.jpegQuality || 0.92,
         style: row?.layers?._staticFrame?.style,
         preview: true,
       };
@@ -3505,8 +3505,8 @@ Please share payment details and license key.`;
     );
     if (!ok) return;
 
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
     }
@@ -3526,8 +3526,8 @@ Please share payment details and license key.`;
     );
     if (!ok) return;
 
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
   }
 
   async setStaticAllStickersHidden(variantId, hidden) {
@@ -3538,8 +3538,8 @@ Please share payment details and license key.`;
     if (!window.StaticFrameCompose?.setAllPlacementsHidden) return;
 
     window.StaticFrameCompose.setAllPlacementsHidden(row.layers, hidden);
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
 
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
