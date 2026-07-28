@@ -3,7 +3,7 @@
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
 import { imageToCanvas } from "./lib/canvas-utils.js?v=95";
-import { blobToDataUrl } from "./lib/encoder.js?v=95";
+import { blobToDataUrl, compressGownToKb } from "./lib/encoder.js?v=96";
 import { estimateImageShipping } from "./lib/shipping.js?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 
@@ -46,53 +46,9 @@ function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   return tiers;
 }
 
-function scaleCanvas(src, scale) {
-  const w = Math.max(1, Math.round(src.width * scale));
-  const h = Math.max(1, Math.round(src.height * scale));
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(src, 0, 0, w, h);
-  return c;
-}
-
-function encodePromoJpeg(canvas, quality) {
-  const q = Math.max(14, Math.min(92, quality)) / 100;
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob || new Blob()), "image/jpeg", q);
-  });
-}
-
-async function compressGownToKb(canvas, targetKb) {
-  const targetBytes = targetKb * 1024;
-  let work = canvas;
-  let bestBlob = null;
-
-  for (let attempt = 0; attempt < 14; attempt++) {
-    let lo = 14;
-    let hi = 92;
-    let passBest = null;
-    while (lo <= hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      const blob = await encodePromoJpeg(work, mid);
-      if (blob.size <= targetBytes) {
-        passBest = blob;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    if (passBest) return { blob: passBest, canvas: work };
-    bestBlob = passBest || (await encodePromoJpeg(work, 14));
-    if (bestBlob.size <= targetBytes) return { blob: bestBlob, canvas: work };
-    if (work.width <= 240) break;
-    work = scaleCanvas(work, 0.88);
-  }
-
-  return { blob: bestBlob || (await encodePromoJpeg(work, 14)), canvas: work };
+async function compressGownVariant(canvas, targetKb) {
+  const blob = await compressGownToKb(canvas, targetKb);
+  return { blob, canvas };
 }
 
 export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
@@ -515,7 +471,7 @@ export async function buildGownStaticVariants(img, options = {}) {
   for (let i = 0; i < kbTiers.length; i++) {
     const kb = kbTiers[i];
     onProgress(`Gown promo · ${kb}KB (${i + 1}/${kbTiers.length})`);
-    const { blob, canvas: outCanvas } = await compressGownToKb(sourceCanvas, kb);
+    const { blob, canvas: outCanvas } = await compressGownVariant(sourceCanvas, kb);
     const dataUrl = await blobToDataUrl(blob);
     const v = {
       blob,

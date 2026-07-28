@@ -41,7 +41,7 @@ assert(
   "gown-popular allows off-canvas x",
 );
 assert(
-  composeCode.includes("isGownArtPlacement") &&
+  composeCode.includes("p.kind === \"gownArt\"") &&
     composeCode.includes("locksH && locksV") &&
     composeCode.includes("gownPlacementPosition(slot, frame, w, h)"),
   "locked gown art uses gown anchor not slider clamp",

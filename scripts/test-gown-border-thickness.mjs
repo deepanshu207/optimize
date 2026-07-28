@@ -159,7 +159,7 @@ assert(contentCode.includes("borderThicknessLocked"), "border lock stored on fra
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes('dataset.staticEditorV = "14"'), "editor panel layout v14");
+assert(contentCode.includes('dataset.staticEditorV = "15"'), "editor panel layout v15");
 assert(contentCode.includes("static-color-outer-mat"), "gown has outer mat color");
 assert(contentCode.includes("static-color-inner-accent"), "gown has inner accent color");
 assert(contentCode.includes("static-color-pad"), "gown has photo pad color");

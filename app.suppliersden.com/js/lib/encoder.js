@@ -60,6 +60,49 @@ export async function compressFramedToKb(canvas, targetKb) {
   return encodeFramed(canvas, 28);
 }
 
+function scaleCanvasForGown(src, scale) {
+  const w = Math.max(1, Math.round(src.width * scale));
+  const h = Math.max(1, Math.round(src.height * scale));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
+
+/** Gown 773×1094 — quality + downscale loop (matches liveGownStatic generation). */
+export async function compressGownToKb(canvas, targetKb) {
+  const targetBytes = targetKb * 1024;
+  let work = canvas;
+  let bestBlob = null;
+
+  for (let attempt = 0; attempt < 14; attempt++) {
+    let lo = 14;
+    let hi = 92;
+    let passBest = null;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const blob = await encodeFramed(work, mid, 14);
+      if (blob.size <= targetBytes) {
+        passBest = blob;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (passBest) return passBest;
+    bestBlob = passBest || (await encodeFramed(work, 14, 14));
+    if (bestBlob.size <= targetBytes) return bestBlob;
+    if (work.width <= 240) break;
+    work = scaleCanvasForGown(work, 0.88);
+  }
+
+  return bestBlob || (await encodeFramed(work, 14, 14));
+}
+
 export function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();

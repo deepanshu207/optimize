@@ -78,12 +78,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=96";
+      return "/js/staticFrameCompose.mjs?v=97";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=96");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=97");
     }
-    return "/js/staticFrameCompose.mjs?v=96";
+    return "/js/staticFrameCompose.mjs?v=97";
   }
 
   async preloadStaticComposeModule() {
@@ -2922,6 +2922,30 @@ Please share payment details and license key.`;
     return row;
   }
 
+  ensureFrozenPricing(row) {
+    if (!row) return row;
+    if (row._frozenPricing?.estShipping > 0 || row._frozenPricing?.metaEstInr > 0) {
+      return row;
+    }
+    return this.freezeRowPricing(row, {
+      estShipping: row.estShipping,
+      shippingCost: row.shippingCost,
+      pricingImageUrl: row.pricingImageUrl,
+      dataUrl: row.dataUrl,
+      meta: row.meta,
+    });
+  }
+
+  async ensureRowComposeReady(row) {
+    if (!row?.layers) return row;
+    await this.preloadStaticComposeModule();
+    this.ensureFrozenPricing(row);
+    if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+      await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+    }
+    return row;
+  }
+
   getRowDisplayShipping(row) {
     const frozen = row?._frozenPricing;
     if (frozen) {
@@ -3304,6 +3328,7 @@ Please share payment details and license key.`;
 
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
+    await this.ensureRowComposeReady(row);
     const gen = ++this._borderComposeGen;
     const badgesOnly = this.variantBadgesOnlyCompose(row);
     const url = await window.StaticFrameCompose.composeStaticPreview(
@@ -3327,7 +3352,7 @@ Please share payment details and license key.`;
     const edited = this.isVariantEdited(row.editFlags, row.layers, row);
     if (!edited) return this.resolveDownloadUrl(row);
 
-    await this.preloadStaticComposeModule();
+    await this.ensureRowComposeReady(row);
     const url = await window.StaticFrameCompose.composeStaticPreview(
       row.layers,
       row.editFlags || {},
@@ -3342,6 +3367,7 @@ Please share payment details and license key.`;
 
   applyStaticPreviewToRow(row, url, variantId) {
     if (!url) return;
+    this.ensureFrozenPricing(row);
     row.imageUrl = url;
     if (this._editingVariantId === variantId) {
       const preview = document.getElementById("variant-edit-preview");
@@ -4753,6 +4779,8 @@ Please share payment details and license key.`;
           );
         };
         range.onchange = commit;
+        range.addEventListener("pointerup", commit);
+        range.addEventListener("touchend", commit, { passive: true });
       });
     };
     bindAxisSlider(".static-pos-h", "h");
@@ -4945,7 +4973,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "14") {
+    if (panel && panel.dataset.staticEditorV !== "15") {
       panel.remove();
       panel = null;
     }
@@ -4953,7 +4981,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "14";
+    panel.dataset.staticEditorV = "15";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -4963,8 +4991,8 @@ Please share payment details and license key.`;
           display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,0.25);overflow:hidden;
         }
         #variant-edit-panel #variant-edit-scroll {
-          overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
-          padding:0 16px 12px;overscroll-behavior:contain;touch-action:pan-y;
+          overflow-y:auto;overflow-x:hidden;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
+          padding:0 16px 12px;overscroll-behavior:contain;touch-action:pan-y pinch-zoom;
         }
         #variant-edit-panel #variant-edit-preview-wrap {
           position:sticky;top:0;z-index:2;margin:0 0 10px;padding:4px 0 10px;
@@ -4982,7 +5010,10 @@ Please share payment details and license key.`;
           opacity:0.5;cursor:not-allowed;
         }
         #variant-edit-panel input[type="range"] {
-          touch-action:pan-x;
+          touch-action:none;
+          width:100%;
+          min-height:32px;
+          margin:4px 0;
         }
         #variant-edit-panel .static-sticker-card input[type="range"],
         #variant-edit-panel #static-border-thickness,
@@ -5197,6 +5228,7 @@ Please share payment details and license key.`;
       }
     }
     this._editingVariantId = variantId;
+    this.ensureFrozenPricing(row);
     this.ensureVariantEditorPanel();
     this.renderVariantEditorPanel(row);
     document.getElementById("variant-edit-panel").style.display = "flex";

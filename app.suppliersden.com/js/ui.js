@@ -1129,8 +1129,7 @@ const OptimizerUI = {
             (b.estShipping || b.meta?.estInr || 999),
         )[0]
       : null;
-    const bestGownEst =
-      bestGown?.estShipping || bestGown?.meta?.estInr || 0;
+    const bestGownEst = bestGown ? OptimizerUI.frozenEstShipping(bestGown) : 0;
 
     const bestLive = hasLive && results[0]?.shippingCost > 0 ? results[0].shippingCost : null;
     const analysisSorted = hasAnalysis
