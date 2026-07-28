@@ -47,6 +47,14 @@ assert(
   composeCode.includes('p.kind === "freeShipping" || p.kind === "gownArt"'),
   "numbered badge swap converts gownArt to badge kind",
 );
+assert(
+  composeCode.includes("squareBadgeBox(w, h)"),
+  "gown numbered badges use square box like tall static",
+);
+assert(
+  composeCode.includes("slotW: p.w"),
+  "gown slot dimensions snapshotted for art restore",
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

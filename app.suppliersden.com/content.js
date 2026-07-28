@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=80";
+      return "/js/liveAnalysisBridge.mjs?v=81";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=80");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=81");
     }
-    return "/js/liveAnalysisBridge.mjs?v=80";
+    return "/js/liveAnalysisBridge.mjs?v=81";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=80";
+      return "/js/staticFrameCompose.mjs?v=81";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=80");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=81");
     }
-    return "/js/staticFrameCompose.mjs?v=80";
+    return "/js/staticFrameCompose.mjs?v=81";
   }
 
   async preloadStaticComposeModule() {
@@ -4226,7 +4226,10 @@ Please share payment details and license key.`;
 
   closeVariantEditor() {
     const panel = document.getElementById("variant-edit-panel");
-    if (panel) panel.style.display = "none";
+    if (panel) {
+      panel.querySelector("#variant-edit-preview-stage")?._zoomCtl?.reset();
+      panel.style.display = "none";
+    }
     clearTimeout(this._borderThicknessTimer);
     this._borderThicknessTimer = null;
     this._staticControlsVariantId = null;
@@ -4297,7 +4300,10 @@ Please share payment details and license key.`;
       }
     }
 
-    if (preview) preview.src = row.imageUrl;
+    if (preview) {
+      preview.src = row.imageUrl;
+      panel.querySelector("#variant-edit-preview-stage")?._zoomCtl?.reset();
+    }
     if (stickerCb) stickerCb.checked = !!flags.stickersRemoved;
     if (borderOnlyCb) borderOnlyCb.checked = !!flags.borderOnlyRemoved;
     if (cleanCb) cleanCb.checked = !!flags.cleanProduct;
@@ -4327,6 +4333,99 @@ Please share payment details and license key.`;
     }
   }
 
+  bindVariantPreviewZoom(panel) {
+    const stage = panel.querySelector("#variant-edit-preview-stage");
+    const img = panel.querySelector("#variant-edit-preview");
+    if (!stage || !img) return;
+
+    if (stage._zoomCtl) {
+      stage._zoomCtl.reset();
+      return;
+    }
+
+    let scale = 1;
+    let tx = 0;
+    let ty = 0;
+    let startDist = 0;
+    let startScale = 1;
+    let panStartX = 0;
+    let panStartY = 0;
+    let panOriginX = 0;
+    let panOriginY = 0;
+    let isPanning = false;
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    const apply = () => {
+      img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      stage.classList.toggle("is-zoomed", scale > 1.02);
+    };
+
+    const reset = () => {
+      scale = 1;
+      tx = 0;
+      ty = 0;
+      apply();
+      stage.scrollLeft = 0;
+      stage.scrollTop = 0;
+    };
+
+    stage.addEventListener("dblclick", () => reset());
+
+    stage.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          isPanning = false;
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          startDist = Math.hypot(dx, dy) || 1;
+          startScale = scale;
+        } else if (e.touches.length === 1 && scale > 1.02) {
+          isPanning = true;
+          panStartX = e.touches[0].clientX;
+          panStartY = e.touches[0].clientY;
+          panOriginX = tx;
+          panOriginY = ty;
+        }
+      },
+      { passive: false },
+    );
+
+    stage.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const dist = Math.hypot(dx, dy) || 1;
+          scale = clamp(startScale * (dist / startDist), 1, 4);
+          if (scale <= 1.02) {
+            scale = 1;
+            tx = 0;
+            ty = 0;
+          }
+          apply();
+        } else if (isPanning && e.touches.length === 1 && scale > 1.02) {
+          e.preventDefault();
+          tx = panOriginX + (e.touches[0].clientX - panStartX);
+          ty = panOriginY + (e.touches[0].clientY - panStartY);
+          apply();
+        }
+      },
+      { passive: false },
+    );
+
+    stage.addEventListener("touchend", () => {
+      isPanning = false;
+    });
+
+    img.addEventListener("load", reset);
+    stage._zoomCtl = { reset };
+  }
+
   ensureVariantEditorPanel() {
     let panel = document.getElementById("variant-edit-panel");
     if (panel && panel.querySelector("motionless")) {
@@ -4345,7 +4444,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "5") {
+    if (panel && panel.dataset.staticEditorV !== "6") {
       panel.remove();
       panel = null;
     }
@@ -4353,7 +4452,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "5";
+    panel.dataset.staticEditorV = "6";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -4366,10 +4465,29 @@ Please share payment details and license key.`;
           overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
           padding:0 16px 12px;overscroll-behavior:contain;
         }
-        #variant-edit-panel #variant-edit-preview {
-          position:sticky;top:0;z-index:2;width:100%;max-height:128px;object-fit:contain;
-          border-radius:8px;background:#fff;margin:0 0 10px;padding:4px 0;
+        #variant-edit-panel .variant-edit-preview-stage {
+          position:sticky;top:0;z-index:2;width:100%;
+          height:clamp(160px, 38vh, 320px);overflow:auto;
+          -webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;
+          background:#f8fafc;border-radius:8px;margin:0 0 4px;
           box-shadow:0 6px 16px rgba(255,255,255,0.92);
+          display:flex;align-items:flex-start;justify-content:center;
+        }
+        #variant-edit-panel .variant-edit-preview-stage.is-zoomed {
+          align-items:center;
+        }
+        #variant-edit-panel #variant-edit-preview {
+          width:100%;height:auto;min-width:min(100%, 280px);
+          object-fit:contain;transform-origin:center top;
+          user-select:none;-webkit-user-drag:none;
+          border-radius:6px;background:#fff;padding:4px 0;
+        }
+        #variant-edit-panel .variant-edit-preview-hint {
+          display:none;font-size:10px;color:#6b7280;text-align:center;
+          margin:0 0 10px;
+        }
+        @media (hover: none) and (pointer: coarse) {
+          #variant-edit-panel .variant-edit-preview-hint { display:block; }
         }
         #variant-edit-panel .static-slider-locked input[type="range"]:disabled {
           opacity:0.5;cursor:not-allowed;
@@ -4387,7 +4505,10 @@ Please share payment details and license key.`;
           </div>
         </div>
         <div id="variant-edit-scroll">
-          <img id="variant-edit-preview" alt="Preview">
+          <div id="variant-edit-preview-stage" class="variant-edit-preview-stage">
+            <img id="variant-edit-preview" alt="Preview">
+          </div>
+          <p class="variant-edit-preview-hint">Pinch to zoom · double-tap to reset</p>
           <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin:0 0 12px;"></p>
           <div id="variant-edit-remove-section" style="margin-bottom:10px;">
             <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
@@ -4429,6 +4550,7 @@ Please share payment details and license key.`;
       </div>
     `;
     document.body.appendChild(panel);
+    this.bindVariantPreviewZoom(panel);
 
     panel.querySelector("#variant-edit-close").onclick = () =>
       this.closeVariantEditor();
