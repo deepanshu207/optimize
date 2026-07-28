@@ -835,6 +835,27 @@ function frozenLayerUrl(layers, key) {
   return layers?._staticDefaults?.urls?.[key] || layers?.[key] || "";
 }
 
+/** Badge-only overlay: never bake on top of a layer that already has stickers. */
+function badgesOnlyBaseUrl(layers, flags = {}) {
+  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
+  if (!hasBorder && hasStickers) {
+    return (
+      frozenLayerUrl(layers, "noBorder") ||
+      frozenLayerUrl(layers, "productOnly") ||
+      layers.noBorder ||
+      layers.productOnly ||
+      ""
+    );
+  }
+  return (
+    frozenLayerUrl(layers, "noStickers") ||
+    layers.noStickers ||
+    frozenLayerUrl(layers, "full") ||
+    layers.full ||
+    ""
+  );
+}
+
 function canvasFromStaticImage(img, frame) {
   const canvas = document.createElement("canvas");
   const outerW = frame?.outerW || img.width;
@@ -1320,8 +1341,8 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
       return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
     let baseUrl = picked.url;
-    if (style === "gown_static" && badgesOnly) {
-      baseUrl = frozenLayerUrl(layers, "noStickers") || baseUrl;
+    if (badgesOnly) {
+      baseUrl = badgesOnlyBaseUrl(layers, flags) || baseUrl;
     }
     if (!baseUrl) {
       if (hasBorder && !hasStickers) baseUrl = frozenLayerUrl(layers, "noStickers") || layers.noStickers || layers.full;

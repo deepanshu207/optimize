@@ -1,6 +1,16 @@
 // UI components for Meesho Shipping Optimizer v6.0.0
 
 const OptimizerUI = {
+  frozenEstShipping: function (r) {
+    return (
+      r?._frozenPricing?.estShipping ??
+      r?._frozenPricing?.metaEstInr ??
+      r?.meta?.estInr ??
+      r?.estShipping ??
+      0
+    );
+  },
+
   // Create modal HTML
   createModalHTML: function () {
     const styles = `
@@ -637,10 +647,10 @@ const OptimizerUI = {
     const bestEst = (list) => {
       const s = [...list].sort(
         (a, b) =>
-          (a.estShipping || a.meta?.estInr || 999) -
-          (b.estShipping || b.meta?.estInr || 999),
+          (OptimizerUI.frozenEstShipping(a) || 999) -
+          (OptimizerUI.frozenEstShipping(b) || 999),
       );
-      return s[0]?.estShipping || s[0]?.meta?.estInr || 0;
+      return OptimizerUI.frozenEstShipping(s[0]);
     };
 
     const chip = (label, n, best, doneColor) =>
@@ -845,11 +855,10 @@ const OptimizerUI = {
     const baseline = options.baselineShipping || 0;
     const sorted = [...gown].sort(
       (a, b) =>
-        (a.estShipping || a.meta?.estInr || 999) -
-        (b.estShipping || b.meta?.estInr || 999),
+        (OptimizerUI.frozenEstShipping(a) || 999) -
+        (OptimizerUI.frozenEstShipping(b) || 999),
     );
-    const bestEst =
-      sorted[0]?.estShipping || sorted[0]?.meta?.estInr || 0;
+    const bestEst = OptimizerUI.frozenEstShipping(sorted[0]);
 
     let html = `
             <div style="margin-bottom:15px;border-top:1px solid rgba(0,0,0,0.08);padding-top:12px;">
