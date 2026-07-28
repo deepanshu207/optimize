@@ -1,5 +1,5 @@
 /**
- * Gown canvas geometry — competitor 773×1094 with triple-layer mat + hairline + cover-fit.
+ * Gown canvas geometry — competitor 773×1094 with triple-layer mat + cover-fit photo.
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -33,26 +33,28 @@ const gownCode = readFileSync(
 );
 assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "outer white mat ratio");
 assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "inner white mat ratio");
-assert(gownCode.includes("drawGownHairline"), "dark hairline border drawn");
-assert(gownCode.includes('GOWN_INNER_STROKE_COLOR = "#2a2a2a"'), "hairline is dark grey");
+assert(gownCode.includes("drawGownStaticFrameBackground"), "inner frame stroke drawn");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "cover-fit fills photo slot");
 assert(
   gownCode.includes("drawImage(noStickersCanvas, px, py, dw, dh"),
   "productOnly/noBorder crop pre-badge frame (not post-sticker canvas)",
 );
+assert(
+  !gownCode.includes(".drawImage(canvas, px, py, dw, dh"),
+  "productOnly does not copy post-badge canvas region",
+);
 
 const geom = computeGownFrameGeometry(773, 1094);
-assert(geom.border === 22, `teal border ${geom.border}px`);
-assert(geom.outerMatPad === 68, `outer mat ${geom.outerMatPad}px`);
-assert(geom.innerMatPad === 9, `inner mat ${geom.innerMatPad}px`);
-assert(geom.innerStroke === 1, `hairline stroke ${geom.innerStroke}px`);
-assert(geom.whitePad === 78, `total mat inset ${geom.whitePad}px`);
-assert(geom.dw === 573, `product slot width ${geom.dw}px`);
-assert(geom.dh === 894, `product slot height ${geom.dh}px`);
-assert(geom.px === 100, `product slot x ${geom.px}px`);
-assert(geom.innerFrameW === 593, `inner frame width ${geom.innerFrameW}px`);
-assert(geom.dw / 773 >= 0.73, `photo fills ≥73% of canvas width (${((geom.dw / 773) * 100).toFixed(1)}%)`);
-assert(geom.dw / 773 <= 0.76, `thick outer mat leaves visible bands (${((geom.dw / 773) * 100).toFixed(1)}%)`);
+assert(geom.border === 19, `teal border ${geom.border}px`);
+assert(geom.outerMatPad === 50, `outer mat ${geom.outerMatPad}px`);
+assert(geom.innerMatPad === 12, `inner mat ${geom.innerMatPad}px`);
+assert(geom.whitePad === 62, `total mat inset ${geom.whitePad}px`);
+assert(geom.dw === 611, `product slot width ${geom.dw}px`);
+assert(geom.dh === 932, `product slot height ${geom.dh}px`);
+assert(geom.px === 81, `product slot x ${geom.px}px`);
+assert(geom.innerFrameW === 635, `inner frame width ${geom.innerFrameW}px`);
+assert(geom.dw / 773 >= 0.78, `photo fills ≥78% of canvas width (${((geom.dw / 773) * 100).toFixed(1)}%)`);
+assert(geom.dw / 773 <= 0.82, `photo leaves visible double-mat bands (${((geom.dw / 773) * 100).toFixed(1)}%)`);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
