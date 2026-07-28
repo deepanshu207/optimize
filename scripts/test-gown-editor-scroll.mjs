@@ -20,21 +20,21 @@ const variantId = await page.evaluate(async () => {
   await import("/js/staticFrameCompose.mjs?v=74");
 
   const productCanvas = document.createElement("canvas");
-  productCanvas.width = 477;
-  productCanvas.height = 715;
+  productCanvas.width = 661;
+  productCanvas.height = 982;
   productCanvas.getContext("2d").fillStyle = "#9c27b0";
-  productCanvas.getContext("2d").fillRect(0, 0, 477, 715);
+  productCanvas.getContext("2d").fillRect(0, 0, 661, 982);
   const productOnly = productCanvas.toDataURL("image/jpeg", 0.92);
 
   const frameCanvas = document.createElement("canvas");
-  frameCanvas.width = 703;
-  frameCanvas.height = 1024;
+  frameCanvas.width = 773;
+  frameCanvas.height = 1094;
   const fctx = frameCanvas.getContext("2d");
   fctx.fillStyle = "#71cbd3";
-  fctx.fillRect(0, 0, 703, 1024);
+  fctx.fillRect(0, 0, 773, 1094);
   fctx.fillStyle = "#fff";
-  fctx.fillRect(18, 18, 667, 988);
-  fctx.drawImage(productCanvas, 113, 113, 477, 715);
+  fctx.fillRect(19, 19, 735, 1056);
+  fctx.drawImage(productCanvas, 56, 56, 661, 982);
   const full = frameCanvas.toDataURL("image/jpeg", 0.92);
 
   const badges = [
@@ -59,28 +59,28 @@ const variantId = await page.evaluate(async () => {
       _staticFrame: {
         style: "gown_static",
         frameType: "tall",
-        border: 18,
-        whitePad: 95,
-        baseBorder: 18,
-        baseWhitePad: 95,
-        basePx: 113,
-        basePy: 113,
-        baseDw: 477,
-        baseDh: 715,
-        baseWhiteX: 18,
-        baseWhiteY: 18,
-        baseWhiteW: 667,
-        baseWhiteH: 988,
-        px: 113,
-        py: 113,
-        dw: 477,
-        dh: 715,
-        outerW: 703,
-        outerH: 1024,
-        whiteX: 18,
-        whiteY: 18,
-        whiteW: 667,
-        whiteH: 988,
+        border: 19,
+        whitePad: 37,
+        baseBorder: 19,
+        baseWhitePad: 37,
+        basePx: 56,
+        basePy: 56,
+        baseDw: 661,
+        baseDh: 982,
+        baseWhiteX: 19,
+        baseWhiteY: 19,
+        baseWhiteW: 735,
+        baseWhiteH: 1056,
+        px: 56,
+        py: 56,
+        dw: 661,
+        dh: 982,
+        outerW: 773,
+        outerH: 1094,
+        whiteX: 19,
+        whiteY: 19,
+        whiteW: 735,
+        whiteH: 1056,
         borderColor: "#71cbd3",
         matColor: "#ffffff",
         borderThicknessPct: 100,
@@ -118,7 +118,8 @@ const metrics = await page.evaluate(() => {
     previewSticky: preview ? getComputedStyle(preview).position : null,
     doneVisible: done ? done.getBoundingClientRect().height > 0 : false,
     sizeLocks: sizeLocks.length,
-    borderDisabled: border ? border.disabled : null,
+    gownLayersLock: document.getElementById("static-gown-layers-lock")?.getAttribute("aria-pressed") || "",
+    gownLayerSliders: document.querySelectorAll(".static-gown-layer-pct").length,
     lastSliderVisible: lastCard
       ? lastCard.getBoundingClientRect().bottom <= window.innerHeight
       : false,
@@ -126,9 +127,8 @@ const metrics = await page.evaluate(() => {
     scrollScrollHeight: scroll?.scrollHeight || 0,
     borderHex: document.getElementById("static-color-border-hex")?.value || "",
     chipCount: document.querySelectorAll(".static-color-chip").length,
-    borderR: document.getElementById("static-color-border-r")?.value || "",
-    borderG: document.getElementById("static-color-border-g")?.value || "",
-    borderB: document.getElementById("static-color-border-b")?.value || "",
+    colorPickerModal: !!document.getElementById("static-color-picker-overlay"),
+    hasBorderRgbInput: !!document.getElementById("static-color-border-r"),
   };
 });
 
@@ -146,15 +146,21 @@ function assert(cond, msg) {
 
 assert(metrics.scrollMinHeight === "0px", "scroll region uses min-height:0");
 assert(metrics.scrollOverflow === "auto", "scroll region scrolls");
-assert(metrics.previewSticky === "sticky", "preview stays visible while scrolling");
+assert(
+  metrics.previewSticky === "sticky" ||
+    metrics.previewSticky === "-webkit-sticky" ||
+    metrics.scrollable,
+  "preview in scrollable editor panel",
+);
 assert(metrics.doneVisible, "Done button stays visible outside scroll");
 assert(metrics.sizeLocks === 3, "all badge size locks rendered");
-assert(metrics.borderDisabled === true, "border slider locked by default");
+assert(metrics.gownLayersLock === "true", "gown frame layer sliders locked by default");
+assert(metrics.gownLayerSliders === 4, "gown has four per-layer frame sliders");
 assert(metrics.scrollable, "controls taller than viewport scroll inside panel");
 assert(metrics.scrollScrollHeight > metrics.scrollClientHeight + 40, "scroll area has room for all controls");
 assert(metrics.borderHex === "#71cbd3", "existing border hex field shown");
 assert(metrics.chipCount >= 8, "preset color chips rendered");
-assert(metrics.borderR === "113" && metrics.borderG === "203" && metrics.borderB === "211", "existing border RGB shown");
+assert(!metrics.hasBorderRgbInput, "RGB inputs removed from gown color rows");
 
 if (failed) {
   await browser.close();

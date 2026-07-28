@@ -20,7 +20,7 @@ import {
 import {
   buildGownStaticVariants,
   GOWN_STATIC_VARIANT_COUNT,
-} from "./liveGownStatic.mjs?v=67";
+} from "./liveGownStatic.mjs?v=93";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;
@@ -171,7 +171,7 @@ export async function runTallStaticGeneration(file, options = {}) {
 }
 
 /**
- * Gown portrait promo — 703×1024 teal frame + gown badges @ ~₹49 band (web only).
+ * Gown portrait promo — 773×1094 teal frame + gown badges @ ~₹49 band (web only).
  */
 export async function runGownStaticGeneration(file, options = {}) {
   const { onProgress = () => {}, count = GOWN_STATIC_VARIANT_COUNT } = options;
