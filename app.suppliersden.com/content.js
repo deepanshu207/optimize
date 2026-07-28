@@ -79,12 +79,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=104";
+      return "/js/staticFrameCompose.mjs?v=105";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=104");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=105");
     }
-    return "/js/staticFrameCompose.mjs?v=104";
+    return "/js/staticFrameCompose.mjs?v=105";
   }
 
   async preloadStaticComposeModule() {
@@ -3261,13 +3261,21 @@ Please share payment details and license key.`;
     row._badgesRepositioned = false;
     row._staticAppearanceEdited = false;
 
-    const urls = row.layers._staticDefaults?.urls;
-    const resetUrl =
-      urls?.full ||
-      row.layers.full ||
-      row.pricingImageUrl ||
-      row.dataUrl ||
-      "";
+    let resetUrl = "";
+    try {
+      resetUrl = await this.composePreviewForRow(row, { staticAppearanceEdited: true });
+    } catch (e) {
+      console.warn("Reset preview compose failed:", e);
+    }
+    if (!resetUrl) {
+      const urls = row.layers._staticDefaults?.urls;
+      resetUrl =
+        urls?.full ||
+        row.layers.full ||
+        row.pricingImageUrl ||
+        row.dataUrl ||
+        "";
+    }
 
     row.imageUrl = resetUrl;
 
@@ -4573,10 +4581,9 @@ Please share payment details and license key.`;
       if (window.StaticFrameCompose?.ensureGownLayerPcts) {
         window.StaticFrameCompose.ensureGownLayerPcts(frame);
       } else if (!frame.gownLayerPct) {
-        frame.gownLayerPct = {
+        frame.gownLayerPct = window.StaticFrameCompose?.defaultGownLayerPct?.() || {
           border: 100,
           outerMat: 100,
-          innerAccent: 100,
           innerMat: 100,
         };
       }
