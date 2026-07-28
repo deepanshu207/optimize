@@ -1,22 +1,32 @@
 /**
- * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
+ * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=70";
-import { blobToDataUrl } from "./lib/encoder.js?v=70";
-import { estimateImageShipping } from "./lib/shipping.js?v=70";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=70";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=74";
+import { blobToDataUrl } from "./lib/encoder.js?v=74";
+import { estimateImageShipping } from "./lib/shipping.js?v=74";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=74";
 
-export const GOWN_STATIC_OUTER_W = 703;
-export const GOWN_STATIC_OUTER_H = 1024;
+export const GOWN_STATIC_OUTER_W = 773;
+export const GOWN_STATIC_OUTER_H = 1094;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Reference listing: thin teal + thick white mat, lifestyle photo fills mat. */
-const BORDER_TEAL = "#71cbd3";
+/**
+ * Reference frame stack (outside → in):
+ * teal border → white mat (similar weight) → teal inner accent → white pad → photo.
+ */
+export const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
-const GOWN_TEAL_RATIO = 0.025;
-/** Visible white mat between teal border and lifestyle photo (~13.5% per side). */
-const GOWN_WHITE_PAD_RATIO = 0.135;
+export const GOWN_TEAL_RATIO = 0.025;
+/** Primary white mat — similar thickness to outer teal ring. */
+export const GOWN_OUTER_MAT_RATIO = 0.025;
+export const GOWN_OUTER_MAT_MIN = 18;
+/** White padding between inner teal accent and lifestyle photo. */
+export const GOWN_INNER_MAT_RATIO = 0.022;
+export const GOWN_INNER_MAT_MIN = 14;
+/** Thin teal inner accent line (visible third layer on reference listing). */
+export const GOWN_INNER_STROKE = 3;
+export const GOWN_INNER_STROKE_COLOR = BORDER_TEAL;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -78,57 +88,197 @@ async function compressGownToKb(canvas, targetKb) {
   return { blob: bestBlob || (await encodePromoJpeg(work, 14)), canvas: work };
 }
 
+export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
+  const ref = Math.min(outerW, outerH);
+  const border = overrides.border ?? Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
+  const outerMatPad =
+    overrides.outerMatPad ??
+    Math.max(GOWN_OUTER_MAT_MIN, Math.round(ref * GOWN_OUTER_MAT_RATIO));
+  const innerMatPad =
+    overrides.innerMatPad ??
+    Math.max(GOWN_INNER_MAT_MIN, Math.round(ref * GOWN_INNER_MAT_RATIO));
+  const innerStroke = overrides.innerStroke ?? GOWN_INNER_STROKE;
+
+  const whiteX = border;
+  const whiteY = border;
+  const whiteW = outerW - border * 2;
+  const whiteH = outerH - border * 2;
+
+  const innerFrameX = whiteX + outerMatPad;
+  const innerFrameY = whiteY + outerMatPad;
+  const innerFrameW = whiteW - outerMatPad * 2;
+  const innerFrameH = whiteH - outerMatPad * 2;
+
+  const slotInset = innerMatPad + innerStroke;
+  const slotX = innerFrameX + slotInset;
+  const slotY = innerFrameY + slotInset;
+  const maxProdW = innerFrameW - slotInset * 2;
+  const maxProdH = innerFrameH - slotInset * 2;
+
+  return {
+    border,
+    outerMatPad,
+    innerMatPad,
+    innerStroke,
+    innerStrokeColor: overrides.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR,
+    whitePad: outerMatPad + innerMatPad + innerStroke,
+    whiteX,
+    whiteY,
+    whiteW,
+    whiteH,
+    innerFrameX,
+    innerFrameY,
+    innerFrameW,
+    innerFrameH,
+    px: slotX,
+    py: slotY,
+    dw: maxProdW,
+    dh: maxProdH,
+    outerW,
+    outerH,
+  };
+}
+
+function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
+  const t = Math.max(2, Math.round(thickness));
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, t);
+  ctx.fillRect(x, y + h - t, w, t);
+  ctx.fillRect(x, y, t, h);
+  ctx.fillRect(x + w - t, y, t, h);
+}
+
+/** Gown outer border uses a vertical gradient when frameType is gradient or a preset is set. */
+export function gownUsesBorderGradient(frame) {
+  return frame?.frameType === "gradient" || !!frame?.gradientPreset;
+}
+
+function gownBorderFillStyle(ctx, frame, outerW, outerH) {
+  if (!gownUsesBorderGradient(frame)) {
+    return frame.borderColor || BORDER_TEAL;
+  }
+  const grad = ctx.createLinearGradient(0, 0, 0, outerH);
+  grad.addColorStop(0, frame.gradientTop || frame.borderColor || BORDER_TEAL);
+  grad.addColorStop(1, frame.gradientBottom || BORDER_TEAL_DARK);
+  return grad;
+}
+
+/** Teal border + white mat + teal inner accent (no photo). */
+export function drawGownStaticFrameBackground(ctx, frame) {
+  const outerW = frame.outerW || 0;
+  const outerH = frame.outerH || 0;
+  const border = frame.border ?? 0;
+  const wx = frame.whiteX ?? border;
+  const wy = frame.whiteY ?? border;
+  const ww = frame.whiteW ?? outerW - border * 2;
+  const wh = frame.whiteH ?? outerH - border * 2;
+  const omp = frame.outerMatPad ?? 0;
+  const ifx = frame.innerFrameX ?? wx + omp;
+  const ify = frame.innerFrameY ?? wy + omp;
+  const ifw = frame.innerFrameW ?? ww - omp * 2;
+  const ifh = frame.innerFrameH ?? wh - omp * 2;
+  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const outerMatColor = frame.outerMatColor ?? frame.matColor ?? "#ffffff";
+  const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
+  const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
+
+  ctx.fillStyle = gownBorderFillStyle(ctx, frame, outerW, outerH);
+  ctx.fillRect(0, 0, outerW, outerH);
+
+  if (omp > 0 && ww > 0 && wh > 0) {
+    ctx.fillStyle = outerMatColor;
+    ctx.fillRect(wx, wy, ww, omp);
+    ctx.fillRect(wx, wy + wh - omp, ww, omp);
+    ctx.fillRect(wx, wy + omp, omp, wh - 2 * omp);
+    ctx.fillRect(wx + ww - omp, wy + omp, omp, wh - 2 * omp);
+  }
+
+  if (ifw > 0 && ifh > 0) {
+    const padX = ifx + stroke;
+    const padY = ify + stroke;
+    const padW = ifw - 2 * stroke;
+    const padH = ifh - 2 * stroke;
+    if (padW > 0 && padH > 0) {
+      ctx.fillStyle = padColor;
+      ctx.fillRect(padX, padY, padW, padH);
+    }
+    drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
+  }
+}
+
+/** Cover-fit lifestyle photo clipped to the gown photo pad (inside inner accent). */
+export function drawGownProductInSlot(ctx, productImg, frame) {
+  const ifx = frame.innerFrameX ?? 0;
+  const ify = frame.innerFrameY ?? 0;
+  const ifw = frame.innerFrameW ?? 0;
+  const ifh = frame.innerFrameH ?? 0;
+  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const slotInset = (frame.innerMatPad ?? 0) + stroke;
+  const slotX = ifx + slotInset;
+  const slotY = ify + slotInset;
+  const slotW = ifw - 2 * slotInset;
+  const slotH = ifh - 2 * slotInset;
+  if (slotW <= 0 || slotH <= 0 || !productImg?.width) return;
+
+  const fitScale = Math.max(slotW / productImg.width, slotH / productImg.height);
+  const sw = Math.round(productImg.width * fitScale);
+  const sh = Math.round(productImg.height * fitScale);
+  const imgX = slotX + Math.round((slotW - sw) / 2);
+  const imgY = slotY + Math.round((slotH - sh) / 2);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(slotX, slotY, slotW, slotH);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(productImg, 0, 0, productImg.width, productImg.height, imgX, imgY, sw, sh);
+  ctx.restore();
+}
+
+/** Cover-fit source photo into gown photo slot — same geometry as generation. */
+export function drawGownPhotoCoverFit(ctx, base, geom) {
+  const { px, py, dw, dh } = geom;
+  const fitScale = Math.max(dw / base.width, dh / base.height);
+  const sw = Math.round(base.width * fitScale);
+  const sh = Math.round(base.height * fitScale);
+  const imgX = px + Math.round((dw - sw) / 2);
+  const imgY = py + Math.round((dh - sh) / 2);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px, py, dw, dh);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(base, 0, 0, base.width, base.height, imgX, imgY, sw, sh);
+  ctx.restore();
+}
+
 function buildGownStaticFrameCanvas(img) {
   const outerW = GOWN_STATIC_OUTER_W;
   const outerH = GOWN_STATIC_OUTER_H;
   const base = imageToCanvas(img, 1200);
-  const ref = Math.min(outerW, outerH);
-
-  const tealOuter = Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
-  const whitePad = Math.max(64, Math.round(ref * GOWN_WHITE_PAD_RATIO));
-  const whiteX = tealOuter;
-  const whiteY = tealOuter;
-  const whiteW = outerW - tealOuter * 2;
-  const whiteH = outerH - tealOuter * 2;
-
-  const maxProdW = whiteW - whitePad * 2;
-  const maxProdH = whiteH - whitePad * 2;
-  const fitScale = Math.min(maxProdW / base.width, maxProdH / base.height, 1);
-  const sw = Math.round(base.width * fitScale);
-  const sh = Math.round(base.height * fitScale);
-
-  const px = tealOuter + whitePad + Math.round((maxProdW - sw) / 2);
-  const py = tealOuter + whitePad + Math.round((maxProdH - sh) / 2);
+  const geom = computeGownFrameGeometry(outerW, outerH);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
   canvas.height = outerH;
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = BORDER_TEAL;
-  ctx.fillRect(0, 0, outerW, outerH);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(base, 0, 0, base.width, base.height, px, py, sw, sh);
+  drawGownStaticFrameBackground(ctx, {
+    ...geom,
+    borderColor: BORDER_TEAL,
+    matColor: "#ffffff",
+    innerStroke: GOWN_INNER_STROKE,
+    innerStrokeColor: GOWN_INNER_STROKE_COLOR,
+  });
+  drawGownPhotoCoverFit(ctx, base, geom);
 
   return {
     canvas,
-    px,
-    py,
-    dw: sw,
-    dh: sh,
-    border: tealOuter,
-    whitePad,
-    whiteX,
-    whiteY,
-    whiteW,
-    whiteH,
+    ...geom,
     source: base,
-    outerW,
-    outerH,
   };
 }
 
@@ -210,6 +360,14 @@ async function buildGownStaticLayers(img) {
     dh,
     border,
     whitePad,
+    outerMatPad,
+    innerMatPad,
+    innerStroke,
+    innerStrokeColor,
+    innerFrameX,
+    innerFrameY,
+    innerFrameW,
+    innerFrameH,
     whiteX,
     whiteY,
     whiteW,
@@ -233,16 +391,17 @@ async function buildGownStaticLayers(img) {
   const productOnlyCanvas = document.createElement("canvas");
   productOnlyCanvas.width = dw;
   productOnlyCanvas.height = dh;
+  // Crop pre-badge frame (like tall_static uses trimmed, not post-sticker canvas).
   productOnlyCanvas
     .getContext("2d")
-    .drawImage(source, 0, 0, source.width, source.height, 0, 0, dw, dh);
+    .drawImage(noStickersCanvas, px, py, dw, dh, 0, 0, dw, dh);
   const productOnly = dataUrlFromCanvas(productOnlyCanvas);
 
   const noBorderCanvas = document.createElement("canvas");
   noBorderCanvas.width = dw;
   noBorderCanvas.height = dh;
   const nbCtx = noBorderCanvas.getContext("2d");
-  nbCtx.drawImage(source, 0, 0, source.width, source.height, 0, 0, dw, dh);
+  nbCtx.drawImage(noStickersCanvas, px, py, dw, dh, 0, 0, dw, dh);
   const shifted = badgePlacements.map((p) => ({
     ...p,
     x: (p.x || 0) - px,
@@ -258,6 +417,7 @@ async function buildGownStaticLayers(img) {
       noStickers,
       noBorder,
       productOnly,
+      _gownPhotoSource: dataUrlFromCanvas(source),
       _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
       _staticFrame: {
@@ -265,6 +425,9 @@ async function buildGownStaticLayers(img) {
         frameType: "tall",
         borderColor: BORDER_TEAL,
         matColor: "#ffffff",
+        outerMatColor: "#ffffff",
+        padColor: "#ffffff",
+        innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         gradientTop: BORDER_TEAL,
         gradientBottom: BORDER_TEAL_DARK,
         gradientPreset: null,
@@ -274,7 +437,17 @@ async function buildGownStaticLayers(img) {
         dh,
         border,
         whitePad,
+        outerMatPad,
+        innerMatPad,
+        innerFrameX,
+        innerFrameY,
+        innerFrameW,
+        innerFrameH,
+        innerStroke,
         baseBorder: border,
+        baseOuterMatPad: outerMatPad,
+        baseInnerMatPad: innerMatPad,
+        baseInnerStroke: innerStroke,
         baseWhitePad: whitePad,
         basePx: px,
         basePy: py,
@@ -284,8 +457,19 @@ async function buildGownStaticLayers(img) {
         baseWhiteY: whiteY,
         baseWhiteW: whiteW,
         baseWhiteH: whiteH,
+        baseInnerFrameX: innerFrameX,
+        baseInnerFrameY: innerFrameY,
+        baseInnerFrameW: innerFrameW,
+        baseInnerFrameH: innerFrameH,
         borderThicknessPct: 100,
         borderThicknessLocked: true,
+        gownLayerPct: {
+          border: 100,
+          outerMat: 100,
+          innerAccent: 100,
+          innerMat: 100,
+        },
+        gownFrameLayersLocked: true,
         outerW,
         outerH,
         whiteX,

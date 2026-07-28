@@ -363,7 +363,7 @@ class MeeshoShippingOptimizer {
       processingArea.innerHTML = `
         <div style="text-align:center;padding:24px 16px;">
           <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building gown promo frames…</div>
-          <div style="font-size:12px;color:#666;">703×1024 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
+          <div style="font-size:12px;color:#666;">773×1094 teal frame · lifestyle scene · cover-fit photo · ~₹49 band</div>
         </div>`;
     }
 
@@ -3138,6 +3138,10 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
+    clearTimeout(this._borderThicknessTimer);
+    this._borderThicknessTimer = null;
+    this._borderComposeGen = (this._borderComposeGen || 0) + 1;
+
     await this.preloadStaticComposeModule();
     if (
       window.StaticFrameCompose?.resetStaticPlacements &&
@@ -3149,13 +3153,18 @@ Please share payment details and license key.`;
     row.editFlags = this.normalizeEditFlags({});
     row._badgesRepositioned = false;
     row._staticAppearanceEdited = false;
-    row.imageUrl =
+
+    const resetUrl =
       row.layers.full ||
       row.pricingImageUrl ||
       row.dataUrl ||
       "";
 
+    row.imageUrl = resetUrl;
+
     if (this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
+      this.applyStaticPreviewToRow(row, resetUrl, variantId);
       this.renderVariantEditorPanel(row);
     } else {
       this.refreshVariantCard(row);
@@ -3191,6 +3200,20 @@ Please share payment details and license key.`;
     };
   }
 
+  updateVariantEditorResetButton(row) {
+    const panel = document.getElementById("variant-edit-panel");
+    if (!panel || !row || this._editingVariantId !== row.variantId) return;
+    const resetBtn = panel.querySelector("#variant-edit-reset");
+    if (!resetBtn) return;
+    const hasAdvanced = this.hasAdvancedEditor(row);
+    const edited =
+      !!row._badgesRepositioned ||
+      !!row._staticAppearanceEdited ||
+      this.isVariantEdited(row.editFlags, row.layers, row) ||
+      (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
+    resetBtn.style.display = edited ? "block" : "none";
+  }
+
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     const gen = ++this._borderComposeGen;
@@ -3215,6 +3238,7 @@ Please share payment details and license key.`;
       if (preview) preview.src = url;
     }
     this.refreshVariantCard(row);
+    this.updateVariantEditorResetButton(row);
   }
 
   async refreshStaticPreview(variantId) {
@@ -3258,6 +3282,7 @@ Please share payment details and license key.`;
       if (preview) preview.src = row.imageUrl;
     }
     this.refreshVariantCard(row);
+    this.updateVariantEditorResetButton(row);
   }
 
   async setStaticBadgeAnchor(variantId, placementId, anchor) {
@@ -4285,10 +4310,7 @@ Please share payment details and license key.`;
         : "6 preview options — edits update save only, not shipping ₹.";
     }
     if (resetBtn) {
-      const edited =
-        this.isVariantEdited(row.editFlags, row.layers, row) ||
-        (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
-      resetBtn.style.display = edited ? "block" : "none";
+      this.updateVariantEditorResetButton(row);
     }
   }
 
