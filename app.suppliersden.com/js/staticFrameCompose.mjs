@@ -272,6 +272,44 @@ function placementSize(p) {
   return { w: s, h: s };
 }
 
+/** Gown vector-art slot box — matches liveGownStatic.mjs geometry. */
+export function gownArtDimensions(slotId, frame) {
+  if (!slotId?.startsWith("gown-") || !frame) return null;
+  const ref = Math.min(frame.dw ?? frame.baseDw, frame.dh ?? frame.baseDh);
+  if (slotId === "gown-best") {
+    const w = Math.round(ref * 0.36);
+    return { w, h: Math.round(w * 0.7) };
+  }
+  if (slotId === "gown-flash") {
+    const w = Math.round(ref * 0.32);
+    return { w, h: Math.round(w * 0.4) };
+  }
+  if (slotId === "gown-popular") {
+    const w = Math.round(ref * 0.42);
+    return { w, h: Math.round(w * 0.26) };
+  }
+  return null;
+}
+
+/** Numbered PNG badges use a square box (tall/showcase pattern) — avoids stretch on wide gown slots. */
+function squareBadgeBox(w, h) {
+  return Math.max(8, Math.round(Math.min(w, h)));
+}
+
+function restoreGownArtSlotSize(p, layers) {
+  const pDef = layers._staticDefaults?.placements?.[p.id];
+  if (pDef?.slotW != null && pDef?.slotH != null) {
+    p.w = pDef.slotW;
+    p.h = pDef.slotH;
+    return;
+  }
+  const dims = gownArtDimensions(p.id, layers._staticFrame);
+  if (dims) {
+    p.w = dims.w;
+    p.h = dims.h;
+  }
+}
+
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -1199,6 +1237,7 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
     p.defaultH = undefined;
     p.defaultSize = undefined;
     p.size = undefined;
+    restoreGownArtSlotSize(p, layers);
     p.drawn = true;
     if (p.id === "gown-best") p.label = "Best PRICE";
     else if (p.id === "gown-flash") p.label = "FLASH SALE";
@@ -1230,10 +1269,18 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
     const { w, h } = placementSize(p);
     if (!p.gownSlot && p.id?.startsWith("gown-")) p.gownSlot = p.id;
     p.kind = "badge";
-    p.defaultW = w;
-    p.defaultH = h;
-    p.w = w;
-    p.h = h;
+    if (p.id?.startsWith("gown-")) {
+      const side = squareBadgeBox(w, h);
+      p.defaultW = side;
+      p.defaultH = side;
+      p.w = side;
+      p.h = side;
+    } else {
+      p.defaultW = w;
+      p.defaultH = h;
+      p.w = w;
+      p.h = h;
+    }
     p.defaultSize = undefined;
     p.size = undefined;
   }
@@ -1344,6 +1391,8 @@ function snapshotDefaults(layers, style) {
         posV: p.posV,
         sizePct: p.sizePct ?? 100,
         freeShippingSlot: isFreeShippingSlot(p),
+        slotW: p.w,
+        slotH: p.h,
       };
     }
   }
@@ -1525,6 +1574,20 @@ export function resetStaticPlacements(layers) {
         p.kind = "gownArt";
         p.gownSlot = p.id;
         p.num = undefined;
+        p.defaultW = undefined;
+        p.defaultH = undefined;
+        p.defaultSize = undefined;
+        p.size = undefined;
+        if (pDef.slotW != null && pDef.slotH != null) {
+          p.w = pDef.slotW;
+          p.h = pDef.slotH;
+        } else {
+          const dims = gownArtDimensions(p.id, layers._staticFrame);
+          if (dims) {
+            p.w = dims.w;
+            p.h = dims.h;
+          }
+        }
         if (p.id === "gown-best") p.label = "Best PRICE";
         else if (p.id === "gown-flash") p.label = "FLASH SALE";
         else if (p.id === "gown-popular") p.label = "MOST POPULAR";
