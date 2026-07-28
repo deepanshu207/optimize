@@ -87,7 +87,10 @@ gownFrame.gownLayerPct = { border: 100, outerMat: 100, innerAccent: 100, innerMa
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(gownFrame.outerMatPad >= 40, "500 thickens outer white mat");
+assert(
+  gownFrame.outerMatPad > 19,
+  "500 thickens outer white mat within canvas (product stays fixed)",
+);
 assert(
   gownFrame.border + gownFrame.outerMatPad + gownFrame.innerStroke + gownFrame.innerMatPad > 58,
   "500 increases total frame inset",
@@ -151,7 +154,7 @@ assert(gownCode.includes("drawGownInnerAccent"), "gown draws teal inner accent")
 assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent is teal not grey");
 assert(gownCode.includes("drawGownPhotoInFixedRect"), "gown uses cover-fit");
 assert(composeCode.includes("ensureGownLayerPcts"), "compose has gown layer pct helper");
-assert(composeCode.includes("drawGownProductInSlot"), "compose clips gown photo to pad slot");
+assert(composeCode.includes("drawProductPhotoCoverFit"), "compose uses shared photo cover-fit draw");
 assert(composeCode.includes("applyGownFrameLayers"), "compose applies gown layers independently");
 assert(gownCode.includes("export function drawGownProductInSlot"), "gown exports clipped product draw");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
@@ -159,7 +162,7 @@ assert(contentCode.includes("borderThicknessLocked"), "border lock stored on fra
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes('dataset.staticEditorV = "15"'), "editor panel layout v15");
+assert(contentCode.includes('dataset.staticEditorV = "19"'), "editor panel layout v19");
 assert(contentCode.includes("static-color-outer-mat"), "gown has outer mat color");
 assert(contentCode.includes("static-color-inner-accent"), "gown has inner accent color");
 assert(contentCode.includes("static-color-pad"), "gown has photo pad color");
@@ -171,8 +174,8 @@ assert(contentCode.includes("openVariantFullPreview"), "preview tap opens full s
 assert(gownCode.includes("gownFixedPhotoRect"), "gown keeps fixed photo box");
 assert(gownCode.includes("drawGownPhotoInFixedRect"), "gown uses fixed rect draw");
 assert(gownCode.includes("photoZoomLocked"), "gown frame stores zoom lock");
-assert(contentCode.includes("static-gown-photo-zoom-lock"), "editor has photo zoom lock");
-assert(contentCode.includes("static-gown-photo-zoom"), "editor has photo zoom slider");
+assert(contentCode.includes("static-photo-zoom-lock"), "editor has photo zoom lock");
+assert(contentCode.includes("static-photo-zoom"), "editor has photo zoom slider");
 assert(gownCode.includes("outerMatColor"), "gown frame stores outer mat color");
 assert(gownCode.includes("padColor"), "gown frame stores photo pad color");
 assert(gownCode.includes("outerMatColor ?? frame.matColor"), "gown draws separate outer mat");
