@@ -1,22 +1,22 @@
 /**
- * Gown portrait promo @ 703×1024 — reference listing for ~₹49 band.
+ * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=70";
-import { blobToDataUrl } from "./lib/encoder.js?v=70";
-import { estimateImageShipping } from "./lib/shipping.js?v=70";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=70";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=76";
+import { blobToDataUrl } from "./lib/encoder.js?v=76";
+import { estimateImageShipping } from "./lib/shipping.js?v=76";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=76";
 
-export const GOWN_STATIC_OUTER_W = 703;
-export const GOWN_STATIC_OUTER_H = 1024;
+export const GOWN_STATIC_OUTER_W = 773;
+export const GOWN_STATIC_OUTER_H = 1094;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
 /** Reference listing: thin teal + thick white mat, lifestyle photo fills mat. */
 const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
 const GOWN_TEAL_RATIO = 0.025;
-/** Visible white mat between teal border and lifestyle photo (~13.5% per side). */
-const GOWN_WHITE_PAD_RATIO = 0.135;
+/** White mat per side (~11.2%) — tuned so lifestyle photo fills ~73% of canvas width. */
+const GOWN_WHITE_PAD_RATIO = 0.112;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -93,7 +93,7 @@ function buildGownStaticFrameCanvas(img) {
 
   const maxProdW = whiteW - whitePad * 2;
   const maxProdH = whiteH - whitePad * 2;
-  const fitScale = Math.min(maxProdW / base.width, maxProdH / base.height, 1);
+  const fitScale = Math.min(maxProdW / base.width, maxProdH / base.height);
   const sw = Math.round(base.width * fitScale);
   const sh = Math.round(base.height * fitScale);
 
