@@ -41,6 +41,7 @@ class MeeshoShippingOptimizer {
     this.modal = null;
     this.autoPopupShown = false;
     this._borderThicknessTimer = null;
+    this._gownLayerTimer = null;
     this._borderComposeGen = 0;
     this._staticControlsVariantId = null;
     this.init();
@@ -66,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=74";
+      return "/js/liveAnalysisBridge.mjs?v=93";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=74");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=93");
     }
-    return "/js/liveAnalysisBridge.mjs?v=74";
+    return "/js/liveAnalysisBridge.mjs?v=93";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=74";
+      return "/js/staticFrameCompose.mjs?v=93";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=74");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=93");
     }
-    return "/js/staticFrameCompose.mjs?v=74";
+    return "/js/staticFrameCompose.mjs?v=93";
   }
 
   async preloadStaticComposeModule() {
@@ -363,7 +364,7 @@ class MeeshoShippingOptimizer {
       processingArea.innerHTML = `
         <div style="text-align:center;padding:24px 16px;">
           <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Building gown promo frames…</div>
-          <div style="font-size:12px;color:#666;">703×1024 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
+          <div style="font-size:12px;color:#666;">773×1094 teal frame · lifestyle scene · thick white mat · ~₹49 band</div>
         </div>`;
     }
 
@@ -1097,6 +1098,7 @@ Please share payment details and license key.`;
         const label = previewBox.querySelector(".preview-label");
         if (label) label.textContent = file.name;
         if (uploadArea) uploadArea.style.display = "none";
+        this.wireClearUploadButton();
       };
       reader.readAsDataURL(file);
     };
@@ -1286,6 +1288,8 @@ Please share payment details and license key.`;
         }
       };
     }
+
+    this.wireClearUploadButton();
   }
 
   // Load categories into dropdown
@@ -2899,6 +2903,36 @@ Please share payment details and license key.`;
     };
   }
 
+  freezeRowPricing(row, source = {}) {
+    const estShipping = source.estShipping ?? source.meta?.estInr ?? row.estShipping ?? 0;
+    row._frozenPricing = {
+      estShipping,
+      shippingCost: source.shippingCost ?? row.shippingCost ?? 0,
+      pricingImageUrl:
+        source.pricingImageUrl ||
+        row.pricingImageUrl ||
+        source.dataUrl ||
+        row.dataUrl ||
+        "",
+      metaKb: source.meta?.kb ?? row.meta?.kb,
+      metaEstInr: source.meta?.estInr ?? estShipping,
+      targetKb: source.meta?.targetKb ?? row.meta?.targetKb,
+    };
+    return row;
+  }
+
+  getRowDisplayShipping(row) {
+    const frozen = row?._frozenPricing;
+    if (frozen) {
+      if (frozen.shippingCost > 0) return { amount: frozen.shippingCost, verified: true };
+      if (frozen.estShipping > 0) return { amount: frozen.estShipping, verified: false };
+      if (frozen.metaEstInr > 0) return { amount: frozen.metaEstInr, verified: false };
+    }
+    if (row?.shippingCost > 0) return { amount: row.shippingCost, verified: true };
+    const est = row?.estShipping ?? row?.meta?.estInr ?? 0;
+    return { amount: est, verified: false };
+  }
+
   mapResultFromApi(r, index) {
     const variantId =
       r.variantId || `var-${index + 1}-${Math.random().toString(36).slice(2, 7)}`;
@@ -2934,6 +2968,13 @@ Please share payment details and license key.`;
       typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl
         ? MeeshoAPI.resolveDisplayUrl(row) || pricingImageUrl
         : pricingImageUrl;
+    this.freezeRowPricing(row, {
+      estShipping: row.estShipping,
+      shippingCost: row.shippingCost,
+      pricingImageUrl,
+      dataUrl: row.dataUrl,
+      meta: row.meta,
+    });
     return row;
   }
 
@@ -3011,6 +3052,42 @@ Please share payment details and license key.`;
     });
   }
 
+  openVariantFullPreview(row) {
+    if (!row) return;
+    const src =
+      document.getElementById("variant-edit-preview")?.src ||
+      this.resolveResultImageSrc(row);
+    if (!src) {
+      OptimizerUtils.showNotification("No preview for this variant", "error");
+      return;
+    }
+
+    let overlay = document.getElementById("variant-full-preview-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "variant-full-preview-overlay";
+      overlay.style.cssText =
+        "position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;";
+      overlay.innerHTML = `
+        <button type="button" id="variant-full-preview-close" style="position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;z-index:1;">Close</button>
+        <img id="variant-full-preview-img" alt="Full preview" style="max-width:100%;max-height:92vh;object-fit:contain;border-radius:8px;background:#fff;touch-action:pan-x pan-y pinch-zoom;">
+        <div id="variant-full-preview-title" style="color:#fff;font-size:13px;margin-top:10px;text-align:center;max-width:90vw;"></div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#variant-full-preview-close").onclick = () => {
+        overlay.style.display = "none";
+      };
+      overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.style.display = "none";
+      };
+    }
+
+    const img = overlay.querySelector("#variant-full-preview-img");
+    const title = overlay.querySelector("#variant-full-preview-title");
+    if (img) img.src = src;
+    if (title) title.textContent = row.name || "Variant preview";
+    overlay.style.display = "flex";
+  }
+
   openTestLabImagePreview(row) {
     if (!row) return;
     const src = this.resolveResultImageSrc(row);
@@ -3085,17 +3162,18 @@ Please share payment details and license key.`;
     await this.preloadStaticComposeModule();
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
-        row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
+        const url = await MeeshoAPI.resolveDisplayUrlAsync(row);
+        this.applyStaticPreviewToRow(row, url, variantId);
       } catch (e) {
-        row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+        const url = MeeshoAPI.resolveDisplayUrl(row);
+        this.applyStaticPreviewToRow(row, url, variantId);
       }
     } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
-      row.imageUrl = MeeshoAPI.resolveDisplayUrl(row);
+      const url = MeeshoAPI.resolveDisplayUrl(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
     } else if (window.StaticFrameCompose?.composeStaticPreview) {
-      row.imageUrl = await window.StaticFrameCompose.composeStaticPreview(
-        row.layers,
-        row.editFlags,
-      );
+      const url = await this.composePreviewForRow(row);
+      this.applyStaticPreviewToRow(row, url, variantId);
     }
 
     if (this._editingVariantId === variantId) {
@@ -3138,24 +3216,34 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
+    clearTimeout(this._borderThicknessTimer);
+    this._borderThicknessTimer = null;
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = null;
+    this._borderComposeGen = (this._borderComposeGen || 0) + 1;
+
     await this.preloadStaticComposeModule();
-    if (
-      window.StaticFrameCompose?.resetStaticPlacements &&
-      (row.layers._staticFrame || (row.layers._badgePlacements || []).length)
-    ) {
+    if (window.StaticFrameCompose?.resetStaticPlacements) {
       window.StaticFrameCompose.resetStaticPlacements(row.layers);
     }
 
     row.editFlags = this.normalizeEditFlags({});
     row._badgesRepositioned = false;
     row._staticAppearanceEdited = false;
-    row.imageUrl =
+
+    const urls = row.layers._staticDefaults?.urls;
+    const resetUrl =
+      urls?.full ||
       row.layers.full ||
       row.pricingImageUrl ||
       row.dataUrl ||
       "";
 
+    row.imageUrl = resetUrl;
+
     if (this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
+      this.applyStaticPreviewToRow(row, resetUrl, variantId);
       this.renderVariantEditorPanel(row);
     } else {
       this.refreshVariantCard(row);
@@ -3178,7 +3266,7 @@ Please share payment details and license key.`;
       return {
         targetKb: 0,
         preserveKb: 0,
-        jpegQuality: row?.meta?.jpegQuality || 0.82,
+        jpegQuality: row?.meta?.jpegQuality || 0.92,
         style: row?.layers?._staticFrame?.style,
         preview: true,
       };
@@ -3191,15 +3279,31 @@ Please share payment details and license key.`;
     };
   }
 
+  updateVariantEditorResetButton(row) {
+    const panel = document.getElementById("variant-edit-panel");
+    if (!panel || !row || this._editingVariantId !== row.variantId) return;
+    const resetBtn = panel.querySelector("#variant-edit-reset");
+    if (!resetBtn) return;
+    const hasAdvanced = this.hasAdvancedEditor(row);
+    const edited =
+      !!row._badgesRepositioned ||
+      !!row._staticAppearanceEdited ||
+      this.isVariantEdited(row.editFlags, row.layers, row) ||
+      (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
+    resetBtn.style.display = edited ? "block" : "none";
+  }
+
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     const gen = ++this._borderComposeGen;
+    const badgesOnly = !!row._badgesRepositioned && !row._staticAppearanceEdited;
     const url = await window.StaticFrameCompose.composeStaticPreview(
       row.layers,
       row.editFlags || {},
       {
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
+        badgesOnly,
         ...options,
       },
     );
@@ -3212,9 +3316,23 @@ Please share payment details and license key.`;
     row.imageUrl = url;
     if (this._editingVariantId === variantId) {
       const preview = document.getElementById("variant-edit-preview");
-      if (preview) preview.src = url;
+      if (preview) {
+        if (preview.src !== url) preview.src = url;
+        else preview.removeAttribute("src");
+        preview.src = url;
+      }
     }
     this.refreshVariantCard(row);
+    this.updateVariantEditorResetButton(row);
+  }
+
+  async applyRowStaticPreview(variantId, row = null) {
+    const target = row || this.findResultRow(variantId);
+    if (!target?.layers?._staticFrame) return "";
+    await this.preloadStaticComposeModule();
+    const url = await this.composePreviewForRow(target);
+    if (url) this.applyStaticPreviewToRow(target, url, variantId);
+    return url;
   }
 
   async refreshStaticPreview(variantId) {
@@ -3226,23 +3344,27 @@ Please share payment details and license key.`;
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
+      badgesOnly: !!row._badgesRepositioned && !row._staticAppearanceEdited,
     };
 
-    if (
-      window.StaticFrameCompose?.composeStaticPreview &&
-      (row._staticAppearanceEdited ||
-        row._badgesRepositioned ||
-        window.StaticFrameCompose.shouldRebuildStaticFrame?.(row.layers, {
-          staticAppearanceEdited: !!row._staticAppearanceEdited,
-        }))
-    ) {
+    const needsCompose =
+      row._staticAppearanceEdited ||
+      row._badgesRepositioned ||
+      window.StaticFrameCompose?.shouldRebuildStaticFrame?.(row.layers, {
+        staticAppearanceEdited: !!row._staticAppearanceEdited,
+      });
+
+    if (needsCompose && window.StaticFrameCompose?.composeStaticPreview) {
       try {
         const url = await this.composePreviewForRow(row, composeOpts);
-        if (url) row.imageUrl = url;
+        if (url) this.applyStaticPreviewToRow(row, url, variantId);
+        return;
       } catch (e) {
         console.warn("Static preview compose failed:", e);
       }
-    } else if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
+    }
+
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         row.imageUrl = await MeeshoAPI.resolveDisplayUrlAsync(row);
       } catch (e) {
@@ -3250,14 +3372,11 @@ Please share payment details and license key.`;
       }
     } else if (window.StaticFrameCompose?.composeStaticPreview) {
       const url = await this.composePreviewForRow(row, composeOpts);
-      if (url) row.imageUrl = url;
+      if (url) this.applyStaticPreviewToRow(row, url, variantId);
+      return;
     }
 
-    if (this._editingVariantId === variantId) {
-      const preview = document.getElementById("variant-edit-preview");
-      if (preview) preview.src = row.imageUrl;
-    }
-    this.refreshVariantCard(row);
+    this.applyStaticPreviewToRow(row, row.imageUrl, variantId);
   }
 
   async setStaticBadgeAnchor(variantId, placementId, anchor) {
@@ -3443,8 +3562,8 @@ Please share payment details and license key.`;
     );
     if (!ok) return;
 
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
     }
@@ -3464,8 +3583,8 @@ Please share payment details and license key.`;
     );
     if (!ok) return;
 
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
   }
 
   async setStaticAllStickersHidden(variantId, hidden) {
@@ -3476,8 +3595,8 @@ Please share payment details and license key.`;
     if (!window.StaticFrameCompose?.setAllPlacementsHidden) return;
 
     window.StaticFrameCompose.setAllPlacementsHidden(row.layers, hidden);
-    row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    row._badgesRepositioned = true;
+    await this.applyRowStaticPreview(variantId, row);
 
     if (this._editingVariantId === variantId) {
       this.renderVariantEditorPanel(row);
@@ -3489,11 +3608,27 @@ Please share payment details and license key.`;
     if (!row?.layers?._staticFrame) return;
 
     await this.preloadStaticComposeModule();
-    if (!window.StaticFrameCompose?.updateFrameAppearance) return;
+    const SFC = window.StaticFrameCompose;
+    if (!SFC?.updateFrameAppearance) return;
 
-    window.StaticFrameCompose.updateFrameAppearance(row.layers, patch);
+    const frame = row.layers._staticFrame;
+    const hadGownGradient =
+      frame.style === "gown_static" &&
+      SFC.staticStyleUsesGradientColors?.(frame.style, frame);
+
+    SFC.updateFrameAppearance(row.layers, patch);
     row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+
+    const hasGownGradient =
+      frame.style === "gown_static" &&
+      SFC.staticStyleUsesGradientColors?.(frame.style, frame);
+
+    await this.applyRowStaticPreview(variantId, row);
+
+    if (hadGownGradient !== hasGownGradient && this._editingVariantId === variantId) {
+      this._staticControlsVariantId = null;
+      this.renderVariantEditorPanel(row);
+    }
   }
 
   updateBorderThicknessLockUI(container, frame) {
@@ -3535,7 +3670,7 @@ Please share payment details and license key.`;
     clearTimeout(this._borderThicknessTimer);
     this._borderThicknessTimer = setTimeout(() => {
       void this.applyStaticBorderThickness(variantId, pct);
-    }, 150);
+    }, 50);
   }
 
   async applyStaticBorderThickness(variantId, pct) {
@@ -3555,8 +3690,7 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
 
     try {
-      const url = await this.composePreviewForRow(row);
-      this.applyStaticPreviewToRow(row, url, variantId);
+      await this.applyRowStaticPreview(variantId, row);
     } catch (e) {
       console.warn("Border thickness preview failed:", e);
       await this.refreshStaticPreview(variantId);
@@ -3568,16 +3702,118 @@ Please share payment details and license key.`;
     await this.applyStaticBorderThickness(variantId, pct);
   }
 
+  updateGownFrameLayersLockUI(container, frame) {
+    if (!container || !frame) return;
+    const locked = frame.gownFrameLayersLocked !== false;
+    const btn = container.querySelector("#static-gown-layers-lock");
+    const wrap = container.querySelector(".static-gown-layers-wrap");
+    if (btn) {
+      btn.textContent = locked ? "🔒" : "🔓";
+      btn.title = locked ? "Unlock frame layers to adjust" : "Lock frame layers";
+      btn.setAttribute("aria-pressed", locked ? "true" : "false");
+    }
+    if (wrap) wrap.classList.toggle("static-slider-locked", locked);
+    container.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      slider.disabled = locked;
+    });
+  }
+
+  toggleStaticGownFrameLayersLock(variantId) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    frame.gownFrameLayersLocked = frame.gownFrameLayersLocked === false;
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updateGownFrameLayersLockUI(container, frame);
+  }
+
+  queueStaticGownLayerPct(variantId, layerKey, pct) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    if (frame.gownFrameLayersLocked !== false) return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector(
+      `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+    );
+    if (val) val.textContent = String(pct);
+
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = setTimeout(() => {
+      void this.applyStaticGownLayerPcts(variantId);
+    }, 50);
+  }
+
+  readGownLayerPctFromUI(container) {
+    const patch = {};
+    container?.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      const key = slider.dataset.gownLayer;
+      if (!key) return;
+      patch[key] = parseInt(slider.value, 10);
+    });
+    return patch;
+  }
+
+  async applyStaticGownLayerPcts(variantId) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!frame || frame.style !== "gown_static") return;
+    if (frame.gownFrameLayersLocked !== false) return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const gownLayerPct = this.readGownLayerPctFromUI(container);
+    if (!Object.keys(gownLayerPct).length) return;
+
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, { gownLayerPct });
+    if (window.StaticFrameCompose.reanchorPlacements) {
+      window.StaticFrameCompose.reanchorPlacements(row.layers);
+    }
+    row._staticAppearanceEdited = true;
+
+    try {
+      await this.applyRowStaticPreview(variantId, row);
+    } catch (e) {
+      console.warn("Gown frame layer preview failed:", e);
+      await this.refreshStaticPreview(variantId);
+    }
+  }
+
+  async applyStaticGownLayerPct(variantId, layerKey, pct) {
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector(
+      `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+    );
+    if (val) val.textContent = String(pct);
+    clearTimeout(this._gownLayerTimer);
+    await this.applyStaticGownLayerPcts(variantId);
+  }
+
+  async setStaticGownLayerPct(variantId, layerKey, pct) {
+    clearTimeout(this._gownLayerTimer);
+    await this.applyStaticGownLayerPct(variantId, layerKey, pct);
+  }
+
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
 
     await this.preloadStaticComposeModule();
-    if (!window.StaticFrameCompose?.applyGradientPreset) return;
+    const SFC = window.StaticFrameCompose;
+    if (!SFC) return;
 
-    window.StaticFrameCompose.applyGradientPreset(row.layers, presetId);
+    if (presetId) {
+      if (!SFC.applyGradientPreset) return;
+      SFC.applyGradientPreset(row.layers, presetId);
+    } else {
+      if (!SFC.clearGradientPreset) return;
+      SFC.clearGradientPreset(row.layers);
+    }
     row._staticAppearanceEdited = true;
-    await this.refreshStaticPreview(variantId);
+    await this.applyRowStaticPreview(variantId, row);
 
     if (this._editingVariantId === variantId) {
       this._staticControlsVariantId = null;
@@ -3585,11 +3821,24 @@ Please share payment details and license key.`;
     }
   }
 
+  clearUploadedImage() {
+    this.resetToUploadForm({ keepImage: false });
+  }
+
+  wireClearUploadButton() {
+    const btn = document.getElementById("clear-upload-btn");
+    if (!btn || btn.dataset.wired === "1") return;
+    btn.dataset.wired = "1";
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.clearUploadedImage();
+    };
+  }
+
   buildStaticColorFieldHtml(id, label, colorValue, fallback = "#000000") {
     const SFC = window.StaticFrameCompose;
     const hex = SFC?.normalizeFrameColor?.(colorValue, fallback) || fallback;
-    const rgb = SFC?.hexToRgb?.(hex) || { r: 0, g: 0, b: 0 };
-    const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
     const swatches = SFC?.FRAME_COLOR_SWATCHES || [];
     const chips = swatches
       .map((s) => {
@@ -3600,69 +3849,250 @@ Please share payment details and license key.`;
       .join("");
     return `<div class="static-color-row" data-color-id="${id}" style="margin-bottom:10px;padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <span style="font-size:12px;font-weight:600;min-width:52px;">${label}</span>
-        <div style="position:relative;width:40px;height:40px;flex-shrink:0;">
-          <span class="static-color-swatch" id="${id}-swatch" style="display:block;width:40px;height:40px;border-radius:6px;border:1px solid #d1d5db;background:${hex};pointer-events:none;"></span>
-          <input type="color" class="static-color-pick" id="${id}" value="${hex}" aria-label="${label} color picker" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:none;padding:0;margin:0;">
-        </div>
+        <span style="font-size:12px;font-weight:600;min-width:72px;">${label}</span>
+        <button type="button" class="static-color-swatch-btn" data-color-id="${id}" aria-label="Pick ${label} colour" title="Pick colour" style="width:40px;height:40px;border-radius:6px;border:1px solid #d1d5db;background:${hex};padding:0;cursor:pointer;flex-shrink:0;"></button>
         <label style="flex:1;font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">HEX
           <input type="text" class="static-color-hex-input" id="${id}-hex" value="${hex}" placeholder="#fff000" maxlength="7" spellcheck="false" autocomplete="off" style="width:100%;padding:8px;font-size:13px;font-family:monospace;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
         </label>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;">
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">R
-          <input type="number" class="static-color-r" id="${id}-r" min="0" max="255" value="${rgb.r}" inputmode="numeric" aria-label="${label} red" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">G
-          <input type="number" class="static-color-g" id="${id}-g" min="0" max="255" value="${rgb.g}" inputmode="numeric" aria-label="${label} green" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-        <label style="font-size:10px;color:#4b5563;display:flex;flex-direction:column;gap:3px;">B
-          <input type="number" class="static-color-b" id="${id}-b" min="0" max="255" value="${rgb.b}" inputmode="numeric" aria-label="${label} blue" style="width:100%;padding:8px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
-        </label>
-      </div>
-      <label style="font-size:10px;color:#4b5563;display:block;margin-bottom:6px;">RGB (paste)
-        <input type="text" class="static-color-rgb" id="${id}-rgb" value="${rgbText}" placeholder="e.g. 113, 203, 211" inputmode="numeric" autocomplete="off" style="width:100%;margin-top:4px;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
-      </label>
       <div class="static-color-presets" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
     </div>`;
+  }
+
+  hslToHex(h, s, l) {
+    const SFC = window.StaticFrameCompose;
+    s /= 100;
+    l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const hex = SFC?.rgbToHex?.(
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    );
+    return SFC?.normalizeFrameColor?.(hex) || hex;
+  }
+
+  hexToHsl(hex) {
+    const SFC = window.StaticFrameCompose;
+    const rgb = SFC?.hexToRgb?.(hex);
+    if (!rgb) return { h: 0, s: 0, l: 50 };
+    const r = rgb.r / 255;
+    const g = rgb.g / 255;
+    const b = rgb.b / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r:
+          h = (g - b) / d + (g < b ? 6 : 0);
+          break;
+        case g:
+          h = (b - r) / d + 2;
+          break;
+        default:
+          h = (r - g) / d + 4;
+      }
+      h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+  }
+
+  ensureStaticColorPickerOverlay() {
+    let overlay = document.getElementById("static-color-picker-overlay");
+    if (overlay) return overlay;
+    overlay = document.createElement("div");
+    overlay.id = "static-color-picker-overlay";
+    overlay.style.cssText =
+      "display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;";
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <strong style="font-size:15px;">Select colour</strong>
+          <button type="button" id="static-color-picker-close" style="border:none;background:#f3f4f6;width:28px;height:28px;border-radius:50%;cursor:pointer;">✕</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span id="static-color-picker-preview" style="width:48px;height:48px;border-radius:8px;border:1px solid #d1d5db;background:#71cbd3;flex-shrink:0;"></span>
+          <label style="flex:1;font-size:11px;color:#4b5563;display:flex;flex-direction:column;gap:4px;">HEX
+            <input type="text" id="static-color-picker-hex" maxlength="7" spellcheck="false" autocomplete="off" style="width:100%;padding:10px;font-size:14px;font-family:monospace;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;">
+          </label>
+        </div>
+        <label style="display:block;font-size:11px;color:#4b5563;margin-bottom:4px;">Hue
+          <input type="range" id="static-color-picker-hue" min="0" max="360" value="180" style="width:100%;height:28px;margin-top:4px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);">
+        </label>
+        <label style="display:block;font-size:11px;color:#4b5563;margin:8px 0 4px;">Saturation
+          <input type="range" id="static-color-picker-sat" min="0" max="100" value="50" style="width:100%;height:28px;margin-top:4px;">
+        </label>
+        <label style="display:block;font-size:11px;color:#4b5563;margin:8px 0 4px;">Brightness
+          <input type="range" id="static-color-picker-val" min="0" max="100" value="50" style="width:100%;height:28px;margin-top:4px;background:linear-gradient(to right,#000,#fff);">
+        </label>
+        <div style="font-size:11px;color:#6b7280;margin:10px 0 6px;">Suggestions</div>
+        <div id="static-color-picker-swatches" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="static-color-picker-cancel" style="padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">Cancel</button>
+          <button type="button" id="static-color-picker-set" style="padding:8px 14px;border:none;border-radius:8px;background:#10b981;color:#fff;font-weight:600;cursor:pointer;">Set</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) overlay.style.display = "none";
+    };
+    overlay.querySelector("#static-color-picker-close").onclick = () => {
+      overlay.style.display = "none";
+    };
+    overlay.querySelector("#static-color-picker-cancel").onclick = () => {
+      overlay.style.display = "none";
+    };
+    return overlay;
+  }
+
+  openStaticColorPicker(container, fieldId, variantId) {
+    const SFC = window.StaticFrameCompose;
+    if (!SFC || !container) return;
+    const overlay = this.ensureStaticColorPickerOverlay();
+    const hexField = container.querySelector(`#${fieldId}-hex`);
+    const startHex =
+      SFC.normalizeFrameColor(hexField?.value) ||
+      SFC.normalizeFrameColor(
+        container.querySelector(`.static-color-swatch-btn[data-color-id="${fieldId}"]`)?.style
+          .backgroundColor,
+      ) ||
+      "#71cbd3";
+    const { h, s, l } = this.hexToHsl(startHex);
+    const hue = overlay.querySelector("#static-color-picker-hue");
+    const sat = overlay.querySelector("#static-color-picker-sat");
+    const val = overlay.querySelector("#static-color-picker-val");
+    const hexInput = overlay.querySelector("#static-color-picker-hex");
+    const preview = overlay.querySelector("#static-color-picker-preview");
+    const swatchWrap = overlay.querySelector("#static-color-picker-swatches");
+
+    const updateSatBg = (hexColor) => {
+      const hsl = this.hexToHsl(hexColor);
+      sat.style.background = `linear-gradient(to right,#808080,hsl(${hsl.h},100%,50%))`;
+    };
+
+    const syncFromHsl = () => {
+      const hex = this.hslToHex(
+        parseInt(hue.value, 10),
+        parseInt(sat.value, 10),
+        parseInt(val.value, 10),
+      );
+      if (!hex) return;
+      if (hexInput && document.activeElement !== hexInput) hexInput.value = hex;
+      if (preview) preview.style.background = hex;
+      updateSatBg(hex);
+    };
+
+    const syncFromHex = () => {
+      let raw = hexInput.value.trim();
+      if (!raw) return;
+      if (!raw.startsWith("#")) raw = `#${raw}`;
+      const hex = SFC.normalizeFrameColor(raw);
+      if (!hex) return;
+      const hsl = this.hexToHsl(hex);
+      hue.value = String(hsl.h);
+      sat.value = String(hsl.s);
+      val.value = String(hsl.l);
+      if (preview) preview.style.background = hex;
+      updateSatBg(hex);
+    };
+
+    hue.value = String(h);
+    sat.value = String(s);
+    val.value = String(l);
+    if (hexInput) hexInput.value = startHex;
+    if (preview) preview.style.background = startHex;
+    updateSatBg(startHex);
+
+    if (swatchWrap) {
+      swatchWrap.innerHTML = (SFC.FRAME_COLOR_SWATCHES || [])
+        .map((sw) => {
+          const chipHex = SFC.normalizeFrameColor(sw.hex) || sw.hex;
+          return `<button type="button" class="static-color-picker-chip" data-hex="${chipHex}" title="${sw.label}" style="width:32px;height:32px;border-radius:50%;border:2px solid #e5e7eb;background:${chipHex};padding:0;cursor:pointer;"></button>`;
+        })
+        .join("");
+      swatchWrap.querySelectorAll(".static-color-picker-chip").forEach((chip) => {
+        chip.onclick = () => {
+          const hex = SFC.normalizeFrameColor(chip.dataset.hex);
+          if (!hex) return;
+          hexInput.value = hex;
+          syncFromHex();
+        };
+      });
+    }
+
+    hue.oninput = syncFromHsl;
+    sat.oninput = syncFromHsl;
+    val.oninput = syncFromHsl;
+    hexInput.oninput = () => {
+      clearTimeout(this._colorPickerHexTimer);
+      this._colorPickerHexTimer = setTimeout(syncFromHex, 120);
+    };
+    hexInput.onchange = syncFromHex;
+
+    overlay.querySelector("#static-color-picker-set").onclick = () => {
+      const hex = SFC.normalizeFrameColor(hexInput.value);
+      if (!hex) return;
+      this.updateStaticColorRowDisplay(container, fieldId, hex);
+      const cfg = this.getStaticColorFieldConfig(fieldId, container);
+      if (cfg) {
+        const patch = { [cfg.patchKey]: hex, gradientPreset: null };
+        if (cfg.frameType) patch.frameType = cfg.frameType;
+        void this.setStaticFrameColors(variantId, patch);
+      }
+      overlay.style.display = "none";
+    };
+
+    overlay.style.display = "flex";
+  }
+
+  getStaticColorFieldConfig(fieldId, container) {
+    const style = container?.dataset?.editorStyle || "";
+    const map = {
+      "static-color-top": { patchKey: "gradientTop", frameType: "gradient" },
+      "static-color-bottom": { patchKey: "gradientBottom", frameType: "gradient" },
+      "static-color-border": {
+        patchKey: "borderColor",
+        frameType: style === "lifestyle_promo" ? "solid" : undefined,
+      },
+      "static-color-mat": { patchKey: "matColor" },
+      "static-color-outer-mat": { patchKey: "outerMatColor" },
+      "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-pad": { patchKey: "padColor" },
+    };
+    return map[fieldId] || null;
   }
 
   updateStaticColorRowDisplay(container, id, hex) {
     const SFC = window.StaticFrameCompose;
     if (!SFC || !hex) return;
-    const rgb = SFC.hexToRgb(hex);
-    if (!rgb) return;
-    const swatch = container.querySelector(`#${id}-swatch`);
-    const pick = container.querySelector(`#${id}`);
     const hexField = container.querySelector(`#${id}-hex`);
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (swatch) swatch.style.background = hex;
-    if (pick) pick.value = hex;
+    const swatchBtn = container.querySelector(
+      `.static-color-swatch-btn[data-color-id="${id}"]`,
+    );
+    if (swatchBtn) swatchBtn.style.background = hex;
     if (hexField && document.activeElement !== hexField) hexField.value = hex;
-    if (r && document.activeElement !== r) r.value = String(rgb.r);
-    if (g && document.activeElement !== g) g.value = String(rgb.g);
-    if (b && document.activeElement !== b) b.value = String(rgb.b);
-    if (rgbField && document.activeElement !== rgbField) {
-      rgbField.value = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
-    }
     container.querySelectorAll(`.static-color-chip[data-color-id="${id}"]`).forEach((chip) => {
       const chipHex = SFC.normalizeFrameColor(chip.dataset.hex);
       const active = chipHex === hex;
       chip.style.borderColor = active ? "#111827" : "#e5e7eb";
       chip.style.boxShadow = active ? "0 0 0 2px #fff inset" : "none";
     });
-  }
-
-  syncStaticColorRowFromPicker(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const pick = container.querySelector(`#${id}`);
-    if (!pick || !SFC?.hexToRgb) return;
-    const hex = SFC.normalizeFrameColor(pick.value);
-    if (!hex) return;
-    this.updateStaticColorRowDisplay(container, id, hex);
   }
 
   syncStaticColorRowFromHex(container, id) {
@@ -3688,48 +4118,23 @@ Please share payment details and license key.`;
       const fromHex = SFC.normalizeFrameColor(raw);
       if (fromHex) return fromHex;
     }
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    if (r?.value !== "" && g?.value !== "" && b?.value !== "") {
-      const hex = SFC.rgbToHex(r.value, g.value, b.value);
-      return SFC.normalizeFrameColor(hex);
+    const swatchBtn = container.querySelector(`.static-color-swatch-btn[data-color-id="${id}"]`);
+    if (swatchBtn?.style?.backgroundColor) {
+      return SFC.normalizeFrameColor(swatchBtn.style.backgroundColor);
     }
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (rgbField?.value?.trim()) {
-      const fromList = SFC.parseRgbTriplet?.(rgbField.value) || SFC.parseCssColor(rgbField.value);
-      if (fromList?.hex) return fromList.hex;
-    }
-    const pick = container.querySelector(`#${id}`);
-    return SFC.normalizeFrameColor(pick?.value);
+    return null;
   }
 
   syncStaticColorRowFromRgb(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const r = container.querySelector(`#${id}-r`);
-    const g = container.querySelector(`#${id}-g`);
-    const b = container.querySelector(`#${id}-b`);
-    if (!r || !g || !b || !SFC) return false;
-    if (r.value === "" || g.value === "" || b.value === "") return false;
-    const hex = SFC.normalizeFrameColor(SFC.rgbToHex(r.value, g.value, b.value));
-    if (!hex) return false;
-    this.updateStaticColorRowDisplay(container, id, hex);
-    return true;
+    return false;
   }
 
   syncStaticColorRowFromRgbText(container, id) {
-    const SFC = window.StaticFrameCompose;
-    const rgbField = container.querySelector(`#${id}-rgb`);
-    if (!rgbField || !SFC) return false;
-    const raw = rgbField.value.trim();
-    if (!raw) return false;
-    const parsed = SFC.parseRgbTriplet?.(raw) || SFC.parseCssColor(raw);
-    if (!parsed?.hex) return false;
-    this.updateStaticColorRowDisplay(container, id, parsed.hex);
-    return true;
+    return false;
   }
 
   bindStaticColorFields(container, { variantId, style }) {
+    container.dataset.editorStyle = style || "";
     const colorMap = {
       "static-color-top": { patchKey: "gradientTop", frameType: "gradient" },
       "static-color-bottom": { patchKey: "gradientBottom", frameType: "gradient" },
@@ -3738,27 +4143,14 @@ Please share payment details and license key.`;
         frameType: style === "lifestyle_promo" ? "solid" : undefined,
       },
       "static-color-mat": { patchKey: "matColor" },
-    };
-
-    const applyColors = () => {
-      const patch = {};
-      for (const [id, cfg] of Object.entries(colorMap)) {
-        if (!container.querySelector(`#${id}`)) continue;
-        const hex = this.readStaticColorField(container, id);
-        if (!hex) continue;
-        patch[cfg.patchKey] = hex;
-        if (cfg.frameType) patch.frameType = cfg.frameType;
-      }
-      if (!Object.keys(patch).length) return;
-      patch.gradientPreset = null;
-      const presetSel = container.querySelector("#static-gradient-preset");
-      if (presetSel) presetSel.value = "";
-      void this.setStaticFrameColors(variantId, patch);
+      "static-color-outer-mat": { patchKey: "outerMatColor" },
+      "static-color-inner-accent": { patchKey: "innerStrokeColor" },
+      "static-color-pad": { patchKey: "padColor" },
     };
 
     const applyOneColor = (id) => {
       const cfg = colorMap[id];
-      if (!cfg || !container.querySelector(`#${id}`)) return;
+      if (!cfg || !container.querySelector(`#${id}-hex`)) return;
       const hex = this.readStaticColorField(container, id);
       if (!hex) return;
       const patch = { [cfg.patchKey]: hex, gradientPreset: null };
@@ -3770,13 +4162,14 @@ Please share payment details and license key.`;
 
     const timers = new Map();
     for (const id of Object.keys(colorMap)) {
-      if (!container.querySelector(`#${id}`)) continue;
+      if (!container.querySelector(`#${id}-hex`)) continue;
 
-      const pick = container.querySelector(`#${id}`);
-      if (pick) {
-        pick.oninput = () => {
-          this.syncStaticColorRowFromPicker(container, id);
-          applyOneColor(id);
+      const swatchBtn = container.querySelector(`.static-color-swatch-btn[data-color-id="${id}"]`);
+      if (swatchBtn) {
+        swatchBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openStaticColorPicker(container, id, variantId);
         };
       }
 
@@ -3794,41 +4187,6 @@ Please share payment details and license key.`;
         hexField.onchange = () => {
           clearTimeout(timers.get(hexField));
           if (this.syncStaticColorRowFromHex(container, id)) applyOneColor(id);
-        };
-      }
-
-      for (const ch of ["r", "g", "b"]) {
-        const input = container.querySelector(`#${id}-${ch}`);
-        if (!input) continue;
-        input.oninput = () => {
-          clearTimeout(timers.get(input));
-          timers.set(
-            input,
-            setTimeout(() => {
-              if (this.syncStaticColorRowFromRgb(container, id)) applyOneColor(id);
-            }, 180),
-          );
-        };
-        input.onchange = () => {
-          clearTimeout(timers.get(input));
-          if (this.syncStaticColorRowFromRgb(container, id)) applyOneColor(id);
-        };
-      }
-
-      const rgbField = container.querySelector(`#${id}-rgb`);
-      if (rgbField) {
-        rgbField.oninput = () => {
-          clearTimeout(timers.get(rgbField));
-          timers.set(
-            rgbField,
-            setTimeout(() => {
-              if (this.syncStaticColorRowFromRgbText(container, id)) applyOneColor(id);
-            }, 220),
-          );
-        };
-        rgbField.onchange = () => {
-          clearTimeout(timers.get(rgbField));
-          if (this.syncStaticColorRowFromRgbText(container, id)) applyOneColor(id);
         };
       }
     }
@@ -3862,26 +4220,31 @@ Please share payment details and license key.`;
     if (showFrameColors) {
       html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
 
-    html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
-      <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
-    html += `<option value="">— Custom / solid —</option>`;
-    presets.forEach((g) => {
-      html += `<option value="${g.id}"${
-        frame.gradientPreset === g.id ? " selected" : ""
-      }>${g.label}</option>`;
-    });
-    html += `</select></label>`;
+      html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
+        <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
+      html += `<option value="">— Custom / solid —</option>`;
+      presets.forEach((g) => {
+        html += `<option value="${g.id}"${
+          frame.gradientPreset === g.id ? " selected" : ""
+        }>${g.label}</option>`;
+      });
+      html += `</select></label>`;
 
-    if (style === "showcase" || style === "live_standard" || frame.frameType === "gradient" || frame.gradientPreset) {
+    const gownGradient =
+      style === "gown_static" && SFC.staticStyleUsesGradientColors?.(style, frame);
+    const gradientTopLabel = gownGradient ? "Border top" : "Top";
+    const gradientBottomLabel = gownGradient ? "Border bottom" : "Bottom";
+
+    if (style === "showcase" || style === "live_standard" || SFC.staticStyleUsesGradientColors?.(style, frame)) {
       html += this.buildStaticColorFieldHtml(
         "static-color-top",
-        "Top",
+        gradientTopLabel,
         frame.gradientTop,
         "#FF9800",
       );
       html += this.buildStaticColorFieldHtml(
         "static-color-bottom",
-        "Bottom",
+        gradientBottomLabel,
         frame.gradientBottom,
         "#4CAF50",
       );
@@ -3896,12 +4259,39 @@ Please share payment details and license key.`;
       );
     }
 
-    if (style === "tall_static" || style === "gown_static" || style === "live_framed") {
+    if (style === "gown_static") {
+      if (!gownGradient) {
+        html += this.buildStaticColorFieldHtml(
+          "static-color-border",
+          "Outer border",
+          frame.borderColor,
+          "#71cbd3",
+        );
+      }
+      html += this.buildStaticColorFieldHtml(
+        "static-color-outer-mat",
+        "Outer mat",
+        frame.outerMatColor ?? frame.matColor,
+        "#ffffff",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-inner-accent",
+        "Inner accent",
+        frame.innerStrokeColor,
+        "#71cbd3",
+      );
+      html += this.buildStaticColorFieldHtml(
+        "static-color-pad",
+        "Photo pad",
+        frame.padColor ?? frame.matColor,
+        "#ffffff",
+      );
+    } else if (style === "tall_static" || style === "live_framed") {
       html += this.buildStaticColorFieldHtml(
         "static-color-border",
         "Border",
         frame.borderColor,
-        style === "gown_static" ? "#71cbd3" : "#45a9e5",
+        "#45a9e5",
       );
       html += this.buildStaticColorFieldHtml(
         "static-color-mat",
@@ -3912,15 +4302,76 @@ Please share payment details and license key.`;
     }
 
     const borderPct = frame.borderThicknessPct ?? 100;
-    if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
-    const borderLocked = frame.borderThicknessLocked !== false;
-    html += `<div class="static-border-wrap${borderLocked ? " static-slider-locked" : ""}" style="margin-bottom:8px;touch-action:none;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-        <button type="button" id="static-border-lock" aria-pressed="${borderLocked ? "true" : "false"}" title="${borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${borderLocked ? "🔒" : "🔓"}</button>
-        <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
-      </div>
-      <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;touch-action:none;"${borderLocked ? " disabled" : ""}>
-    </div>`;
+    if (style === "gown_static") {
+      if (window.StaticFrameCompose?.ensureGownLayerPcts) {
+        window.StaticFrameCompose.ensureGownLayerPcts(frame);
+      } else if (!frame.gownLayerPct) {
+        frame.gownLayerPct = {
+          border: 100,
+          outerMat: 100,
+          innerAccent: 100,
+          innerMat: 100,
+        };
+      }
+      const lp = frame.gownLayerPct;
+      if (frame.gownFrameLayersLocked == null) frame.gownFrameLayersLocked = true;
+      const frameLocked = frame.gownFrameLayersLocked !== false;
+      const gownLayers = [
+        { key: "border", label: "Outer border" },
+        { key: "outerMat", label: "Outer mat" },
+        { key: "innerAccent", label: "Inner accent" },
+        { key: "innerMat", label: "Photo pad" },
+      ];
+      html += `<div class="static-gown-layers-wrap${
+        frameLocked ? " static-slider-locked" : ""
+      }" style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <button type="button" id="static-gown-layers-lock" aria-pressed="${
+            frameLocked ? "true" : "false"
+          }" title="${
+        frameLocked ? "Unlock frame layers to adjust" : "Lock frame layers"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        frameLocked ? "🔒" : "🔓"
+      }</button>
+          <span style="font-size:10px;font-weight:600;">Frame layers (100 = default each)</span>
+        </div>`;
+      for (const layer of gownLayers) {
+        const v = lp[layer.key] ?? 100;
+        html += `<div class="static-gown-layer-row" data-gown-layer="${
+          layer.key
+        }" style="margin-bottom:6px;">
+          <span style="font-size:10px;">${layer.label} <span class="static-gown-layer-val" data-gown-layer="${
+          layer.key
+        }">${v}</span></span>
+          <input type="range" class="static-gown-layer-pct" data-gown-layer="${
+            layer.key
+          }" min="0" max="1000" value="${v}" style="width:100%;"${
+          frameLocked ? " disabled" : ""
+        }>
+        </div>`;
+      }
+      html += `</div>`;
+    } else {
+      if (frame.borderThicknessLocked == null) frame.borderThicknessLocked = true;
+      const borderLocked = frame.borderThicknessLocked !== false;
+      html += `<div class="static-border-wrap${
+        borderLocked ? " static-slider-locked" : ""
+      }" style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <button type="button" id="static-border-lock" aria-pressed="${
+            borderLocked ? "true" : "false"
+          }" title="${
+        borderLocked ? "Unlock border thickness to adjust" : "Lock border thickness"
+      }" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${
+        borderLocked ? "🔒" : "🔓"
+      }</button>
+          <span style="font-size:10px;">Border thickness <span id="static-border-thickness-val">${borderPct}</span> (100 = default)</span>
+        </div>
+        <input type="range" id="static-border-thickness" min="0" max="1000" value="${borderPct}" style="width:100%;"${
+        borderLocked ? " disabled" : ""
+      }>
+      </div>`;
+    }
     }
 
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;">
@@ -3943,7 +4394,12 @@ Please share payment details and license key.`;
         window.StaticFrameCompose?.FREE_SHIPPING_BADGE_VALUE || "free";
       const showFreeOption = slot.freeShippingSlot || p?._freeShippingSlot;
       const isFreeShipActive = p?.kind === "freeShipping";
-      const selectedBadge = isFreeShipActive ? freeValue : String(p?.num || slot.num || 1);
+      const isGownArt = p?.kind === "gownArt";
+      const selectedBadge = isFreeShipActive
+        ? freeValue
+        : isGownArt
+        ? "gown-art"
+        : String(p?.num || slot.num || 1);
 
       html += `<div class="static-sticker-card" data-badge-id="${slot.id}" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;background:#fafafa;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3963,44 +4419,52 @@ Please share payment details and license key.`;
           isFreeShipActive ? " selected" : ""
         }>Free shipping (red circle)</option>`;
       }
+      if (style === "gown_static" && slot.id?.startsWith("gown-")) {
+        html += `<option value="gown-art"${
+          isGownArt ? " selected" : ""
+        }>${slot.label} (default art)</option>`;
+      }
       for (let n = 1; n <= 25; n++) {
         html += `<option value="${n}"${
-          !isFreeShipActive && parseInt(selectedBadge, 10) === n ? " selected" : ""
+          !isFreeShipActive && !isGownArt && parseInt(selectedBadge, 10) === n ? " selected" : ""
         }>Badge ${n}</option>`;
       }
       html += `</select></label>`;
 
-      html += `<div class="static-size-wrap${lockSize ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
+      html += `<div class="static-size-wrap${lockSize ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-size-lock" data-badge-id="${slot.id}" aria-pressed="${lockSize ? "true" : "false"}" title="${lockSize ? "Unlock size to adjust" : "Lock badge size"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockSize ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Size <span class="static-size-val" data-badge-id="${slot.id}">${sizePct}</span>%</span>
         </div>
-        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;touch-action:none;"${lockSize ? " disabled" : ""}>
+        <input type="range" class="static-size-pct" data-badge-id="${slot.id}" min="25" max="200" value="${sizePct}" style="width:100%;"${lockSize ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-h-wrap${lockH ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;touch-action:none;">
+      html += `<div class="static-pos-h-wrap${lockH ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="margin-bottom:4px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="h" data-badge-id="${slot.id}" aria-pressed="${lockH ? "true" : "false"}" title="${lockH ? "Unlock horizontal to adjust" : "Lock horizontal"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockH ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Horizontal <span class="static-h-val" data-badge-id="${slot.id}">${posH}</span>%</span>
         </div>
-        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;touch-action:none;"${lockH ? " disabled" : ""}>
+        <input type="range" class="static-pos-h" data-badge-id="${slot.id}" min="0" max="100" value="${posH}" style="width:100%;"${lockH ? " disabled" : ""}>
       </div>`;
-      html += `<div class="static-pos-v-wrap${lockV ? " static-slider-locked" : ""}" data-badge-id="${slot.id}" style="touch-action:none;">
+      html += `<div class="static-pos-v-wrap${lockV ? " static-slider-locked" : ""}" data-badge-id="${slot.id}">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <button type="button" class="static-axis-lock" data-axis="v" data-badge-id="${slot.id}" aria-pressed="${lockV ? "true" : "false"}" title="${lockV ? "Unlock vertical to adjust" : "Lock vertical"}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${lockV ? "🔒" : "🔓"}</button>
           <span style="font-size:10px;">Vertical <span class="static-v-val" data-badge-id="${slot.id}">${posV}</span>%</span>
         </div>
-        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;touch-action:none;"${lockV ? " disabled" : ""}>
+        <input type="range" class="static-pos-v" data-badge-id="${slot.id}" min="0" max="100" value="${posV}" style="width:100%;"${lockV ? " disabled" : ""}>
       </div>`;
       html += `</div>`;
     });
 
-    const priceLock = row.meta?.targetKb
-      ? `est ₹ at ${row.meta.targetKb}KB`
-      : row.shippingCost > 0
-      ? `shipping ₹${row.shippingCost}`
-      : row.estShipping > 0
-      ? `est ₹${row.estShipping}`
-      : "original pricing";
+    const priceLock = row._frozenPricing?.targetKb
+      ? `est ₹ at ${row._frozenPricing.targetKb}KB`
+      : (() => {
+          const ship = this.getRowDisplayShipping(row);
+          return ship.amount > 0
+            ? ship.verified
+              ? `shipping ₹${ship.amount}`
+              : `est ₹${ship.amount}`
+            : "original pricing";
+        })();
     html += `<p style="font-size:10px;color:#6b7280;margin:0;">Edits keep ${priceLock} unchanged.</p>`;
     container.innerHTML = html;
 
@@ -4008,7 +4472,7 @@ Please share payment details and license key.`;
     const presetSel = container.querySelector("#static-gradient-preset");
     if (presetSel) {
       presetSel.onchange = () => {
-        if (presetSel.value) void this.setStaticGradientPreset(vid, presetSel.value);
+        void this.setStaticGradientPreset(vid, presetSel.value || null);
       };
     }
 
@@ -4016,17 +4480,7 @@ Please share payment details and license key.`;
 
     const borderThickness = container.querySelector("#static-border-thickness");
     const borderThicknessVal = container.querySelector("#static-border-thickness-val");
-    const borderWrap = container.querySelector(".static-border-wrap");
     const borderLock = container.querySelector("#static-border-lock");
-    if (borderWrap) {
-      borderWrap.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!borderThickness?.disabled) e.stopPropagation();
-        },
-        { passive: true },
-      );
-    }
     if (borderLock) {
       borderLock.onclick = (e) => {
         e.preventDefault();
@@ -4051,6 +4505,39 @@ Please share payment details and license key.`;
       borderThickness.addEventListener("pointerup", commitBorder);
       borderThickness.addEventListener("touchend", commitBorder, { passive: true });
     }
+
+    const gownLayersLock = container.querySelector("#static-gown-layers-lock");
+    if (gownLayersLock) {
+      gownLayersLock.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleStaticGownFrameLayersLock(vid);
+      };
+    }
+    container.querySelectorAll(".static-gown-layer-pct").forEach((slider) => {
+      const layerKey = slider.dataset.gownLayer;
+      const commitLayer = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const valSpan = container.querySelector(
+          `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+        );
+        if (valSpan) valSpan.textContent = String(v);
+        void this.setStaticGownLayerPct(vid, layerKey, v);
+      };
+      slider.oninput = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const valSpan = container.querySelector(
+          `.static-gown-layer-val[data-gown-layer="${layerKey}"]`,
+        );
+        if (valSpan) valSpan.textContent = String(v);
+        this.queueStaticGownLayerPct(vid, layerKey, v);
+      };
+      slider.onchange = commitLayer;
+      slider.addEventListener("pointerup", commitLayer);
+      slider.addEventListener("touchend", commitLayer, { passive: true });
+    });
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
@@ -4082,13 +4569,6 @@ Please share payment details and license key.`;
     const bindAxisSlider = (cls, axis) => {
       const timers = new Map();
       container.querySelectorAll(cls).forEach((range) => {
-        range.addEventListener(
-          "touchstart",
-          (e) => {
-            if (!range.disabled) e.stopPropagation();
-          },
-          { passive: true },
-        );
         range.oninput = () => {
           if (range.disabled) return;
           const id = range.dataset.badgeId;
@@ -4139,13 +4619,6 @@ Please share payment details and license key.`;
 
     const sizeTimers = new Map();
     container.querySelectorAll(".static-size-pct").forEach((range) => {
-      range.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!range.disabled) e.stopPropagation();
-        },
-        { passive: true },
-      );
       range.oninput = () => {
         if (range.disabled) return;
         const id = range.dataset.badgeId;
@@ -4194,6 +4667,8 @@ Please share payment details and license key.`;
     if (panel) panel.style.display = "none";
     clearTimeout(this._borderThicknessTimer);
     this._borderThicknessTimer = null;
+    clearTimeout(this._gownLayerTimer);
+    this._gownLayerTimer = null;
     this._staticControlsVariantId = null;
     this._editingVariantId = null;
   }
@@ -4271,11 +4746,12 @@ Please share payment details and license key.`;
     if (addBothCb) addBothCb.checked = !!flags.fullDecorationsAdded;
     if (title) title.textContent = row.name || "Variant";
     if (priceNote) {
+      const ship = this.getRowDisplayShipping(row);
       priceNote.textContent =
-        row.shippingCost > 0
-          ? `Shipping ₹${row.shippingCost} is unchanged — preview/save only.`
-          : row.estShipping > 0
-          ? `Est. ₹${row.estShipping} is unchanged — preview/save only.`
+        ship.amount > 0
+          ? ship.verified
+            ? `Shipping ₹${ship.amount} is unchanged — preview/save only.`
+            : `Est. ₹${ship.amount} is unchanged — preview/save only.`
           : "Shipping price is unchanged — this only affects the image you save.";
     }
     const footerNote = panel.querySelector("#variant-edit-footer-note");
@@ -4285,10 +4761,7 @@ Please share payment details and license key.`;
         : "6 preview options — edits update save only, not shipping ₹.";
     }
     if (resetBtn) {
-      const edited =
-        this.isVariantEdited(row.editFlags, row.layers, row) ||
-        (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
-      resetBtn.style.display = edited ? "block" : "none";
+      this.updateVariantEditorResetButton(row);
     }
   }
 
@@ -4310,7 +4783,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "5") {
+    if (panel && panel.dataset.staticEditorV !== "12") {
       panel.remove();
       panel = null;
     }
@@ -4318,7 +4791,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "5";
+    panel.dataset.staticEditorV = "12";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
@@ -4329,18 +4802,29 @@ Please share payment details and license key.`;
         }
         #variant-edit-panel #variant-edit-scroll {
           overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;
-          padding:0 16px 12px;overscroll-behavior:contain;
+          padding:0 16px 12px;overscroll-behavior:contain;touch-action:pan-y;
+        }
+        #variant-edit-panel #variant-edit-preview-wrap {
+          position:sticky;top:0;z-index:2;margin:0 0 10px;padding:4px 0 10px;
+          background:#fff;cursor:pointer;
         }
         #variant-edit-panel #variant-edit-preview {
-          position:sticky;top:0;z-index:2;width:100%;max-height:128px;object-fit:contain;
-          border-radius:8px;background:#fff;margin:0 0 10px;padding:4px 0;
-          box-shadow:0 6px 16px rgba(255,255,255,0.92);
+          width:100%;max-height:180px;height:auto;object-fit:contain;
+          border-radius:8px;background:#f9fafb;display:block;
+          box-shadow:0 2px 8px rgba(0,0,0,0.08);
+        }
+        #variant-edit-panel #variant-edit-preview-hint {
+          font-size:10px;color:#6b7280;text-align:center;margin:4px 0 0;pointer-events:none;
         }
         #variant-edit-panel .static-slider-locked input[type="range"]:disabled {
           opacity:0.5;cursor:not-allowed;
         }
+        #variant-edit-panel input[type="range"] {
+          touch-action:pan-x;
+        }
         #variant-edit-panel .static-sticker-card input[type="range"],
-        #variant-edit-panel #static-border-thickness {
+        #variant-edit-panel #static-border-thickness,
+        #variant-edit-panel .static-gown-layer-pct {
           accent-color:#10b981;
         }
       </style>
@@ -4352,7 +4836,10 @@ Please share payment details and license key.`;
           </div>
         </div>
         <div id="variant-edit-scroll">
-          <img id="variant-edit-preview" alt="Preview">
+          <div id="variant-edit-preview-wrap" title="Tap for full size">
+            <img id="variant-edit-preview" alt="Preview">
+            <div id="variant-edit-preview-hint">Tap image for full size</div>
+          </div>
           <p id="variant-edit-price-note" style="font-size:11px;color:#047857;background:#ecfdf5;padding:8px;border-radius:6px;margin:0 0 12px;"></p>
           <div id="variant-edit-remove-section" style="margin-bottom:10px;">
             <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Remove</div>
@@ -4409,6 +4896,17 @@ Please share payment details and license key.`;
     panel.onclick = (e) => {
       if (e.target === panel) this.closeVariantEditor();
     };
+
+    const previewWrap = panel.querySelector("#variant-edit-preview-wrap");
+    if (previewWrap) {
+      previewWrap.onclick = (e) => {
+        e.stopPropagation();
+        const id = this._editingVariantId;
+        if (!id) return;
+        const row = this.findResultRow(id);
+        if (row) this.openVariantFullPreview(row);
+      };
+    }
 
     const onEditChange = (ev) => {
       const id = this._editingVariantId;

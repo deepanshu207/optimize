@@ -1,6 +1,7 @@
 /**
  * Gown promo badges — Best PRICE, FLASH SALE, MOST POPULAR (reference layout).
  */
+import { drawBadgeOnWhite } from "./tallStaticBadges.mjs?v=87";
 
 function drawLightning(ctx, x, y, w, h) {
   ctx.save();
@@ -137,7 +138,11 @@ export async function drawGownBadge(ctx, loadBadge, p) {
     try {
       const badge = await loadBadge(p.num);
       if (badge) {
-        ctx.drawImage(badge, p.x, p.y, w, h);
+        if (p.num === 3) {
+          ctx.drawImage(badge, p.x, p.y, w, h);
+        } else {
+          drawBadgeOnWhite(ctx, badge, p.x, p.y, w, h);
+        }
         return true;
       }
     } catch (e) {}
