@@ -20,7 +20,7 @@ import {
 import {
   buildGownStaticVariants,
   GOWN_STATIC_VARIANT_COUNT,
-} from "./liveGownStatic.mjs?v=94";
+} from "./liveGownStatic.mjs?v=95";
 
 const PRIMARY_COUNT = 6;
 const SEE_MORE_CAP = 30;

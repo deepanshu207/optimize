@@ -2,15 +2,15 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=94";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=94";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=94";
+import { compressFramedToKb } from "./lib/encoder.js?v=95";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   drawGownProductInSlot,
   drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=94";
+} from "./liveGownStatic.mjs?v=95";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -721,8 +721,7 @@ export function gownFrameLayersEdited(frame) {
     p.border !== BORDER_THICKNESS_DEFAULT ||
     p.outerMat !== BORDER_THICKNESS_DEFAULT ||
     p.innerAccent !== BORDER_THICKNESS_DEFAULT ||
-    p.innerMat !== BORDER_THICKNESS_DEFAULT ||
-    (frame.photoZoomPct ?? 100) !== 100
+    p.innerMat !== BORDER_THICKNESS_DEFAULT
   );
 }
 
@@ -733,7 +732,7 @@ function scaleGownLayerPx(base, pct, minPx = 0) {
   return minPx > 0 ? Math.max(minPx, scaled) : scaled;
 }
 
-/** Gown: scale each frame band independently; photo slot follows inner geometry. */
+/** Gown: scale each frame band independently; product slot stays fixed. */
 function applyGownFrameLayers(frame) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -747,6 +746,8 @@ function applyGownFrameLayers(frame) {
   ensureGownLayerPcts(frame);
   const p = frame.gownLayerPct;
 
+  frame.dw = baseDw;
+  frame.dh = baseDh;
   frame.border = scaleGownLayerPx(baseBorder, p.border, 2);
   frame.outerMatPad = scaleGownLayerPx(baseOuterMatPad, p.outerMat, 0);
   frame.innerStroke = scaleGownLayerPx(
@@ -761,16 +762,16 @@ function applyGownFrameLayers(frame) {
   frame.whiteW = outerW - frame.border * 2;
   frame.whiteH = outerH - frame.border * 2;
 
-  const minSlot = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.18));
+  const minInnerFrame = Math.max(24, Math.round(baseDw * 0.35));
   let slotInset = frame.innerMatPad + frame.innerStroke;
   let innerFrameW = frame.whiteW - frame.outerMatPad * 2;
-  if (innerFrameW < minSlot + slotInset * 2) {
-    const maxOuter = Math.max(0, Math.floor((frame.whiteW - minSlot - slotInset * 2) / 2));
+  if (innerFrameW < minInnerFrame + slotInset * 2) {
+    const maxOuter = Math.max(0, Math.floor((frame.whiteW - minInnerFrame - slotInset * 2) / 2));
     frame.outerMatPad = Math.min(frame.outerMatPad, maxOuter);
     innerFrameW = frame.whiteW - frame.outerMatPad * 2;
   }
-  if (innerFrameW < minSlot + slotInset * 2) {
-    const maxInset = Math.max(0, Math.floor((innerFrameW - minSlot) / 2));
+  if (innerFrameW < minInnerFrame + slotInset * 2) {
+    const maxInset = Math.max(0, Math.floor((innerFrameW - minInnerFrame) / 2));
     if (frame.innerMatPad + frame.innerStroke > maxInset) {
       const ratio =
         frame.innerMatPad + frame.innerStroke > 0
@@ -790,12 +791,10 @@ function applyGownFrameLayers(frame) {
   frame.innerFrameH = frame.whiteH - frame.outerMatPad * 2;
 
   const slotInsetFinal = frame.innerMatPad + frame.innerStroke;
-  const slotW = Math.max(1, frame.innerFrameW - slotInsetFinal * 2);
-  const slotH = Math.max(1, frame.innerFrameH - slotInsetFinal * 2);
-  frame.px = frame.innerFrameX + slotInsetFinal;
-  frame.py = frame.innerFrameY + slotInsetFinal;
-  frame.dw = slotW;
-  frame.dh = slotH;
+  const innerW = frame.innerFrameW - slotInsetFinal * 2;
+  const innerH = frame.innerFrameH - slotInsetFinal * 2;
+  frame.px = frame.innerFrameX + slotInsetFinal + Math.round((innerW - baseDw) / 2);
+  frame.py = frame.innerFrameY + slotInsetFinal + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 
@@ -1052,11 +1051,7 @@ async function rebuildFrameCanvas(layers) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   if (frame.style === "gown_static") {
-    if (layers._gownPhotoSource) {
-      drawGownPhotoCoverFit(ctx, productImg, frame);
-    } else {
-      drawGownProductInSlot(ctx, productImg, frame);
-    }
+    drawGownPhotoCoverFit(ctx, productImg, frame);
   } else {
     ctx.drawImage(
       productImg,
@@ -1686,6 +1681,7 @@ function snapshotDefaults(layers, style) {
               innerMat: 100,
             },
         photoZoomPct: frame.photoZoomPct ?? 100,
+        photoZoomLocked: frame.photoZoomLocked !== false,
         gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
       },
       urls: {
