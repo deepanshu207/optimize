@@ -2,10 +2,15 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=92";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=92";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=92";
-import { drawGownStaticFrameBackground, drawGownProductInSlot, gownUsesBorderGradient } from "./liveGownStatic.mjs?v=92";
+import { compressFramedToKb } from "./lib/encoder.js?v=93";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=93";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=93";
+import {
+  drawGownStaticFrameBackground,
+  drawGownProductInSlot,
+  drawGownPhotoCoverFit,
+  gownUsesBorderGradient,
+} from "./liveGownStatic.mjs?v=93";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -815,6 +820,7 @@ export function staticFrameBorderEdited(frame) {
 }
 
 export function shouldRebuildStaticFrame(layers, options = {}) {
+  if (options.badgesOnly) return false;
   const frame = layers?._staticFrame;
   if (!frame?.outerW) return false;
   if (!layers.productOnly && !layers.noStickers) return false;
@@ -823,6 +829,27 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
   return false;
+}
+
+function frozenLayerUrl(layers, key) {
+  return layers?._staticDefaults?.urls?.[key] || layers?.[key] || "";
+}
+
+function canvasFromStaticImage(img, frame) {
+  const canvas = document.createElement("canvas");
+  const outerW = frame?.outerW || img.width;
+  const outerH = frame?.outerH || img.height;
+  canvas.width = outerW;
+  canvas.height = outerH;
+  const ctx = canvas.getContext("2d");
+  if (img.width === outerW && img.height === outerH) {
+    ctx.drawImage(img, 0, 0);
+  } else {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, outerW, outerH);
+  }
+  return canvas;
 }
 
 /**
@@ -982,13 +1009,17 @@ function drawFrameBackground(ctx, frame) {
 }
 
 async function loadProductForFrame(layers, frame) {
+  if (frame.style === "gown_static" && layers._gownPhotoSource) {
+    return loadImage(layers._gownPhotoSource);
+  }
   if (layers.productOnly) return loadImage(layers.productOnly);
   const dw = frame.baseDw ?? frame.dw;
   const dh = frame.baseDh ?? frame.dh;
   const px = frame.basePx ?? frame.px;
   const py = frame.basePy ?? frame.py;
-  if (!layers.noStickers || !dw || !dh || px == null || py == null) return null;
-  const src = await loadImage(layers.noStickers);
+  const noStickersUrl = frozenLayerUrl(layers, "noStickers");
+  if (!noStickersUrl || !dw || !dh || px == null || py == null) return null;
+  const src = await loadImage(noStickersUrl);
   const c = document.createElement("canvas");
   c.width = dw;
   c.height = dh;
@@ -1020,7 +1051,11 @@ async function rebuildFrameCanvas(layers) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   if (frame.style === "gown_static") {
-    drawGownProductInSlot(ctx, productImg, frame);
+    if (layers._gownPhotoSource) {
+      drawGownPhotoCoverFit(ctx, productImg, frame);
+    } else {
+      drawGownProductInSlot(ctx, productImg, frame);
+    }
   } else {
     ctx.drawImage(
       productImg,
@@ -1258,15 +1293,17 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!layers) return "";
   const targetKb = options.targetKb ?? 0;
   const preview = !!options.preview;
+  const badgesOnly = !!options.badgesOnly;
   const style = layers._staticFrame?.style || "";
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
 
   if (!hasBorder && !hasStickers) {
-    return layers.productOnly || layers.full || "";
+    return frozenLayerUrl(layers, "productOnly") || layers.productOnly || layers.full || "";
   }
 
   const frameEdited = shouldRebuildStaticFrame(layers, {
     staticAppearanceEdited: !!options.staticAppearanceEdited,
+    badgesOnly,
   });
 
   let canvas = null;
@@ -1283,22 +1320,29 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   if (!canvas) {
     if (!picked.drawBadges && !frameEdited) {
-      return picked.url || layers.full || "";
+      return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
     let baseUrl = picked.url;
+    if (style === "gown_static" && badgesOnly) {
+      baseUrl = frozenLayerUrl(layers, "noStickers") || baseUrl;
+    }
     if (!baseUrl) {
-      if (hasBorder && !hasStickers) baseUrl = layers.noStickers || layers.full;
+      if (hasBorder && !hasStickers) baseUrl = frozenLayerUrl(layers, "noStickers") || layers.noStickers || layers.full;
       else if (!hasBorder && hasStickers) baseUrl = layers.noBorder || layers.productOnly || layers.full;
-      else baseUrl = layers.noStickers || layers.full;
+      else baseUrl = frozenLayerUrl(layers, "noStickers") || layers.noStickers || layers.full;
     }
     try {
       const img = await loadImage(baseUrl);
-      canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      canvas.getContext("2d").drawImage(img, 0, 0);
+      if (frame?.outerW && frame?.outerH) {
+        canvas = canvasFromStaticImage(img, frame);
+      } else {
+        canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+      }
     } catch (e) {
-      return layers.full || "";
+      return frozenLayerUrl(layers, "full") || layers.full || "";
     }
   }
 
@@ -1637,6 +1681,13 @@ function snapshotDefaults(layers, style) {
               innerMat: 100,
             },
         gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+      },
+      urls: {
+        full: layers.full || "",
+        noStickers: layers.noStickers || "",
+        productOnly: layers.productOnly || "",
+        noBorder: layers.noBorder || "",
+        gownPhotoSource: layers._gownPhotoSource || "",
       },
       placements: {},
     };

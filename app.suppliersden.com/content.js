@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=92";
+      return "/js/liveAnalysisBridge.mjs?v=93";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=92");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=93");
     }
-    return "/js/liveAnalysisBridge.mjs?v=92";
+    return "/js/liveAnalysisBridge.mjs?v=93";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=92";
+      return "/js/staticFrameCompose.mjs?v=93";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=92");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=93");
     }
-    return "/js/staticFrameCompose.mjs?v=92";
+    return "/js/staticFrameCompose.mjs?v=93";
   }
 
   async preloadStaticComposeModule() {
@@ -3231,7 +3231,9 @@ Please share payment details and license key.`;
     row._badgesRepositioned = false;
     row._staticAppearanceEdited = false;
 
+    const urls = row.layers._staticDefaults?.urls;
     const resetUrl =
+      urls?.full ||
       row.layers.full ||
       row.pricingImageUrl ||
       row.dataUrl ||
@@ -3277,15 +3279,31 @@ Please share payment details and license key.`;
     };
   }
 
+  updateVariantEditorResetButton(row) {
+    const panel = document.getElementById("variant-edit-panel");
+    if (!panel || !row || this._editingVariantId !== row.variantId) return;
+    const resetBtn = panel.querySelector("#variant-edit-reset");
+    if (!resetBtn) return;
+    const hasAdvanced = this.hasAdvancedEditor(row);
+    const edited =
+      !!row._badgesRepositioned ||
+      !!row._staticAppearanceEdited ||
+      this.isVariantEdited(row.editFlags, row.layers, row) ||
+      (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
+    resetBtn.style.display = edited ? "block" : "none";
+  }
+
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     const gen = ++this._borderComposeGen;
+    const badgesOnly = !!row._badgesRepositioned && !row._staticAppearanceEdited;
     const url = await window.StaticFrameCompose.composeStaticPreview(
       row.layers,
       row.editFlags || {},
       {
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
+        badgesOnly,
         ...options,
       },
     );
@@ -3305,6 +3323,7 @@ Please share payment details and license key.`;
       }
     }
     this.refreshVariantCard(row);
+    this.updateVariantEditorResetButton(row);
   }
 
   async applyRowStaticPreview(variantId, row = null) {
@@ -3325,6 +3344,7 @@ Please share payment details and license key.`;
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
+      badgesOnly: !!row._badgesRepositioned && !row._staticAppearanceEdited,
     };
 
     const needsCompose =
@@ -4741,10 +4761,7 @@ Please share payment details and license key.`;
         : "6 preview options — edits update save only, not shipping ₹.";
     }
     if (resetBtn) {
-      const edited =
-        this.isVariantEdited(row.editFlags, row.layers, row) ||
-        (hasAdvanced && window.StaticFrameCompose?.needsStaticCompose?.(row));
-      resetBtn.style.display = edited ? "block" : "none";
+      this.updateVariantEditorResetButton(row);
     }
   }
 
@@ -4766,7 +4783,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "11") {
+    if (panel && panel.dataset.staticEditorV !== "12") {
       panel.remove();
       panel = null;
     }
@@ -4774,7 +4791,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "11";
+    panel.dataset.staticEditorV = "12";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `

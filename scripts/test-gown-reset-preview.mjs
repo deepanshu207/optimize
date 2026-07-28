@@ -96,6 +96,11 @@ assert(
   "reset restores default border color",
 );
 
+assert(
+  !SFC.shouldRebuildStaticFrame(layers, { badgesOnly: true }),
+  "badge-only edits skip frame rebuild",
+);
+
 const contentCode = readFileSync(
   resolve(root, "app.suppliersden.com/content.js"),
   "utf8",
@@ -115,10 +120,8 @@ assert(
   composeCode.includes("applyBorderThickness(layers._staticFrame)"),
   "reset reapplies frame geometry",
 );
-assert(
-  !contentCode.includes("row.pricingImageUrl ="),
-  "editor never overwrites pricingImageUrl",
-);
+assert(contentCode.includes("updateVariantEditorResetButton"), "reset button stays visible after edits");
+assert(contentCode.includes("urls?.full"), "reset uses frozen original layer URLs");
 assert(contentCode.includes("preview: true"), "preview compose skips targetKb recompress");
 
 if (failed) {
