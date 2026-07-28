@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=88";
-import { blobToDataUrl } from "./lib/encoder.js?v=88";
-import { estimateImageShipping } from "./lib/shipping.js?v=88";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=88";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=89";
+import { blobToDataUrl } from "./lib/encoder.js?v=89";
+import { estimateImageShipping } from "./lib/shipping.js?v=89";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=89";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -148,6 +148,21 @@ function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
   ctx.fillRect(x + w - t, y, t, h);
 }
 
+/** Gown outer border uses a vertical gradient when frameType is gradient or a preset is set. */
+export function gownUsesBorderGradient(frame) {
+  return frame?.frameType === "gradient" || !!frame?.gradientPreset;
+}
+
+function gownBorderFillStyle(ctx, frame, outerW, outerH) {
+  if (!gownUsesBorderGradient(frame)) {
+    return frame.borderColor || BORDER_TEAL;
+  }
+  const grad = ctx.createLinearGradient(0, 0, 0, outerH);
+  grad.addColorStop(0, frame.gradientTop || frame.borderColor || BORDER_TEAL);
+  grad.addColorStop(1, frame.gradientBottom || BORDER_TEAL_DARK);
+  return grad;
+}
+
 /** Teal border + white mat + teal inner accent (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const outerW = frame.outerW || 0;
@@ -167,7 +182,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   const padColor = frame.padColor ?? frame.innerMatColor ?? frame.matColor ?? "#ffffff";
   const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
 
-  ctx.fillStyle = frame.borderColor || BORDER_TEAL;
+  ctx.fillStyle = gownBorderFillStyle(ctx, frame, outerW, outerH);
   ctx.fillRect(0, 0, outerW, outerH);
 
   if (omp > 0 && ww > 0 && wh > 0) {

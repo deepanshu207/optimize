@@ -67,22 +67,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=88";
+      return "/js/liveAnalysisBridge.mjs?v=89";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=88");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=89");
     }
-    return "/js/liveAnalysisBridge.mjs?v=88";
+    return "/js/liveAnalysisBridge.mjs?v=89";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=88";
+      return "/js/staticFrameCompose.mjs?v=89";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=88");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=89");
     }
-    return "/js/staticFrameCompose.mjs?v=88";
+    return "/js/staticFrameCompose.mjs?v=89";
   }
 
   async preloadStaticComposeModule() {
@@ -3707,7 +3707,6 @@ Please share payment details and license key.`;
   async setStaticGradientPreset(variantId, presetId) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
-    if (row.layers._staticFrame.style === "gown_static") return;
 
     await this.preloadStaticComposeModule();
     const SFC = window.StaticFrameCompose;
@@ -4128,7 +4127,6 @@ Please share payment details and license key.`;
     if (showFrameColors) {
       html += `<div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px;">Frame colors</div>`;
 
-    if (style !== "gown_static") {
       html += `<label style="display:block;font-size:11px;margin-bottom:6px;">Gradient preset
         <select id="static-gradient-preset" class="opt-select" style="width:100%;margin-top:4px;font-size:12px;padding:6px;">`;
       html += `<option value="">— Custom / solid —</option>`;
@@ -4138,18 +4136,22 @@ Please share payment details and license key.`;
         }>${g.label}</option>`;
       });
       html += `</select></label>`;
-    }
+
+    const gownGradient =
+      style === "gown_static" && SFC.staticStyleUsesGradientColors?.(style, frame);
+    const gradientTopLabel = gownGradient ? "Border top" : "Top";
+    const gradientBottomLabel = gownGradient ? "Border bottom" : "Bottom";
 
     if (style === "showcase" || style === "live_standard" || SFC.staticStyleUsesGradientColors?.(style, frame)) {
       html += this.buildStaticColorFieldHtml(
         "static-color-top",
-        "Top",
+        gradientTopLabel,
         frame.gradientTop,
         "#FF9800",
       );
       html += this.buildStaticColorFieldHtml(
         "static-color-bottom",
-        "Bottom",
+        gradientBottomLabel,
         frame.gradientBottom,
         "#4CAF50",
       );
@@ -4165,12 +4167,14 @@ Please share payment details and license key.`;
     }
 
     if (style === "gown_static") {
-      html += this.buildStaticColorFieldHtml(
-        "static-color-border",
-        "Outer border",
-        frame.borderColor,
-        "#71cbd3",
-      );
+      if (!gownGradient) {
+        html += this.buildStaticColorFieldHtml(
+          "static-color-border",
+          "Outer border",
+          frame.borderColor,
+          "#71cbd3",
+        );
+      }
       html += this.buildStaticColorFieldHtml(
         "static-color-outer-mat",
         "Outer mat",
@@ -4685,7 +4689,7 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel && panel.dataset.staticEditorV !== "10") {
+    if (panel && panel.dataset.staticEditorV !== "11") {
       panel.remove();
       panel = null;
     }
@@ -4693,7 +4697,7 @@ Please share payment details and license key.`;
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
-    panel.dataset.staticEditorV = "10";
+    panel.dataset.staticEditorV = "11";
     panel.style.cssText =
       "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
