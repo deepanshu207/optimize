@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=92";
-import { blobToDataUrl } from "./lib/encoder.js?v=92";
-import { estimateImageShipping } from "./lib/shipping.js?v=92";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=92";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=93";
+import { blobToDataUrl } from "./lib/encoder.js?v=93";
+import { estimateImageShipping } from "./lib/shipping.js?v=93";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=93";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -236,7 +236,8 @@ export function drawGownProductInSlot(ctx, productImg, frame) {
   ctx.restore();
 }
 
-function drawGownPhotoCoverFit(ctx, base, geom) {
+/** Cover-fit source photo into gown photo slot — same geometry as generation. */
+export function drawGownPhotoCoverFit(ctx, base, geom) {
   const { px, py, dw, dh } = geom;
   const fitScale = Math.max(dw / base.width, dh / base.height);
   const sw = Math.round(base.width * fitScale);
@@ -416,6 +417,7 @@ async function buildGownStaticLayers(img) {
       noStickers,
       noBorder,
       productOnly,
+      _gownPhotoSource: dataUrlFromCanvas(source),
       _stickersRendered: badgePlacements.some((p) => p.drawn),
       _badgePlacements: badgePlacements,
       _staticFrame: {

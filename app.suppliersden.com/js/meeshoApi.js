@@ -2193,6 +2193,8 @@ const MeeshoAPI = {
               jpegQuality: result.meta?.jpegQuality || 0.92,
               style: staticFrame?.style,
               staticAppearanceEdited: !!result._staticAppearanceEdited,
+              badgesOnly:
+                !!result._badgesRepositioned && !result._staticAppearanceEdited,
             },
           );
         } catch (e) {

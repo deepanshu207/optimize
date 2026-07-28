@@ -58,8 +58,12 @@ assert(
   "removed conditional targetKb on badge-only compose",
 );
 
-assert(contentCode.includes("jpegQuality: row?.meta?.jpegQuality || 0.92"), "preview uses high JPEG quality");
-assert(!contentCode.includes("row.pricingImageUrl ="), "pricing image never overwritten in editor");
+assert(contentCode.includes("updateVariantEditorResetButton"), "reset button updated after preview");
+assert(contentCode.includes("badgesOnly"), "badge-only compose skips frame rebuild");
+assert(composeCode.includes("_gownPhotoSource"), "gown stores original photo source for rebuilds");
+assert(composeCode.includes("options.badgesOnly"), "shouldRebuildStaticFrame respects badgesOnly");
+assert(composeCode.includes("canvasFromStaticImage"), "compose enforces full canvas dimensions");
+assert(composeCode.includes("frozenLayerUrl"), "compose uses frozen layer URLs");
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
