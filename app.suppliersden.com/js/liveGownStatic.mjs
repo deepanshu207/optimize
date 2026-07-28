@@ -2,22 +2,27 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=81";
-import { blobToDataUrl } from "./lib/encoder.js?v=81";
-import { estimateImageShipping } from "./lib/shipping.js?v=81";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=81";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=82";
+import { blobToDataUrl } from "./lib/encoder.js?v=82";
+import { estimateImageShipping } from "./lib/shipping.js?v=82";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=82";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
-/** Reference listing: thin teal + thick white mat, lifestyle photo fills mat. */
-const BORDER_TEAL = "#71cbd3";
+/** Reference listing: teal border → outer white mat → inner frame line → photo. */
+export const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
-const GOWN_TEAL_RATIO = 0.025;
-/** Thin white mat (~4.8% per side) — competitor photo nearly edge-to-edge inside white. */
-const GOWN_WHITE_PAD_RATIO = 0.048;
-const GOWN_WHITE_PAD_MIN = 28;
+export const GOWN_TEAL_RATIO = 0.025;
+/** Outer white band inside main mat (visible between teal and inner frame). */
+export const GOWN_OUTER_MAT_RATIO = 0.065;
+export const GOWN_OUTER_MAT_MIN = 44;
+/** Inner white band inside frame stroke, before lifestyle photo. */
+export const GOWN_INNER_MAT_RATIO = 0.016;
+export const GOWN_INNER_MAT_MIN = 12;
+export const GOWN_INNER_STROKE = 2;
+export const GOWN_INNER_STROKE_COLOR = "#d6d6d6";
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -79,64 +84,125 @@ async function compressGownToKb(canvas, targetKb) {
   return { blob: bestBlob || (await encodePromoJpeg(work, 14)), canvas: work };
 }
 
+export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
+  const ref = Math.min(outerW, outerH);
+  const border = overrides.border ?? Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
+  const outerMatPad =
+    overrides.outerMatPad ??
+    Math.max(GOWN_OUTER_MAT_MIN, Math.round(ref * GOWN_OUTER_MAT_RATIO));
+  const innerMatPad =
+    overrides.innerMatPad ??
+    Math.max(GOWN_INNER_MAT_MIN, Math.round(ref * GOWN_INNER_MAT_RATIO));
+
+  const whiteX = border;
+  const whiteY = border;
+  const whiteW = outerW - border * 2;
+  const whiteH = outerH - border * 2;
+
+  const innerFrameX = whiteX + outerMatPad;
+  const innerFrameY = whiteY + outerMatPad;
+  const innerFrameW = whiteW - outerMatPad * 2;
+  const innerFrameH = whiteH - outerMatPad * 2;
+
+  const slotX = innerFrameX + innerMatPad;
+  const slotY = innerFrameY + innerMatPad;
+  const maxProdW = innerFrameW - innerMatPad * 2;
+  const maxProdH = innerFrameH - innerMatPad * 2;
+
+  return {
+    border,
+    outerMatPad,
+    innerMatPad,
+    whitePad: outerMatPad + innerMatPad,
+    whiteX,
+    whiteY,
+    whiteW,
+    whiteH,
+    innerFrameX,
+    innerFrameY,
+    innerFrameW,
+    innerFrameH,
+    px: slotX,
+    py: slotY,
+    dw: maxProdW,
+    dh: maxProdH,
+    outerW,
+    outerH,
+  };
+}
+
+/** Teal + double white mat + inner frame stroke (no photo). */
+export function drawGownStaticFrameBackground(ctx, frame) {
+  const wx = frame.whiteX ?? frame.border ?? 0;
+  const wy = frame.whiteY ?? frame.border ?? 0;
+  const ww = frame.whiteW ?? (frame.outerW || 0) - (frame.border || 0) * 2;
+  const wh = frame.whiteH ?? (frame.outerH || 0) - (frame.border || 0) * 2;
+  const ifx = frame.innerFrameX ?? wx + (frame.outerMatPad ?? 0);
+  const ify = frame.innerFrameY ?? wy + (frame.outerMatPad ?? 0);
+  const ifw = frame.innerFrameW ?? ww - (frame.outerMatPad ?? 0) * 2;
+  const ifh = frame.innerFrameH ?? wh - (frame.outerMatPad ?? 0) * 2;
+  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
+  const strokeColor = frame.innerStrokeColor ?? GOWN_INNER_STROKE_COLOR;
+
+  ctx.fillStyle = frame.borderColor || BORDER_TEAL;
+  ctx.fillRect(0, 0, frame.outerW, frame.outerH);
+  ctx.fillStyle = frame.matColor || "#ffffff";
+  ctx.fillRect(wx, wy, ww, wh);
+
+  if (ifw > 0 && ifh > 0) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = stroke;
+    ctx.strokeRect(
+      ifx + stroke / 2,
+      ify + stroke / 2,
+      ifw - stroke,
+      ifh - stroke,
+    );
+  }
+}
+
+function drawGownPhotoCoverFit(ctx, base, geom) {
+  const { px, py, dw, dh } = geom;
+  const fitScale = Math.max(dw / base.width, dh / base.height);
+  const sw = Math.round(base.width * fitScale);
+  const sh = Math.round(base.height * fitScale);
+  const imgX = px + Math.round((dw - sw) / 2);
+  const imgY = py + Math.round((dh - sh) / 2);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px, py, dw, dh);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(base, 0, 0, base.width, base.height, imgX, imgY, sw, sh);
+  ctx.restore();
+}
+
 function buildGownStaticFrameCanvas(img) {
   const outerW = GOWN_STATIC_OUTER_W;
   const outerH = GOWN_STATIC_OUTER_H;
   const base = imageToCanvas(img, 1200);
-  const ref = Math.min(outerW, outerH);
-
-  const tealOuter = Math.max(14, Math.round(ref * GOWN_TEAL_RATIO));
-  const whitePad = Math.max(GOWN_WHITE_PAD_MIN, Math.round(ref * GOWN_WHITE_PAD_RATIO));
-  const whiteX = tealOuter;
-  const whiteY = tealOuter;
-  const whiteW = outerW - tealOuter * 2;
-  const whiteH = outerH - tealOuter * 2;
-
-  const maxProdW = whiteW - whitePad * 2;
-  const maxProdH = whiteH - whitePad * 2;
-  const slotX = tealOuter + whitePad;
-  const slotY = tealOuter + whitePad;
-  // Cover-fit: fill the mat like competitor listings (crop sky/pavement, not shrink model).
-  const fitScale = Math.max(maxProdW / base.width, maxProdH / base.height);
-  const sw = Math.round(base.width * fitScale);
-  const sh = Math.round(base.height * fitScale);
-  const px = slotX + Math.round((maxProdW - sw) / 2);
-  const py = slotY + Math.round((maxProdH - sh) / 2);
+  const geom = computeGownFrameGeometry(outerW, outerH);
 
   const canvas = document.createElement("canvas");
   canvas.width = outerW;
   canvas.height = outerH;
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = BORDER_TEAL;
-  ctx.fillRect(0, 0, outerW, outerH);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(whiteX, whiteY, whiteW, whiteH);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(slotX, slotY, maxProdW, maxProdH);
-  ctx.clip();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(base, 0, 0, base.width, base.height, px, py, sw, sh);
-  ctx.restore();
+  drawGownStaticFrameBackground(ctx, {
+    ...geom,
+    borderColor: BORDER_TEAL,
+    matColor: "#ffffff",
+    innerStroke: GOWN_INNER_STROKE,
+    innerStrokeColor: GOWN_INNER_STROKE_COLOR,
+  });
+  drawGownPhotoCoverFit(ctx, base, geom);
 
   return {
     canvas,
-    px: slotX,
-    py: slotY,
-    dw: maxProdW,
-    dh: maxProdH,
-    border: tealOuter,
-    whitePad,
-    whiteX,
-    whiteY,
-    whiteW,
-    whiteH,
+    ...geom,
     source: base,
-    outerW,
-    outerH,
   };
 }
 
@@ -218,6 +284,12 @@ async function buildGownStaticLayers(img) {
     dh,
     border,
     whitePad,
+    outerMatPad,
+    innerMatPad,
+    innerFrameX,
+    innerFrameY,
+    innerFrameW,
+    innerFrameH,
     whiteX,
     whiteY,
     whiteW,
@@ -283,7 +355,17 @@ async function buildGownStaticLayers(img) {
         dh,
         border,
         whitePad,
+        outerMatPad,
+        innerMatPad,
+        innerFrameX,
+        innerFrameY,
+        innerFrameW,
+        innerFrameH,
+        innerStroke: GOWN_INNER_STROKE,
+        innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         baseBorder: border,
+        baseOuterMatPad: outerMatPad,
+        baseInnerMatPad: innerMatPad,
         baseWhitePad: whitePad,
         basePx: px,
         basePy: py,
@@ -293,6 +375,10 @@ async function buildGownStaticLayers(img) {
         baseWhiteY: whiteY,
         baseWhiteW: whiteW,
         baseWhiteH: whiteH,
+        baseInnerFrameX: innerFrameX,
+        baseInnerFrameY: innerFrameY,
+        baseInnerFrameW: innerFrameW,
+        baseInnerFrameH: innerFrameH,
         borderThicknessPct: 100,
         borderThicknessLocked: true,
         outerW,

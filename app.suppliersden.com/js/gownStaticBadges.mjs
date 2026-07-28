@@ -1,7 +1,7 @@
 /**
  * Gown promo badges — Best PRICE, FLASH SALE, MOST POPULAR (reference layout).
  */
-import { drawBadgeOnWhite } from "./tallStaticBadges.mjs?v=80";
+import { drawBadgeOnWhite } from "./tallStaticBadges.mjs?v=82";
 
 function drawLightning(ctx, x, y, w, h) {
   ctx.save();

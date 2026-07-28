@@ -2,9 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=67";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=67";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=67";
+import { compressFramedToKb } from "./lib/encoder.js?v=82";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=82";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=82";
+import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=82";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -562,6 +563,32 @@ export function ensureFrameBases(frame) {
   if (frame.borderThicknessPct == null) frame.borderThicknessPct = BORDER_THICKNESS_DEFAULT;
   if (frame.baseBorder == null && frame.border != null) frame.baseBorder = frame.border;
   if (frame.baseWhitePad == null && frame.whitePad != null) frame.baseWhitePad = frame.whitePad;
+  if (frame.baseOuterMatPad == null && frame.outerMatPad != null) {
+    frame.baseOuterMatPad = frame.outerMatPad;
+  }
+  if (frame.baseInnerMatPad == null && frame.innerMatPad != null) {
+    frame.baseInnerMatPad = frame.innerMatPad;
+  }
+  if (
+    frame.baseOuterMatPad == null &&
+    frame.style === "gown_static" &&
+    frame.baseWhitePad != null
+  ) {
+    frame.baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 12;
+    frame.baseOuterMatPad = Math.max(0, frame.baseWhitePad - frame.baseInnerMatPad);
+  }
+  if (frame.baseInnerFrameX == null && frame.innerFrameX != null) {
+    frame.baseInnerFrameX = frame.innerFrameX;
+  }
+  if (frame.baseInnerFrameY == null && frame.innerFrameY != null) {
+    frame.baseInnerFrameY = frame.innerFrameY;
+  }
+  if (frame.baseInnerFrameW == null && frame.innerFrameW != null) {
+    frame.baseInnerFrameW = frame.innerFrameW;
+  }
+  if (frame.baseInnerFrameH == null && frame.innerFrameH != null) {
+    frame.baseInnerFrameH = frame.innerFrameH;
+  }
   if (frame.baseWhitePad == null && frame.px != null && frame.whiteX != null) {
     frame.baseWhitePad = frame.px - frame.whiteX;
   }
@@ -590,24 +617,32 @@ function restoreBaseGeometry(frame) {
   if (frame.baseWhiteY != null) frame.whiteY = frame.baseWhiteY;
   if (frame.baseWhiteW != null) frame.whiteW = frame.baseWhiteW;
   if (frame.baseWhiteH != null) frame.whiteH = frame.baseWhiteH;
+  if (frame.baseOuterMatPad != null) frame.outerMatPad = frame.baseOuterMatPad;
+  if (frame.baseInnerMatPad != null) frame.innerMatPad = frame.baseInnerMatPad;
+  if (frame.baseInnerFrameX != null) frame.innerFrameX = frame.baseInnerFrameX;
+  if (frame.baseInnerFrameY != null) frame.innerFrameY = frame.baseInnerFrameY;
+  if (frame.baseInnerFrameW != null) frame.innerFrameW = frame.baseInnerFrameW;
+  if (frame.baseInnerFrameH != null) frame.innerFrameH = frame.baseInnerFrameH;
 }
 
-/** Gown: scale teal border + white mat; product pixels stay fixed. Above 100% bias growth to teal ring. */
+/** Gown: scale teal + outer mat; inner mat + product pixels stay fixed. */
 function applyGownBorderThickness(frame, pct) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
   const baseDw = frame.baseDw ?? frame.dw ?? 0;
   const baseDh = frame.baseDh ?? frame.dh ?? 0;
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
-  const baseWhitePad = frame.baseWhitePad ?? frame.whitePad ?? 0;
-  const baseInset = baseBorder + baseWhitePad;
+  const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
+  const baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 0;
+  const baseInset = baseBorder + baseOuterMatPad + baseInnerMatPad;
 
   frame.dw = baseDw;
   frame.dh = baseDh;
+  frame.innerMatPad = baseInnerMatPad;
 
   const t = pct / BORDER_THICKNESS_DEFAULT;
   const minBorder = 2;
-  const minInset = minBorder;
+  const minInset = minBorder + baseInnerMatPad;
   const minProduct = Math.max(24, Math.round(Math.min(outerW, outerH) * 0.22));
   const maxInset = Math.max(
     baseInset + 1,
@@ -624,23 +659,32 @@ function applyGownBorderThickness(frame, pct) {
   }
   targetInset = clamp(targetInset, minInset, maxInset);
 
-  const borderRatio = baseInset > 0 ? baseBorder / baseInset : 0.16;
+  const frameInset = Math.max(0, targetInset - baseInnerMatPad);
+  const borderRatio =
+    baseBorder + baseOuterMatPad > 0 ? baseBorder / (baseBorder + baseOuterMatPad) : 0.16;
   if (t <= 1) {
-    frame.border = Math.max(minBorder, Math.round(targetInset * borderRatio));
+    frame.border = Math.max(minBorder, Math.round(frameInset * borderRatio));
+    frame.outerMatPad = Math.max(0, frameInset - frame.border);
   } else {
-    const extra = Math.max(0, targetInset - baseInset);
+    const extra = Math.max(0, frameInset - (baseBorder + baseOuterMatPad));
     frame.border = Math.max(minBorder, Math.round(baseBorder + extra * 0.55));
+    frame.outerMatPad = Math.max(0, frameInset - frame.border);
   }
-  frame.whitePad = Math.max(0, targetInset - frame.border);
+  frame.whitePad = frame.outerMatPad + frame.innerMatPad;
   frame.whiteX = frame.border;
   frame.whiteY = frame.border;
   frame.whiteW = outerW - frame.border * 2;
   frame.whiteH = outerH - frame.border * 2;
 
-  const innerW = frame.whiteW - frame.whitePad * 2;
-  const innerH = frame.whiteH - frame.whitePad * 2;
-  frame.px = frame.border + frame.whitePad + Math.round((innerW - baseDw) / 2);
-  frame.py = frame.border + frame.whitePad + Math.round((innerH - baseDh) / 2);
+  frame.innerFrameX = frame.whiteX + frame.outerMatPad;
+  frame.innerFrameY = frame.whiteY + frame.outerMatPad;
+  frame.innerFrameW = frame.whiteW - frame.outerMatPad * 2;
+  frame.innerFrameH = frame.whiteH - frame.outerMatPad * 2;
+
+  const innerW = frame.innerFrameW - frame.innerMatPad * 2;
+  const innerH = frame.innerFrameH - frame.innerMatPad * 2;
+  frame.px = frame.innerFrameX + frame.innerMatPad + Math.round((innerW - baseDw) / 2);
+  frame.py = frame.innerFrameY + frame.innerMatPad + Math.round((innerH - baseDh) / 2);
   return frame;
 }
 
@@ -792,7 +836,6 @@ function drawFrameBackground(ctx, frame) {
   } else if (
     frame.frameType === "tall" ||
     style === "tall_static" ||
-    style === "gown_static" ||
     style === "live_framed"
   ) {
     ctx.fillStyle = frame.borderColor || "#45a9e5";
@@ -803,6 +846,8 @@ function drawFrameBackground(ctx, frame) {
     const ww = frame.whiteW ?? outerW;
     const wh = frame.whiteH ?? outerH;
     ctx.fillRect(wx, wy, ww, wh);
+  } else if (style === "gown_static") {
+    drawGownStaticFrameBackground(ctx, frame);
   } else {
     ctx.fillStyle = frame.borderColor || "#32d74b";
     ctx.fillRect(0, 0, outerW, outerH);

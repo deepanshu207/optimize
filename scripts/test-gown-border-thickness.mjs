@@ -9,6 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
 import { applyBorderThickness } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
+import { computeGownFrameGeometry } from "../app.suppliersden.com/js/liveGownStatic.mjs";
 
 let failed = 0;
 function assert(cond, msg) {
@@ -20,56 +21,71 @@ function assert(cond, msg) {
   }
 }
 
+const base = computeGownFrameGeometry(773, 1094);
 const gownFrame = {
   style: "gown_static",
   frameType: "tall",
-  border: 19,
-  whitePad: 37,
-  baseBorder: 19,
-  baseWhitePad: 37,
-  basePx: 56,
-  basePy: 56,
-  baseDw: 661,
-  baseDh: 982,
-  baseWhiteX: 19,
-  baseWhiteY: 19,
-  baseWhiteW: 735,
-  baseWhiteH: 1056,
-  px: 56,
-  py: 56,
-  dw: 661,
-  dh: 982,
+  border: base.border,
+  whitePad: base.whitePad,
+  outerMatPad: base.outerMatPad,
+  innerMatPad: base.innerMatPad,
+  innerFrameX: base.innerFrameX,
+  innerFrameY: base.innerFrameY,
+  innerFrameW: base.innerFrameW,
+  innerFrameH: base.innerFrameH,
+  baseBorder: base.border,
+  baseOuterMatPad: base.outerMatPad,
+  baseInnerMatPad: base.innerMatPad,
+  baseWhitePad: base.whitePad,
+  basePx: base.px,
+  basePy: base.py,
+  baseDw: base.dw,
+  baseDh: base.dh,
+  baseWhiteX: base.whiteX,
+  baseWhiteY: base.whiteY,
+  baseWhiteW: base.whiteW,
+  baseWhiteH: base.whiteH,
+  baseInnerFrameX: base.innerFrameX,
+  baseInnerFrameY: base.innerFrameY,
+  baseInnerFrameW: base.innerFrameW,
+  baseInnerFrameH: base.innerFrameH,
+  px: base.px,
+  py: base.py,
+  dw: base.dw,
+  dh: base.dh,
   outerW: 773,
   outerH: 1094,
-  whiteX: 19,
-  whiteY: 19,
-  whiteW: 735,
-  whiteH: 1056,
+  whiteX: base.whiteX,
+  whiteY: base.whiteY,
+  whiteW: base.whiteW,
+  whiteH: base.whiteH,
   borderThicknessPct: 100,
 };
 
 applyBorderThickness(gownFrame);
 assert(gownFrame.border === 19, "100 keeps base teal border");
-assert(gownFrame.dw === 661, "100 keeps product width");
-assert(gownFrame.dh === 982, "100 keeps product height");
+assert(gownFrame.dw === 611, "100 keeps product width");
+assert(gownFrame.dh === 932, "100 keeps product height");
+assert(gownFrame.innerMatPad === 12, "100 keeps inner mat band");
 
 gownFrame.borderThicknessPct = 50;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border < 19, "50 thins teal border");
-assert(gownFrame.dw === 661, "50 does not shrink product width");
-assert(gownFrame.dh === 982, "50 does not shrink product height");
+assert(gownFrame.dw === 611, "50 does not shrink product width");
+assert(gownFrame.dh === 932, "50 does not shrink product height");
+assert(gownFrame.innerMatPad === 12, "50 keeps inner mat fixed");
 
 gownFrame.borderThicknessPct = 500;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border >= 40, "500 thickens teal border noticeably");
-assert(gownFrame.border + gownFrame.whitePad > 56, "500 increases total frame inset");
-assert(gownFrame.dw === 661, "500 does not shrink product width");
-assert(gownFrame.dh === 982, "500 does not shrink product height");
+assert(gownFrame.border + gownFrame.outerMatPad + gownFrame.innerMatPad > 80, "500 increases total frame inset");
+assert(gownFrame.dw === 611, "500 does not shrink product width");
+assert(gownFrame.dh === 932, "500 does not shrink product height");
 
 gownFrame.borderThicknessPct = 100;
 applyBorderThickness(gownFrame);
 assert(gownFrame.border === 19, "restore 100 returns exact base border");
-assert(gownFrame.dw === 661, "restore 100 returns exact product width");
+assert(gownFrame.dw === 611, "restore 100 returns exact product width");
 
 const uiCode = readFileSync(resolve(root, "app.suppliersden.com/js/ui.js"), "utf8");
 const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"), "utf8");
@@ -81,6 +97,10 @@ const gownCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
   "utf8",
 );
+const composeCode = readFileSync(
+  resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs"),
+  "utf8",
+);
 
 assert(uiCode.includes("renderGownStaticSection"), "ui has gown section");
 assert(uiCode.includes('data-static-gen="gown"'), "hub has gown button");
@@ -90,15 +110,19 @@ assert(
   /},\s*\n\s*meta:\s*\{[\s\S]*style:\s*"lifestyle_promo"/.test(lifestyleCode),
   "lifestyle promo keeps top-level meta block",
 );
-assert(!gownCode.includes("GOWN_INNER_PRODUCT_FILL"), "gown fills white mat not double-padded");
-assert(gownCode.includes("Math.max(maxProdW / base.width, maxProdH / base.height)"), "gown uses cover-fit");
+assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "gown has outer mat band");
+assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "gown has inner mat band");
+assert(gownCode.includes("drawGownStaticFrameBackground"), "gown draws inner frame stroke");
+assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "gown uses cover-fit");
+assert(composeCode.includes("drawGownStaticFrameBackground"), "compose rebuilds gown triple mat");
 assert(contentCode.includes("static-border-lock"), "border thickness has lock button");
 assert(contentCode.includes("borderThicknessLocked"), "border lock stored on frame");
 assert(contentCode.includes("static-size-lock"), "badge size has lock button");
 assert(contentCode.includes("lockSize"), "badge size lock stored on placement");
 assert(contentCode.includes("toggleStaticPlacementSizeLock"), "badge size lock toggle wired");
-assert(contentCode.includes("staticEditorV = \"5\""), "editor panel layout v5 with scroll fix");
+assert(contentCode.includes('dataset.staticEditorV = "6"'), "editor panel layout v6 with preview zoom");
 assert(contentCode.includes("variant-edit-scroll"), "editor has dedicated scroll region");
+assert(contentCode.includes("bindVariantPreviewZoom"), "editor preview pinch-zoom wired");
 assert(contentCode.includes("static-slider-locked"), "locked sliders use class not whole-row fade");
 assert(contentCode.includes("min-height:0"), "flex scroll child can shrink");
 assert(contentCode.includes("queueStaticBorderThickness"), "border slider is debounced");
