@@ -66,22 +66,22 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=79";
+      return "/js/liveAnalysisBridge.mjs?v=80";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=79");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=80");
     }
-    return "/js/liveAnalysisBridge.mjs?v=79";
+    return "/js/liveAnalysisBridge.mjs?v=80";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=79";
+      return "/js/staticFrameCompose.mjs?v=80";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=79");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=80");
     }
-    return "/js/staticFrameCompose.mjs?v=79";
+    return "/js/staticFrameCompose.mjs?v=80";
   }
 
   async preloadStaticComposeModule() {
@@ -3203,7 +3203,6 @@ Please share payment details and license key.`;
       {
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
-        badgesRepositioned: !!row._badgesRepositioned,
         ...options,
       },
     );
@@ -3230,7 +3229,6 @@ Please share payment details and license key.`;
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
       staticAppearanceEdited: !!row._staticAppearanceEdited,
-      badgesRepositioned: !!row._badgesRepositioned,
     };
 
     if (
@@ -3239,7 +3237,6 @@ Please share payment details and license key.`;
         row._badgesRepositioned ||
         window.StaticFrameCompose.shouldRebuildStaticFrame?.(row.layers, {
           staticAppearanceEdited: !!row._staticAppearanceEdited,
-          badgesRepositioned: !!row._badgesRepositioned,
         }))
     ) {
       try {
@@ -3452,8 +3449,7 @@ Please share payment details and license key.`;
     row._staticAppearanceEdited = true;
     await this.refreshStaticPreview(variantId);
     if (this._editingVariantId === variantId) {
-      const preview = document.getElementById("variant-edit-preview");
-      if (preview && row.imageUrl) preview.src = row.imageUrl;
+      this.renderVariantEditorPanel(row);
     }
   }
 

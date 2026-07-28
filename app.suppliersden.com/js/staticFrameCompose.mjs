@@ -617,14 +617,8 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
   if (!layers.productOnly && !layers.noStickers) return false;
   if (staticFrameBorderEdited(frame)) return true;
   if (options.staticAppearanceEdited) return true;
-  if (options.badgesRepositioned) return true;
   const frameDef = layers._staticDefaults?.frame;
   if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
-  const placements = layers._badgePlacements || [];
-  const placementDefs = layers._staticDefaults?.placements || {};
-  for (const p of placements) {
-    if (placementChangedFromDefault(p, placementDefs[p.id])) return true;
-  }
   return false;
 }
 
@@ -865,9 +859,6 @@ async function drawPlacementsOnCtx(ctx, placements) {
     try {
       if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, w);
-      } else if (p.kind === "badge" && p.num != null) {
-        const badge = await loadBadge(p.num);
-        if (badge) ctx.drawImage(badge, p.x, p.y, w, h);
       } else if (p.id?.startsWith("tall-")) {
         const copy = { ...p, w, h };
         await drawTallBadge(ctx, loadBadge, copy);
@@ -1028,7 +1019,7 @@ export function pickStaticBaseLayer(layers, flags = {}) {
       rebuild: true,
     };
   }
-  return { url: layers.noStickers || layers.productOnly, drawBadges: true, rebuild: true };
+  return { url: layers.noStickers || layers.full, drawBadges: true, rebuild: true };
 }
 
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
@@ -1065,9 +1056,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     if (!baseUrl) {
       if (hasBorder && !hasStickers) baseUrl = layers.noStickers || layers.full;
       else if (!hasBorder && hasStickers) baseUrl = layers.noBorder || layers.productOnly || layers.full;
-      else baseUrl = layers.noStickers || layers.productOnly;
-    } else if (hasStickers && baseUrl === layers.full && layers.noStickers) {
-      baseUrl = layers.noStickers;
+      else baseUrl = layers.noStickers || layers.full;
     }
     try {
       const img = await loadImage(baseUrl);

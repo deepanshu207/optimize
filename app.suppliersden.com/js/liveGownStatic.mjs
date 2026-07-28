@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=77";
-import { blobToDataUrl } from "./lib/encoder.js?v=77";
-import { estimateImageShipping } from "./lib/shipping.js?v=77";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=77";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=80";
+import { blobToDataUrl } from "./lib/encoder.js?v=80";
+import { estimateImageShipping } from "./lib/shipping.js?v=80";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=80";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -241,16 +241,17 @@ async function buildGownStaticLayers(img) {
   const productOnlyCanvas = document.createElement("canvas");
   productOnlyCanvas.width = dw;
   productOnlyCanvas.height = dh;
+  // Crop pre-badge frame (like tall_static uses trimmed, not post-sticker canvas).
   productOnlyCanvas
     .getContext("2d")
-    .drawImage(canvas, px, py, dw, dh, 0, 0, dw, dh);
+    .drawImage(noStickersCanvas, px, py, dw, dh, 0, 0, dw, dh);
   const productOnly = dataUrlFromCanvas(productOnlyCanvas);
 
   const noBorderCanvas = document.createElement("canvas");
   noBorderCanvas.width = dw;
   noBorderCanvas.height = dh;
   const nbCtx = noBorderCanvas.getContext("2d");
-  nbCtx.drawImage(canvas, px, py, dw, dh, 0, 0, dw, dh);
+  nbCtx.drawImage(noStickersCanvas, px, py, dw, dh, 0, 0, dw, dh);
   const shifted = badgePlacements.map((p) => ({
     ...p,
     x: (p.x || 0) - px,
