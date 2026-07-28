@@ -5,16 +5,15 @@
 import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
 import {
   drawProductPhotoCoverFit,
+  ensureFramePhotoDefaults,
   frameHasProductSlot,
-} from "./lib/productPhotoFit.mjs?v=1";
+} from "./lib/productPhotoFit.mjs?v=2";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
-  drawGownProductInSlot,
-  drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=98";
+} from "./liveGownStatic.mjs?v=101";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -258,9 +257,8 @@ function ensurePlacementDefaults(p) {
     }
   }
   if (p.sizePct == null) p.sizePct = 100;
-  const gownSlot = p.id?.startsWith("gown-") || p.kind === "gownArt";
-  if (p.lockH == null) p.lockH = gownSlot ? false : true;
-  if (p.lockV == null) p.lockV = gownSlot ? false : true;
+  if (p.lockH == null) p.lockH = true;
+  if (p.lockV == null) p.lockV = true;
   if (p.lockSize == null) p.lockSize = true;
   return p;
 }
@@ -1571,10 +1569,6 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   p.num = num;
   p.drawn = true;
   p.label = `Badge ${num}`;
-  if (p.kind === "badge" && p.id?.startsWith("gown-")) {
-    p.lockH = false;
-    p.lockV = false;
-  }
   if (layers._staticFrame) applyPositionToPlacement(p, layers._staticFrame);
   return true;
 }
@@ -1890,6 +1884,8 @@ export function ensureStaticPlacementMeta(layers, style) {
   if (!layers._staticFrame) return layers;
 
   ensureFrameDefaults(layers._staticFrame);
+  ensureFrameBases(layers._staticFrame);
+  ensureFramePhotoDefaults(layers._staticFrame);
   snapshotDefaults(layers, style);
 
   if (layers._placementMetaReady) return layers;
@@ -1900,10 +1896,6 @@ export function ensureStaticPlacementMeta(layers, style) {
     const p = layers._badgePlacements[i];
     if (!p.id) p.id = `badge-slot-${i}`;
     ensurePlacementDefaults(p);
-    if (style === "gown_static") {
-      p.lockH = false;
-      p.lockV = false;
-    }
     if (!p.anchor && anchorMap[p.id]) p.anchor = anchorMap[p.id];
     if (!p.label) {
       if (p.kind === "freeShipping") p.label = "FREE SHIPPING";
@@ -2008,13 +2000,8 @@ export function resetStaticPlacements(layers) {
       p.posH = pDef.posH;
       p.posV = pDef.posV;
       p.sizePct = pDef.sizePct ?? 100;
-      if (style === "gown_static") {
-        p.lockH = false;
-        p.lockV = false;
-      } else {
-        p.lockH = true;
-        p.lockV = true;
-      }
+      p.lockH = true;
+      p.lockV = true;
       p.lockSize = true;
     } else if (anchorMap[p.id]) {
       p.anchor = anchorMap[p.id];
@@ -2043,6 +2030,7 @@ export function isStaticEdited(flags, badgesRepositioned, staticAppearanceEdited
 if (typeof window !== "undefined") {
   window.StaticFrameCompose = {
     frameHasProductSlot,
+    ensureFramePhotoDefaults,
     drawProductPhotoCoverFit,
     isStaticPromoVariant,
     isEditableVariant,
