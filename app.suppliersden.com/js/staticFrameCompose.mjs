@@ -4,17 +4,24 @@
  */
 import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
 import {
+  clampPhotoMarginSide,
   drawProductPhotoCoverFit,
   ensureFramePhotoDefaults,
   frameHasProductSlot,
+  maxPhotoMarginSide,
+  normalizePhotoMargins,
   PHOTO_ZOOM_DEFAULT,
-} from "./lib/productPhotoFit.mjs?v=3";
+  PHOTO_MARGIN_MAX,
+  photoMarginField,
+  photoMarginLockField,
+  snapshotPhotoControls,
+} from "./lib/productPhotoFit.mjs?v=4";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=106";
+} from "./liveGownStatic.mjs?v=107";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -751,13 +758,8 @@ export function snapshotGownFrameAppearance(frame) {
     borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
     borderThicknessLocked: frame.borderThicknessLocked !== false,
     gownLayerPct: normalizeGownLayerPct(frame.gownLayerPct),
-    photoZoomPct: frame.photoZoomPct ?? PHOTO_ZOOM_DEFAULT,
-    photoZoomLocked: frame.photoZoomLocked !== false,
-    photoPanH: frame.photoPanH ?? 50,
-    photoPanV: frame.photoPanV ?? 50,
-    photoPanHLocked: frame.photoPanHLocked !== false,
-    photoPanVLocked: frame.photoPanVLocked !== false,
     gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+    ...snapshotPhotoControls(frame),
   };
 }
 
@@ -778,13 +780,8 @@ function snapshotFrameAppearance(frame, style) {
     innerStrokeColor: frame.innerStrokeColor,
     padColor: frame.padColor,
     gownLayerPct: frame.gownLayerPct ? { ...frame.gownLayerPct } : defaultGownLayerPct(),
-    photoZoomPct: frame.photoZoomPct ?? PHOTO_ZOOM_DEFAULT,
-    photoZoomLocked: frame.photoZoomLocked !== false,
-    photoPanH: frame.photoPanH ?? 50,
-    photoPanV: frame.photoPanV ?? 50,
-    photoPanHLocked: frame.photoPanHLocked !== false,
-    photoPanVLocked: frame.photoPanVLocked !== false,
     gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
+    ...snapshotPhotoControls(frame),
   };
 }
 
@@ -1350,6 +1347,14 @@ export function frameAppearanceChanged(frame, defaults) {
     "photoZoomLocked",
     "photoPanHLocked",
     "photoPanVLocked",
+    "photoMarginTop",
+    "photoMarginRight",
+    "photoMarginBottom",
+    "photoMarginLeft",
+    "photoMarginTopLocked",
+    "photoMarginRightLocked",
+    "photoMarginBottomLocked",
+    "photoMarginLeftLocked",
   ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
@@ -1441,7 +1446,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   }
 
   if (!canvas) {
-    if (!picked.drawBadges && !frameEdited) {
+    if (!picked.drawBadges && !frameEdited && !options.staticAppearanceEdited) {
       return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
     let baseUrl = picked.url;
@@ -1734,6 +1739,22 @@ export function updateFrameAppearance(layers, patch) {
   if (patch.photoZoomLocked != null) frame.photoZoomLocked = !!patch.photoZoomLocked;
   if (patch.photoPanHLocked != null) frame.photoPanHLocked = !!patch.photoPanHLocked;
   if (patch.photoPanVLocked != null) frame.photoPanVLocked = !!patch.photoPanVLocked;
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const field = photoMarginField(side);
+    const lockField = photoMarginLockField(side);
+    if (patch[field] != null && frameHasProductSlot(frame)) {
+      frame[field] = clampPhotoMarginSide(frame, side, patch[field]);
+    }
+    if (patch[lockField] != null) frame[lockField] = !!patch[lockField];
+  }
+  if (
+    patch.photoMarginTop != null ||
+    patch.photoMarginRight != null ||
+    patch.photoMarginBottom != null ||
+    patch.photoMarginLeft != null
+  ) {
+    normalizePhotoMargins(frame);
+  }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame, { syncLegacyGownSlider: frame.style === "gown_static" });
@@ -1910,15 +1931,7 @@ export function bootstrapLiveFrame(row) {
     };
   }
 
-  const photoDefaults = {
-    photoZoomPct: 100,
-    photoZoomLocked: true,
-    photoPanH: 50,
-    photoPanV: 50,
-    photoPanHLocked: true,
-    photoPanVLocked: true,
-  };
-  Object.assign(layers._staticFrame, photoDefaults);
+  ensureFramePhotoDefaults(layers._staticFrame);
 
   layers._badgePlacements.forEach((p, i) => {
     if (!p.id) p.id = `live-badge-${i}`;
@@ -2096,6 +2109,10 @@ if (typeof window !== "undefined") {
     frameHasProductSlot,
     ensureFramePhotoDefaults,
     drawProductPhotoCoverFit,
+    maxPhotoMarginSide,
+    clampPhotoMarginSide,
+    PHOTO_MARGIN_MAX,
+    snapshotPhotoControls,
     isStaticPromoVariant,
     isEditableVariant,
     getBadgeSlots,

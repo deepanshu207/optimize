@@ -1,19 +1,70 @@
-/** Cover-fit lifestyle photo in a fixed rect with optional zoom + pan. */
+/** Cover-fit lifestyle photo in a fixed rect with optional zoom, pan, and per-side margins. */
 
 export const PHOTO_ZOOM_DEFAULT = 100;
 export const PHOTO_ZOOM_MIN = 50;
 export const PHOTO_ZOOM_MAX = 200;
+export const PHOTO_MARGIN_MAX = 200;
+export const PHOTO_MIN_SIZE = 48;
+
+const PHOTO_MARGIN_SIDES = ["top", "right", "bottom", "left"];
 
 export function clampPhotoZoom(pct) {
   return Math.max(PHOTO_ZOOM_MIN, Math.min(PHOTO_ZOOM_MAX, pct ?? PHOTO_ZOOM_DEFAULT));
 }
 
-export function productPhotoRect(frame) {
-  const w = frame?.baseDw ?? frame?.dw ?? 0;
-  const h = frame?.baseDh ?? frame?.dh ?? 0;
+export function photoMarginField(side) {
+  return `photoMargin${side.charAt(0).toUpperCase()}${side.slice(1)}`;
+}
+
+export function photoMarginLockField(side) {
+  return `${photoMarginField(side)}Locked`;
+}
+
+export function effectivePhotoMargins(frame) {
   return {
-    x: frame?.px ?? frame?.basePx ?? 0,
-    y: frame?.py ?? frame?.basePy ?? 0,
+    top: Math.max(0, frame?.photoMarginTop ?? 0),
+    right: Math.max(0, frame?.photoMarginRight ?? 0),
+    bottom: Math.max(0, frame?.photoMarginBottom ?? 0),
+    left: Math.max(0, frame?.photoMarginLeft ?? 0),
+  };
+}
+
+export function maxPhotoMarginSide(frame, side) {
+  const baseW = frame?.baseDw ?? frame?.dw ?? 0;
+  const baseH = frame?.baseDh ?? frame?.dh ?? 0;
+  const m = effectivePhotoMargins(frame);
+  let max = PHOTO_MARGIN_MAX;
+  if (side === "top") max = Math.min(max, Math.max(0, baseH - PHOTO_MIN_SIZE - m.bottom));
+  else if (side === "bottom") max = Math.min(max, Math.max(0, baseH - PHOTO_MIN_SIZE - m.top));
+  else if (side === "left") max = Math.min(max, Math.max(0, baseW - PHOTO_MIN_SIZE - m.right));
+  else if (side === "right") max = Math.min(max, Math.max(0, baseW - PHOTO_MIN_SIZE - m.left));
+  return max;
+}
+
+export function clampPhotoMarginSide(frame, side, value) {
+  return Math.max(0, Math.min(maxPhotoMarginSide(frame, side), Math.round(value ?? 0)));
+}
+
+export function normalizePhotoMargins(frame) {
+  if (!frame) return frame;
+  for (const side of PHOTO_MARGIN_SIDES) {
+    frame[photoMarginField(side)] = clampPhotoMarginSide(frame, side, frame[photoMarginField(side)]);
+  }
+  return frame;
+}
+
+/** Base photo slot inset by per-side margins (frame bands stay on base geometry). */
+export function productPhotoRect(frame) {
+  const baseX = frame?.basePx ?? frame?.px ?? 0;
+  const baseY = frame?.basePy ?? frame?.py ?? 0;
+  const baseW = frame?.baseDw ?? frame?.dw ?? 0;
+  const baseH = frame?.baseDh ?? frame?.dh ?? 0;
+  const m = effectivePhotoMargins(frame);
+  const w = Math.max(1, baseW - m.left - m.right);
+  const h = Math.max(1, baseH - m.top - m.bottom);
+  return {
+    x: baseX + m.left,
+    y: baseY + m.top,
     w,
     h,
   };
@@ -68,11 +119,22 @@ export function drawProductPhotoCoverFit(ctx, productImg, frame) {
 }
 
 export function frameHasProductSlot(frame) {
-  const { w, h } = productPhotoRect(frame);
-  return w > 0 && h > 0;
+  const baseW = frame?.baseDw ?? frame?.dw ?? 0;
+  const baseH = frame?.baseDh ?? frame?.dh ?? 0;
+  return baseW > 0 && baseH > 0;
 }
 
-/** Default locked photo zoom/pan on any frame with a product slot. */
+function ensurePhotoMarginDefaults(frame) {
+  for (const side of PHOTO_MARGIN_SIDES) {
+    const field = photoMarginField(side);
+    const lockField = photoMarginLockField(side);
+    if (frame[field] == null) frame[field] = 0;
+    if (frame[lockField] == null) frame[lockField] = true;
+  }
+  normalizePhotoMargins(frame);
+}
+
+/** Default locked photo zoom/pan/margins on any frame with a product slot. */
 export function ensureFramePhotoDefaults(frame) {
   if (!frameHasProductSlot(frame)) return frame;
   if (frame.photoZoomPct == null) frame.photoZoomPct = PHOTO_ZOOM_DEFAULT;
@@ -81,5 +143,26 @@ export function ensureFramePhotoDefaults(frame) {
   if (frame.photoZoomLocked == null) frame.photoZoomLocked = true;
   if (frame.photoPanHLocked == null) frame.photoPanHLocked = true;
   if (frame.photoPanVLocked == null) frame.photoPanVLocked = true;
+  ensurePhotoMarginDefaults(frame);
   return frame;
+}
+
+export function snapshotPhotoControls(frame) {
+  ensureFramePhotoDefaults(frame);
+  return {
+    photoZoomPct: frame.photoZoomPct ?? PHOTO_ZOOM_DEFAULT,
+    photoZoomLocked: frame.photoZoomLocked !== false,
+    photoPanH: frame.photoPanH ?? 50,
+    photoPanV: frame.photoPanV ?? 50,
+    photoPanHLocked: frame.photoPanHLocked !== false,
+    photoPanVLocked: frame.photoPanVLocked !== false,
+    photoMarginTop: frame.photoMarginTop ?? 0,
+    photoMarginRight: frame.photoMarginRight ?? 0,
+    photoMarginBottom: frame.photoMarginBottom ?? 0,
+    photoMarginLeft: frame.photoMarginLeft ?? 0,
+    photoMarginTopLocked: frame.photoMarginTopLocked !== false,
+    photoMarginRightLocked: frame.photoMarginRightLocked !== false,
+    photoMarginBottomLocked: frame.photoMarginBottomLocked !== false,
+    photoMarginLeftLocked: frame.photoMarginLeftLocked !== false,
+  };
 }

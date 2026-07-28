@@ -44,6 +44,7 @@ class MeeshoShippingOptimizer {
     this._gownLayerTimer = null;
     this._gownPhotoZoomTimer = null;
     this._gownPhotoPanTimer = null;
+    this._gownPhotoMarginTimer = null;
     this._borderComposeGen = 0;
     this._staticControlsVariantId = null;
     this.init();
@@ -79,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=107";
+      return "/js/staticFrameCompose.mjs?v=109";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=107");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=109");
     }
-    return "/js/staticFrameCompose.mjs?v=107";
+    return "/js/staticFrameCompose.mjs?v=109";
   }
 
   async preloadStaticComposeModule() {
@@ -3250,6 +3251,8 @@ Please share payment details and license key.`;
     this._gownPhotoZoomTimer = null;
     clearTimeout(this._gownPhotoPanTimer);
     this._gownPhotoPanTimer = null;
+    clearTimeout(this._gownPhotoMarginTimer);
+    this._gownPhotoMarginTimer = null;
     this._borderComposeGen = (this._borderComposeGen || 0) + 1;
 
     await this.preloadStaticComposeModule();
@@ -3406,12 +3409,39 @@ Please share payment details and license key.`;
 
   ensurePhotoControlDefaults(frame) {
     if (!frame) return;
+    if (window.StaticFrameCompose?.ensureFramePhotoDefaults) {
+      window.StaticFrameCompose.ensureFramePhotoDefaults(frame);
+      return;
+    }
     if (frame.photoZoomPct == null) frame.photoZoomPct = 100;
     if (frame.photoPanH == null) frame.photoPanH = 50;
     if (frame.photoPanV == null) frame.photoPanV = 50;
     if (frame.photoZoomLocked == null) frame.photoZoomLocked = true;
     if (frame.photoPanHLocked == null) frame.photoPanHLocked = true;
     if (frame.photoPanVLocked == null) frame.photoPanVLocked = true;
+    for (const side of ["Top", "Right", "Bottom", "Left"]) {
+      const field = `photoMargin${side}`;
+      const lockField = `${field}Locked`;
+      if (frame[field] == null) frame[field] = 0;
+      if (frame[lockField] == null) frame[lockField] = true;
+    }
+  }
+
+  photoMarginSides() {
+    return [
+      { side: "top", label: "Top" },
+      { side: "left", label: "Left" },
+      { side: "right", label: "Right" },
+      { side: "bottom", label: "Bottom" },
+    ];
+  }
+
+  photoMarginField(side) {
+    return `photoMargin${side.charAt(0).toUpperCase()}${side.slice(1)}`;
+  }
+
+  photoMarginLockField(side) {
+    return `${this.photoMarginField(side)}Locked`;
   }
 
   syncPlacementSlidersFromRow(row) {
@@ -3460,6 +3490,14 @@ Please share payment details and license key.`;
     if (panVSlider && document.activeElement !== panVSlider) panVSlider.value = String(panV);
     if (panHVal && document.activeElement !== panHSlider) panHVal.textContent = String(panH);
     if (panVVal && document.activeElement !== panVSlider) panVVal.textContent = String(panV);
+    for (const { side } of this.photoMarginSides()) {
+      const field = this.photoMarginField(side);
+      const slider = container.querySelector(`#static-photo-margin-${side}`);
+      const val = container.querySelector(`#static-photo-margin-${side}-val`);
+      const margin = frame[field] ?? 0;
+      if (slider && document.activeElement !== slider) slider.value = String(margin);
+      if (val && document.activeElement !== slider) val.textContent = String(margin);
+    }
     this.updatePhotoControlsLockUI(container, frame);
   }
 
@@ -3994,6 +4032,23 @@ Please share payment details and license key.`;
     if (zoomWrap) zoomWrap.classList.toggle("static-slider-locked", zoomLocked);
     if (panHWrap) panHWrap.classList.toggle("static-slider-locked", panHLocked);
     if (panVWrap) panVWrap.classList.toggle("static-slider-locked", panVLocked);
+
+    for (const { side, label } of this.photoMarginSides()) {
+      const lockField = this.photoMarginLockField(side);
+      const locked = frame[lockField] !== false;
+      const btn = container.querySelector(`#static-photo-margin-${side}-lock`);
+      const slider = container.querySelector(`#static-photo-margin-${side}`);
+      const wrap = container.querySelector(`.static-photo-margin-${side}-wrap`);
+      if (btn) {
+        btn.textContent = locked ? "🔒" : "🔓";
+        btn.title = locked
+          ? `Unlock ${label.toLowerCase()} margin to adjust`
+          : `Lock ${label.toLowerCase()} margin`;
+        btn.setAttribute("aria-pressed", locked ? "true" : "false");
+      }
+      if (slider) slider.disabled = locked;
+      if (wrap) wrap.classList.toggle("static-slider-locked", locked);
+    }
   }
 
   toggleStaticPhotoZoomLock(variantId) {
@@ -4011,6 +4066,16 @@ Please share payment details and license key.`;
     if (!this.frameSupportsPhotoControls(frame)) return;
     if (axis === "h") frame.photoPanHLocked = frame.photoPanHLocked === false;
     else if (axis === "v") frame.photoPanVLocked = frame.photoPanVLocked === false;
+    const container = document.querySelector("#variant-edit-static-badges");
+    if (container) this.updatePhotoControlsLockUI(container, frame);
+  }
+
+  toggleStaticPhotoMarginLock(variantId, side) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    const lockField = this.photoMarginLockField(side);
+    frame[lockField] = frame[lockField] === false;
     const container = document.querySelector("#variant-edit-static-badges");
     if (container) this.updatePhotoControlsLockUI(container, frame);
   }
@@ -4095,6 +4160,50 @@ Please share payment details and license key.`;
   async setStaticPhotoPan(variantId, axis, value) {
     clearTimeout(this._gownPhotoPanTimer);
     await this.applyStaticPhotoPan(variantId, axis, value);
+  }
+
+  queueStaticPhotoMargin(variantId, side, value) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    const lockField = this.photoMarginLockField(side);
+    if (frame[lockField] !== false) return;
+
+    const container = document.querySelector("#variant-edit-static-badges");
+    const val = container?.querySelector(`#static-photo-margin-${side}-val`);
+    if (val) val.textContent = String(value);
+
+    clearTimeout(this._gownPhotoMarginTimer);
+    this._gownPhotoMarginTimer = setTimeout(() => {
+      void this.applyStaticPhotoMargin(variantId, side, value);
+    }, 50);
+  }
+
+  async applyStaticPhotoMargin(variantId, side, value) {
+    const row = this.findResultRow(variantId);
+    const frame = row?.layers?._staticFrame;
+    if (!this.frameSupportsPhotoControls(frame)) return;
+    const lockField = this.photoMarginLockField(side);
+    if (frame[lockField] !== false) return;
+
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded || !window.StaticFrameCompose?.updateFrameAppearance) return;
+
+    const field = this.photoMarginField(side);
+    window.StaticFrameCompose.updateFrameAppearance(row.layers, { [field]: value });
+    row._staticAppearanceEdited = true;
+
+    try {
+      await this.applyRowStaticPreview(variantId, row);
+    } catch (e) {
+      console.warn("Photo margin preview failed:", e);
+      await this.refreshStaticPreview(variantId);
+    }
+  }
+
+  async setStaticPhotoMargin(variantId, side, value) {
+    clearTimeout(this._gownPhotoMarginTimer);
+    await this.applyStaticPhotoMargin(variantId, side, value);
   }
 
   async setStaticPhotoZoom(variantId, zoomPct) {
@@ -4698,6 +4807,21 @@ Please share payment details and license key.`;
       const photoZoom = frame.photoZoomPct ?? 100;
       const photoPanH = frame.photoPanH ?? 50;
       const photoPanV = frame.photoPanV ?? 50;
+      const marginMax = window.StaticFrameCompose?.PHOTO_MARGIN_MAX ?? 200;
+      let marginControlsHtml = `<div style="font-size:10px;font-weight:600;margin:8px 0 4px;">Photo margins (image ↔ border)</div>
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each side to add space between the photo and frame border. 0 px = default fit. Frame bands stay fixed.</p>`;
+      for (const { side, label } of this.photoMarginSides()) {
+        const field = this.photoMarginField(side);
+        const locked = frame[this.photoMarginLockField(side)] !== false;
+        const marginVal = frame[field] ?? 0;
+        marginControlsHtml += `<div class="static-photo-margin-${side}-wrap${locked ? " static-slider-locked" : ""}" style="margin-bottom:4px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <button type="button" id="static-photo-margin-${side}-lock" aria-pressed="${locked ? "true" : "false"}" title="${locked ? `Unlock ${label.toLowerCase()} margin to adjust` : `Lock ${label.toLowerCase()} margin`}" style="border:none;background:transparent;font-size:14px;line-height:1;cursor:pointer;padding:0;">${locked ? "🔒" : "🔓"}</button>
+            <span style="font-size:10px;">${label} <span id="static-photo-margin-${side}-val">${marginVal}</span> px</span>
+          </div>
+          <input type="range" id="static-photo-margin-${side}" min="0" max="${marginMax}" value="${marginVal}" style="width:100%;"${locked ? " disabled" : ""}>
+        </div>`;
+      }
       html += `<div class="static-photo-controls-wrap" style="margin-bottom:8px;">
         <div style="font-size:10px;font-weight:600;margin-bottom:4px;">Photo zoom & pan</div>
         <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each slider to adjust. Zoom scales from the center (100 = cover-fit). Pan shifts the photo when zoomed in, or within the frame when zoomed out — 50 is centered.</p>
@@ -4752,6 +4876,7 @@ Please share payment details and license key.`;
         panVLocked ? " disabled" : ""
       }>
         </div>
+        ${marginControlsHtml}
       </div>`;
     }
     }
@@ -5005,6 +5130,37 @@ Please share payment details and license key.`;
     };
     bindPhotoPan("h");
     bindPhotoPan("v");
+
+    for (const { side } of this.photoMarginSides()) {
+      const lockBtn = container.querySelector(`#static-photo-margin-${side}-lock`);
+      if (lockBtn) {
+        lockBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleStaticPhotoMarginLock(vid, side);
+        };
+      }
+      const slider = container.querySelector(`#static-photo-margin-${side}`);
+      if (!slider) continue;
+      const commitMargin = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const val = container.querySelector(`#static-photo-margin-${side}-val`);
+        if (val) val.textContent = String(v);
+        void this.setStaticPhotoMargin(vid, side, v);
+      };
+      slider.oninput = () => {
+        if (slider.disabled) return;
+        const v = parseInt(slider.value, 10);
+        const val = container.querySelector(`#static-photo-margin-${side}-val`);
+        if (val) val.textContent = String(v);
+        this.queueStaticPhotoMargin(vid, side, v);
+      };
+      slider.onchange = commitMargin;
+      slider.addEventListener("pointerup", commitMargin);
+      slider.addEventListener("touchend", commitMargin, { passive: true });
+    }
+
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
@@ -5320,6 +5476,10 @@ Please share payment details and license key.`;
         #variant-edit-panel .static-gown-layer-pct,
         #variant-edit-panel #static-photo-zoom,
         #variant-edit-panel #static-photo-pan-h,
+        #variant-edit-panel #static-photo-margin-top,
+        #variant-edit-panel #static-photo-margin-left,
+        #variant-edit-panel #static-photo-margin-right,
+        #variant-edit-panel #static-photo-margin-bottom,
         #variant-edit-panel #static-photo-pan-v {
           accent-color:#10b981;
         }

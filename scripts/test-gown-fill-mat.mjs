@@ -7,6 +7,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   drawGownStaticFrameBackground,
+  drawGownFillMatBoard,
   resolveGownMatColors,
 } from "../app.suppliersden.com/js/liveGownStatic.mjs";
 import {
@@ -74,8 +75,18 @@ const baseFrame = {
   drawGownStaticFrameBackground(ctx, baseFrame);
   const fillRects = ctx.fills.filter((f) => f.color === "#eeeeee");
   const padRects = ctx.fills.filter((f) => f.color === "#dddddd");
-  assert.ok(fillRects.some((r) => r.w === 697 && r.h === 1018), "fill mat covers inner frame");
+  assert.ok(fillRects.length >= 2, "fill mat draws board bands around photo");
+  assert.ok(fillRects.some((r) => r.w === 697), "fill mat spans inner frame width on top/bottom bands");
   assert.equal(padRects.length, 4, "photo pad draws as four-sided ring");
+}
+
+// fill mat board leaves a hole at the photo slot
+{
+  const ctx = mockCtx();
+  drawGownFillMatBoard(ctx, baseFrame, "#ff00ff");
+  const bands = ctx.fills.filter((f) => f.color === "#ff00ff");
+  assert.ok(bands.length >= 2, "fill mat board uses multiple bands");
+  assert.ok(!bands.some((r) => r.w === 657 && r.h === 978), "fill mat does not paint over photo slot");
 }
 
 // fill mat disabled skips inner board fill
@@ -128,6 +139,6 @@ const contentCode = readFileSync(resolve(root, "app.suppliersden.com/content.js"
 const gownCode = readFileSync(resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"), "utf8");
 assert(contentCode.includes("static-fill-mat-enabled"), "editor has fill mat toggle");
 assert(contentCode.includes("static-color-fill-mat"), "editor has fill mat color row");
-assert(gownCode.includes("drawGownPhotoPadRing"), "gown draws photo pad as ring");
+assert(gownCode.includes("drawGownFillMatBoard"), "gown draws fill mat board around photo");
 
 console.log("test-gown-fill-mat.mjs: all passed");
