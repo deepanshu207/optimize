@@ -2,10 +2,10 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=83";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=83";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=83";
-import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=83";
+import { compressFramedToKb } from "./lib/encoder.js?v=84";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=84";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=84";
+import { drawGownStaticFrameBackground } from "./liveGownStatic.mjs?v=84";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -573,7 +573,7 @@ export function ensureFrameBases(frame) {
     frame.baseInnerStroke = frame.innerStroke;
   }
   if (frame.style === "gown_static" && frame.baseInnerStroke == null) {
-    frame.baseInnerStroke = 1;
+    frame.baseInnerStroke = 3;
   }
   if (
     frame.baseOuterMatPad == null &&
@@ -632,7 +632,7 @@ function restoreBaseGeometry(frame) {
   if (frame.baseInnerStroke != null) frame.innerStroke = frame.baseInnerStroke;
 }
 
-/** Gown: scale teal + outer mat; hairline, inner mat + product pixels stay fixed. */
+/** Gown: scale teal + outer mat; inner accent, inner pad + product stay fixed. */
 function applyGownBorderThickness(frame, pct) {
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
@@ -641,7 +641,7 @@ function applyGownBorderThickness(frame, pct) {
   const baseBorder = frame.baseBorder ?? frame.border ?? 0;
   const baseOuterMatPad = frame.baseOuterMatPad ?? frame.outerMatPad ?? 0;
   const baseInnerMatPad = frame.baseInnerMatPad ?? frame.innerMatPad ?? 0;
-  const baseHairline = frame.baseInnerStroke ?? frame.innerStroke ?? 1;
+  const baseHairline = frame.baseInnerStroke ?? frame.innerStroke ?? 3;
   const baseInset = baseBorder + baseOuterMatPad + baseHairline + baseInnerMatPad;
 
   frame.dw = baseDw;

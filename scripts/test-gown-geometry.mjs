@@ -1,5 +1,5 @@
 /**
- * Gown canvas geometry — competitor 773×1094 with triple-layer mat + hairline + cover-fit.
+ * Gown canvas geometry — triple layer: teal → white → teal accent → white → photo.
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -11,6 +11,7 @@ const root = resolve(__dirname, "..");
 import {
   GOWN_STATIC_OUTER_W,
   GOWN_STATIC_OUTER_H,
+  BORDER_TEAL,
   computeGownFrameGeometry,
 } from "../app.suppliersden.com/js/liveGownStatic.mjs";
 
@@ -31,28 +32,24 @@ const gownCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/liveGownStatic.mjs"),
   "utf8",
 );
-assert(gownCode.includes("GOWN_OUTER_MAT_RATIO"), "outer white mat ratio");
-assert(gownCode.includes("GOWN_INNER_MAT_RATIO"), "inner white mat ratio");
-assert(gownCode.includes("drawGownHairline"), "dark hairline border drawn");
-assert(gownCode.includes('GOWN_INNER_STROKE_COLOR = "#2a2a2a"'), "hairline is dark grey");
+assert(gownCode.includes("drawGownInnerAccent"), "teal inner accent drawn");
+assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent uses teal");
 assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "cover-fit fills photo slot");
 assert(
   gownCode.includes("drawImage(noStickersCanvas, px, py, dw, dh"),
-  "productOnly/noBorder crop pre-badge frame (not post-sticker canvas)",
+  "productOnly crops pre-badge frame",
 );
 
 const geom = computeGownFrameGeometry(773, 1094);
-assert(geom.border === 22, `teal border ${geom.border}px`);
-assert(geom.outerMatPad === 68, `outer mat ${geom.outerMatPad}px`);
-assert(geom.innerMatPad === 9, `inner mat ${geom.innerMatPad}px`);
-assert(geom.innerStroke === 1, `hairline stroke ${geom.innerStroke}px`);
-assert(geom.whitePad === 78, `total mat inset ${geom.whitePad}px`);
-assert(geom.dw === 573, `product slot width ${geom.dw}px`);
-assert(geom.dh === 894, `product slot height ${geom.dh}px`);
-assert(geom.px === 100, `product slot x ${geom.px}px`);
-assert(geom.innerFrameW === 593, `inner frame width ${geom.innerFrameW}px`);
-assert(geom.dw / 773 >= 0.73, `photo fills ≥73% of canvas width (${((geom.dw / 773) * 100).toFixed(1)}%)`);
-assert(geom.dw / 773 <= 0.76, `thick outer mat leaves visible bands (${((geom.dw / 773) * 100).toFixed(1)}%)`);
+assert(geom.border === 19, `teal border ${geom.border}px`);
+assert(geom.outerMatPad === 19, `outer white mat ${geom.outerMatPad}px`);
+assert(geom.innerMatPad === 17, `inner white pad ${geom.innerMatPad}px`);
+assert(geom.innerStroke === 3, `teal accent ${geom.innerStroke}px`);
+assert(geom.whitePad === 39, `total inset ${geom.whitePad}px`);
+assert(geom.dw === 657, `product slot width ${geom.dw}px`);
+assert(geom.dh === 978, `product slot height ${geom.dh}px`);
+assert(geom.px === 58, `product slot x ${geom.px}px`);
+assert(geom.innerStrokeColor === BORDER_TEAL, "accent color matches border teal");
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

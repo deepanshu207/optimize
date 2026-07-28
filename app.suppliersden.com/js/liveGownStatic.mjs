@@ -2,31 +2,31 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=83";
-import { blobToDataUrl } from "./lib/encoder.js?v=83";
-import { estimateImageShipping } from "./lib/shipping.js?v=83";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=83";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=84";
+import { blobToDataUrl } from "./lib/encoder.js?v=84";
+import { estimateImageShipping } from "./lib/shipping.js?v=84";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=84";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
 export const GOWN_STATIC_VARIANT_COUNT = 25;
 
 /**
- * Reference listing frame stack (outside → in):
- * teal border → thick outer white mat → dark hairline → thin inner white → photo.
+ * Reference frame stack (outside → in):
+ * teal border → white mat (similar weight) → teal inner accent → white pad → photo.
  */
 export const BORDER_TEAL = "#71cbd3";
 const BORDER_TEAL_DARK = "#5eb8c4";
-export const GOWN_TEAL_RATIO = 0.028;
-/** Primary white mat between teal and hairline (~8.8% per side). */
-export const GOWN_OUTER_MAT_RATIO = 0.088;
-export const GOWN_OUTER_MAT_MIN = 52;
-/** Secondary white padding between hairline and lifestyle photo. */
-export const GOWN_INNER_MAT_RATIO = 0.012;
-export const GOWN_INNER_MAT_MIN = 8;
-/** Dark hairline separating the two white mats (reference listing). */
-export const GOWN_INNER_STROKE = 1;
-export const GOWN_INNER_STROKE_COLOR = "#2a2a2a";
+export const GOWN_TEAL_RATIO = 0.025;
+/** Primary white mat — similar thickness to outer teal ring. */
+export const GOWN_OUTER_MAT_RATIO = 0.025;
+export const GOWN_OUTER_MAT_MIN = 18;
+/** White padding between inner teal accent and lifestyle photo. */
+export const GOWN_INNER_MAT_RATIO = 0.022;
+export const GOWN_INNER_MAT_MIN = 14;
+/** Thin teal inner accent line (visible third layer on reference listing). */
+export const GOWN_INNER_STROKE = 3;
+export const GOWN_INNER_STROKE_COLOR = BORDER_TEAL;
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -139,8 +139,8 @@ export function computeGownFrameGeometry(outerW, outerH, overrides = {}) {
   };
 }
 
-function drawGownHairline(ctx, x, y, w, h, thickness, color) {
-  const t = Math.max(1, Math.round(thickness));
+function drawGownInnerAccent(ctx, x, y, w, h, thickness, color) {
+  const t = Math.max(2, Math.round(thickness));
   ctx.fillStyle = color;
   ctx.fillRect(x, y, w, t);
   ctx.fillRect(x, y + h - t, w, t);
@@ -148,7 +148,7 @@ function drawGownHairline(ctx, x, y, w, h, thickness, color) {
   ctx.fillRect(x + w - t, y, t, h);
 }
 
-/** Teal + outer mat + dark hairline (no photo). */
+/** Teal border + white mat + teal inner accent (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const wx = frame.whiteX ?? frame.border ?? 0;
   const wy = frame.whiteY ?? frame.border ?? 0;
@@ -167,7 +167,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   ctx.fillRect(wx, wy, ww, wh);
 
   if (ifw > 0 && ifh > 0) {
-    drawGownHairline(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
+    drawGownInnerAccent(ctx, ifx, ify, ifw, ifh, stroke, strokeColor);
   }
 }
 
@@ -204,8 +204,8 @@ function buildGownStaticFrameCanvas(img) {
     ...geom,
     borderColor: BORDER_TEAL,
     matColor: "#ffffff",
-    innerStroke: geom.innerStroke,
-    innerStrokeColor: geom.innerStrokeColor,
+    innerStroke: GOWN_INNER_STROKE,
+    innerStrokeColor: GOWN_INNER_STROKE_COLOR,
   });
   drawGownPhotoCoverFit(ctx, base, geom);
 
@@ -300,8 +300,6 @@ async function buildGownStaticLayers(img) {
     innerFrameY,
     innerFrameW,
     innerFrameH,
-    innerStroke,
-    innerStrokeColor,
     whiteX,
     whiteY,
     whiteW,
@@ -373,8 +371,8 @@ async function buildGownStaticLayers(img) {
         innerFrameY,
         innerFrameW,
         innerFrameH,
-        innerStroke: innerStroke ?? GOWN_INNER_STROKE,
-        innerStrokeColor: innerStrokeColor ?? GOWN_INNER_STROKE_COLOR,
+        innerStroke: GOWN_INNER_STROKE,
+        innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         baseBorder: border,
         baseOuterMatPad: outerMatPad,
         baseInnerMatPad: innerMatPad,

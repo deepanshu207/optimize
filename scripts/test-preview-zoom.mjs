@@ -1,5 +1,5 @@
 /**
- * Variant editor preview — pinch-zoom stage markup and viewport policy.
+ * Variant editor preview — crisp sticky image, native pinch-zoom (no CSS transform).
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -27,10 +27,10 @@ const index = readFileSync(
   "utf8",
 );
 
-assert(content.includes("variant-edit-preview-stage"), "preview wrapped in zoom stage");
-assert(content.includes("bindVariantPreviewZoom"), "pinch-zoom handler wired");
-assert(content.includes("Pinch to zoom"), "mobile zoom hint shown");
-assert(content.includes('dataset.staticEditorV = "6"'), "editor panel version bumped");
+assert(!content.includes("bindVariantPreviewZoom"), "removed blurry transform zoom");
+assert(!content.includes("variant-edit-preview-stage"), "preview stage wrapper removed");
+assert(content.includes("pinch-zoom"), "preview allows native pinch-zoom");
+assert(content.includes('dataset.staticEditorV = "7"'), "editor panel version bumped");
 assert(!index.includes("maximum-scale=1.0"), "viewport allows mobile pinch zoom");
 
 if (failed) {
