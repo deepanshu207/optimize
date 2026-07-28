@@ -2,10 +2,10 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=93";
-import { blobToDataUrl } from "./lib/encoder.js?v=93";
-import { estimateImageShipping } from "./lib/shipping.js?v=93";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=93";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=95";
+import { blobToDataUrl } from "./lib/encoder.js?v=95";
+import { estimateImageShipping } from "./lib/shipping.js?v=95";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 
 export const GOWN_STATIC_OUTER_W = 773;
 export const GOWN_STATIC_OUTER_H = 1094;
@@ -27,6 +27,13 @@ export const GOWN_INNER_MAT_MIN = 14;
 /** Thin teal inner accent line (visible third layer on reference listing). */
 export const GOWN_INNER_STROKE = 3;
 export const GOWN_INNER_STROKE_COLOR = BORDER_TEAL;
+export const GOWN_PHOTO_ZOOM_DEFAULT = 100;
+export const GOWN_PHOTO_ZOOM_MIN = 50;
+export const GOWN_PHOTO_ZOOM_MAX = 200;
+
+function clampGownZoom(pct) {
+  return Math.max(GOWN_PHOTO_ZOOM_MIN, Math.min(GOWN_PHOTO_ZOOM_MAX, pct ?? GOWN_PHOTO_ZOOM_DEFAULT));
+}
 
 function gownStaticKbTiers(count = GOWN_STATIC_VARIANT_COUNT) {
   const n = Math.max(20, Math.min(30, count));
@@ -206,29 +213,33 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   }
 }
 
-/** Cover-fit lifestyle photo clipped to the gown photo pad (inside inner accent). */
-export function drawGownProductInSlot(ctx, productImg, frame) {
-  const ifx = frame.innerFrameX ?? 0;
-  const ify = frame.innerFrameY ?? 0;
-  const ifw = frame.innerFrameW ?? 0;
-  const ifh = frame.innerFrameH ?? 0;
-  const stroke = frame.innerStroke ?? GOWN_INNER_STROKE;
-  const slotInset = (frame.innerMatPad ?? 0) + stroke;
-  const slotX = ifx + slotInset;
-  const slotY = ify + slotInset;
-  const slotW = ifw - 2 * slotInset;
-  const slotH = ifh - 2 * slotInset;
-  if (slotW <= 0 || slotH <= 0 || !productImg?.width) return;
+/** Fixed lifestyle photo box — size stays at baseDw×baseDh; frame layers only move it. */
+export function gownFixedPhotoRect(frame) {
+  const dw = frame.baseDw ?? frame.dw ?? 0;
+  const dh = frame.baseDh ?? frame.dh ?? 0;
+  return {
+    x: frame.px ?? frame.basePx ?? 0,
+    y: frame.py ?? frame.basePy ?? 0,
+    w: dw,
+    h: dh,
+  };
+}
 
-  const fitScale = Math.max(slotW / productImg.width, slotH / productImg.height);
+/** Cover-fit into fixed photo rect; zoom scales inside clip without resizing the box. */
+export function drawGownPhotoInFixedRect(ctx, productImg, frame) {
+  const { x, y, w, h } = gownFixedPhotoRect(frame);
+  if (w <= 0 || h <= 0 || !productImg?.width) return;
+
+  const zoom = clampGownZoom(frame.photoZoomPct) / 100;
+  const fitScale = Math.max(w / productImg.width, h / productImg.height) * zoom;
   const sw = Math.round(productImg.width * fitScale);
   const sh = Math.round(productImg.height * fitScale);
-  const imgX = slotX + Math.round((slotW - sw) / 2);
-  const imgY = slotY + Math.round((slotH - sh) / 2);
+  const imgX = x + Math.round((w - sw) / 2);
+  const imgY = y + Math.round((h - sh) / 2);
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(slotX, slotY, slotW, slotH);
+  ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
@@ -236,23 +247,18 @@ export function drawGownProductInSlot(ctx, productImg, frame) {
   ctx.restore();
 }
 
-/** Cover-fit source photo into gown photo slot — same geometry as generation. */
-export function drawGownPhotoCoverFit(ctx, base, geom) {
-  const { px, py, dw, dh } = geom;
-  const fitScale = Math.max(dw / base.width, dh / base.height);
-  const sw = Math.round(base.width * fitScale);
-  const sh = Math.round(base.height * fitScale);
-  const imgX = px + Math.round((dw - sw) / 2);
-  const imgY = py + Math.round((dh - sh) / 2);
+/** Cover-fit lifestyle photo clipped to the fixed gown photo pad. */
+export function drawGownProductInSlot(ctx, productImg, frame) {
+  drawGownPhotoInFixedRect(ctx, productImg, frame);
+}
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(px, py, dw, dh);
-  ctx.clip();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(base, 0, 0, base.width, base.height, imgX, imgY, sw, sh);
-  ctx.restore();
+/** Cover-fit source photo — accepts frame object or generation geometry. */
+export function drawGownPhotoCoverFit(ctx, base, geom) {
+  const frame =
+    geom && (geom.baseDw != null || geom.basePx != null || geom.innerFrameW != null)
+      ? geom
+      : { px: geom.px, py: geom.py, baseDw: geom.dw, baseDh: geom.dh, dw: geom.dw, dh: geom.dh };
+  drawGownPhotoInFixedRect(ctx, base, frame);
 }
 
 function buildGownStaticFrameCanvas(img) {
@@ -469,6 +475,8 @@ async function buildGownStaticLayers(img) {
           innerAccent: 100,
           innerMat: 100,
         },
+        photoZoomPct: GOWN_PHOTO_ZOOM_DEFAULT,
+        photoZoomLocked: true,
         gownFrameLayersLocked: true,
         outerW,
         outerH,

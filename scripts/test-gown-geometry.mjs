@@ -34,7 +34,7 @@ const gownCode = readFileSync(
 );
 assert(gownCode.includes("drawGownInnerAccent"), "teal inner accent drawn");
 assert(gownCode.includes("GOWN_INNER_STROKE_COLOR = BORDER_TEAL"), "inner accent uses teal");
-assert(gownCode.includes("Math.max(dw / base.width, dh / base.height)"), "cover-fit fills photo slot");
+assert(gownCode.includes("drawGownPhotoInFixedRect"), "cover-fit fills photo slot");
 assert(
   gownCode.includes("drawImage(noStickersCanvas, px, py, dw, dh"),
   "productOnly crops pre-badge frame",

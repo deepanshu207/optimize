@@ -2,15 +2,15 @@
  * Compose / reposition badges on static promo & live hunt variants.
  * Shared by web optimizer and extension (preview/save only — pricing locked).
  */
-import { compressFramedToKb } from "./lib/encoder.js?v=93";
-import { drawTallBadge } from "./tallStaticBadges.mjs?v=93";
-import { drawGownBadge } from "./gownStaticBadges.mjs?v=93";
+import { compressFramedToKb } from "./lib/encoder.js?v=95";
+import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
+import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   drawGownProductInSlot,
   drawGownPhotoCoverFit,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=93";
+} from "./liveGownStatic.mjs?v=95";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -1051,11 +1051,7 @@ async function rebuildFrameCanvas(layers) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   if (frame.style === "gown_static") {
-    if (layers._gownPhotoSource) {
-      drawGownPhotoCoverFit(ctx, productImg, frame);
-    } else {
-      drawGownProductInSlot(ctx, productImg, frame);
-    }
+    drawGownPhotoCoverFit(ctx, productImg, frame);
   } else {
     ctx.drawImage(
       productImg,
@@ -1228,6 +1224,7 @@ export function frameAppearanceChanged(frame, defaults) {
     "padColor",
     "gradientPreset",
     "borderThicknessPct",
+    "photoZoomPct",
   ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
@@ -1594,6 +1591,9 @@ export function updateFrameAppearance(layers, patch) {
     Object.assign(frame.gownLayerPct, patch.gownLayerPct);
     applyGownFrameLayers(frame);
   }
+  if (patch.photoZoomPct != null && frame.style === "gown_static") {
+    frame.photoZoomPct = clamp(patch.photoZoomPct, 50, 200);
+  }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame, { syncLegacyGownSlider: frame.style === "gown_static" });
@@ -1680,6 +1680,8 @@ function snapshotDefaults(layers, style) {
               innerAccent: 100,
               innerMat: 100,
             },
+        photoZoomPct: frame.photoZoomPct ?? 100,
+        photoZoomLocked: frame.photoZoomLocked !== false,
         gownFrameLayersLocked: frame.gownFrameLayersLocked !== false,
       },
       urls: {
