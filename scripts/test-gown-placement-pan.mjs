@@ -4,15 +4,16 @@
  */
 import assert from "node:assert/strict";
 import {
+  drawProductPhotoCoverFit,
+  frameHasProductSlot,
+  productPhotoRect,
+} from "../app.suppliersden.com/js/lib/productPhotoFit.mjs";
+import {
   applyPositionToPlacement,
   ensureStaticPlacementMeta,
   updatePlacementSliderAxis,
   updateFrameAppearance,
 } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
-import {
-  drawGownPhotoInFixedRect,
-  gownFixedPhotoRect,
-} from "../app.suppliersden.com/js/liveGownStatic.mjs";
 
 function mockGownLayers() {
   const frame = {
@@ -91,7 +92,7 @@ function mockGownLayers() {
     photoPanV: 100,
   };
   const productImg = { width: 400, height: 600 };
-  const rect = gownFixedPhotoRect(frame);
+  const rect = productPhotoRect(frame);
   assert.deepEqual(rect, { x: 10, y: 20, w: 200, h: 300 });
 
   const calls = [];
@@ -108,7 +109,7 @@ function mockGownLayers() {
     imageSmoothingQuality: "high",
   };
 
-  drawGownPhotoInFixedRect(ctx, productImg, frame);
+  drawProductPhotoCoverFit(ctx, productImg, frame);
   assert.equal(calls.length, 1);
   const centered = { ...frame, photoPanH: 50, photoPanV: 50 };
   const callsCenter = [];
@@ -124,7 +125,7 @@ function mockGownLayers() {
     imageSmoothingEnabled: true,
     imageSmoothingQuality: "high",
   };
-  drawGownPhotoInFixedRect(ctx2, productImg, centered);
+  drawProductPhotoCoverFit(ctx2, productImg, centered);
   assert.notEqual(calls[0].dx, callsCenter[0].dx, "pan H=0 should differ from center");
   assert.notEqual(calls[0].dy, callsCenter[0].dy, "pan V=100 should differ from center");
 }
