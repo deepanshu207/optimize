@@ -154,7 +154,7 @@ assert(
 );
 assert(metrics.doneVisible, "Done button stays visible outside scroll");
 assert(metrics.sizeLocks === 3, "all badge size locks rendered");
-assert(metrics.gownLayersLock === "true", "gown frame layer sliders locked by default");
+assert(metrics.gownLayersLock === "false", "gown frame layer sliders unlocked by default");
 assert(metrics.gownLayerSliders === 4, "gown has four per-layer frame sliders");
 assert(metrics.scrollable, "controls taller than viewport scroll inside panel");
 assert(metrics.scrollScrollHeight > metrics.scrollClientHeight + 40, "scroll area has room for all controls");
