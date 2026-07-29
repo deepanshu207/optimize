@@ -20,8 +20,11 @@ import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
+  ensureGownDrawGeometry,
+  GOWN_STATIC_OUTER_H,
+  GOWN_STATIC_OUTER_W,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=109";
+} from "./liveGownStatic.mjs?v=110";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -250,6 +253,9 @@ function loadImage(url) {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = reject;
+    if (typeof url === "string" && /^https?:/i.test(url)) {
+      img.crossOrigin = "anonymous";
+    }
     img.src = url;
   });
 }
@@ -966,13 +972,15 @@ function resolveGownPhotoSourceUrl(layers) {
 export function shouldRebuildStaticFrame(layers, options = {}) {
   if (options.badgesOnly) return false;
   const frame = layers?._staticFrame;
-  if (!frame?.outerW) return false;
+  if (!frame) return false;
+  if (!frame.outerW && frame.style !== "gown_static") return false;
   const needsRebuild =
     staticFrameBorderEdited(frame) ||
     !!options.staticAppearanceEdited ||
     (layers._staticDefaults?.frame &&
       frameAppearanceChanged(frame, layers._staticDefaults.frame));
   if (!needsRebuild) return false;
+  if (frame.style === "gown_static" && options.staticAppearanceEdited) return true;
   return hasStaticRebuildSources(layers);
 }
 
@@ -1165,6 +1173,23 @@ function drawFrameBackground(ctx, frame) {
   }
 }
 
+function cacheGownPhotoSource(layers, productImg) {
+  if (!layers || layers._gownPhotoSource || !productImg) return;
+  try {
+    if (productImg instanceof HTMLCanvasElement) {
+      layers._gownPhotoSource = productImg.toDataURL("image/jpeg", 0.92);
+      return;
+    }
+    const c = document.createElement("canvas");
+    c.width = productImg.width;
+    c.height = productImg.height;
+    c.getContext("2d").drawImage(productImg, 0, 0);
+    layers._gownPhotoSource = c.toDataURL("image/jpeg", 0.92);
+  } catch (e) {
+    /* ignore cache failures (e.g. tainted canvas) */
+  }
+}
+
 async function loadProductForFrame(layers, frame) {
   if (frame.style === "gown_static") {
     const gownSrc = resolveGownPhotoSourceUrl(layers);
@@ -1211,15 +1236,24 @@ async function rebuildFrameCanvas(layers) {
   if (!layers?._staticFrame) return null;
   restoreGownPhotoSource(layers);
   const frame = ensureFrameDefaults({ ...layers._staticFrame });
+  if (frame.style === "gown_static") {
+    if (!frame.outerW) frame.outerW = GOWN_STATIC_OUTER_W;
+    if (!frame.outerH) frame.outerH = GOWN_STATIC_OUTER_H;
+    ensureGownDrawGeometry(frame);
+  }
   ensureFrameBases(frame);
   applyBorderThickness(frame);
   if (frame.style === "gown_static") {
     applyGownFrameLayers(frame);
+    ensureGownDrawGeometry(frame);
   }
 
   let productImg = null;
   try {
     productImg = await loadProductForFrame(layers, frame);
+    if (productImg && frame.style === "gown_static") {
+      cacheGownPhotoSource(layers, productImg);
+    }
   } catch (e) {
     productImg = null;
   }
@@ -1366,7 +1400,15 @@ async function compressPreview(canvas, options = {}) {
   if (options.preview) {
     const q =
       options.jpegQuality > 0 && options.jpegQuality <= 1 ? options.jpegQuality : 0.92;
-    return canvas.toDataURL("image/jpeg", q);
+    try {
+      return canvas.toDataURL("image/jpeg", q);
+    } catch (e) {
+      try {
+        return canvas.toDataURL("image/png");
+      } catch (e2) {
+        return "";
+      }
+    }
   }
   const targetKb = options.targetKb ?? options.preserveKb ?? 0;
   const style = options.style || "";
@@ -1491,6 +1533,10 @@ export function pickStaticBaseLayer(layers, flags = {}) {
 
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!layers) return "";
+  restoreGownPhotoSource(layers);
+  if (layers._staticFrame?.style === "gown_static") {
+    ensureGownRebuildUrls(layers, layers._composeFallbackUrl || "");
+  }
   const targetKb = options.targetKb ?? 0;
   const preview = !!options.preview;
   const badgesOnly = !!options.badgesOnly;
@@ -1501,10 +1547,14 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     return frozenLayerUrl(layers, "productOnly") || layers.productOnly || layers.full || "";
   }
 
-  const frameEdited = shouldRebuildStaticFrame(layers, {
-    staticAppearanceEdited: !!options.staticAppearanceEdited,
-    badgesOnly,
-  });
+  const gownAppearanceEdit =
+    layers._staticFrame?.style === "gown_static" && !!options.staticAppearanceEdited;
+  const frameEdited =
+    gownAppearanceEdit ||
+    shouldRebuildStaticFrame(layers, {
+      staticAppearanceEdited: !!options.staticAppearanceEdited,
+      badgesOnly,
+    });
 
   let canvas = null;
   let frame = layers._staticFrame;
@@ -1522,7 +1572,14 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     if (!picked.drawBadges && !frameEdited && !options.staticAppearanceEdited) {
       return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
-    if (frameEdited || options.staticAppearanceEdited) {
+    if (gownAppearanceEdit) {
+      const retry = await rebuildFrameCanvas(layers);
+      if (retry?.canvas) {
+        canvas = retry.canvas;
+        frame = retry.frame;
+      }
+    }
+    if (!canvas && (frameEdited || options.staticAppearanceEdited)) {
       return "";
     }
     let baseUrl = picked.url;
@@ -1547,6 +1604,10 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     } catch (e) {
       return frozenLayerUrl(layers, "full") || layers.full || "";
     }
+  }
+
+  if (!canvas) {
+    return frozenLayerUrl(layers, "full") || layers.full || "";
   }
 
   if (!hasStickers) {

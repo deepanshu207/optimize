@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   drawGownStaticFrameBackground,
   drawGownFillMatBoard,
+  ensureGownDrawGeometry,
   resolveGownMatColors,
 } from "../app.suppliersden.com/js/liveGownStatic.mjs";
 import {
@@ -79,13 +80,13 @@ const baseFrame = {
   assert.equal(padRects.length, 4, "photo pad draws when fill mat disabled");
 }
 
-// fill mat board leaves a hole at the photo slot
+// fill mat board paints full inner frame (photo composites on top in rebuild)
 {
   const ctx = mockCtx();
   drawGownFillMatBoard(ctx, baseFrame, "#ff00ff");
-  const bands = ctx.fills.filter((f) => f.color === "#ff00ff");
-  assert.ok(bands.length >= 2, "fill mat board uses multiple bands");
-  assert.ok(!bands.some((r) => r.w === 657 && r.h === 978), "fill mat does not paint over photo slot");
+  const fills = ctx.fills.filter((f) => f.color === "#ff00ff");
+  assert.equal(fills.length, 1, "fill mat paints full inner board");
+  assert.equal(fills[0].w, 697, "fill mat spans inner frame width");
 }
 
 // fill mat disabled skips inner board fill

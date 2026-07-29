@@ -143,30 +143,102 @@ function drawGownPhotoPadRing(ctx, frame, padColor) {
   ctx.fillRect(px + dw, py, pad, dh);
 }
 
-/** Fill mat board inside inner frame, outside the photo slot (visible mat between photo and border). */
-export function drawGownFillMatBoard(ctx, frame, fillMatColor) {
-  const ifx = frame.innerFrameX ?? 0;
-  const ify = frame.innerFrameY ?? 0;
-  const ifw = frame.innerFrameW ?? 0;
-  const ifh = frame.innerFrameH ?? 0;
-  if (ifw <= 0 || ifh <= 0) return;
+/** Fill mat board inside inner frame (full inner board; photo draws on top later). */
+export function gownInnerBoardRect(frame) {
+  ensureGownDrawGeometry(frame);
+  const border = frame.border ?? 0;
+  const wx = frame.whiteX ?? border;
+  const wy = frame.whiteY ?? border;
+  const ww = frame.whiteW ?? (frame.outerW || 0) - border * 2;
+  const wh = frame.whiteH ?? (frame.outerH || 0) - border * 2;
+  const omp = frame.outerMatPad ?? 0;
+  return {
+    ifx: frame.innerFrameX ?? wx + omp,
+    ify: frame.innerFrameY ?? wy + omp,
+    ifw: frame.innerFrameW ?? ww - omp * 2,
+    ifh: frame.innerFrameH ?? wh - omp * 2,
+  };
+}
 
-  const { x: px, y: py, w: dw, h: dh } = productPhotoRect(frame);
-  ctx.fillStyle = fillMatColor;
+/** Ensure inner board geometry is valid before drawing gown mats. */
+export function ensureGownDrawGeometry(frame) {
+  if (!frame) return frame;
+  const outerW = frame.outerW || GOWN_STATIC_OUTER_W;
+  const outerH = frame.outerH || GOWN_STATIC_OUTER_H;
+  frame.outerW = outerW;
+  frame.outerH = outerH;
 
-  if (py > ify) ctx.fillRect(ifx, ify, ifw, py - ify);
-  const innerBottom = ify + ifh;
-  const photoBottom = py + dh;
-  if (photoBottom < innerBottom) ctx.fillRect(ifx, photoBottom, ifw, innerBottom - photoBottom);
+  const basePx = frame.basePx ?? frame.px;
+  const basePy = frame.basePy ?? frame.py;
+  const baseDw = frame.baseDw ?? frame.dw;
+  const baseDh = frame.baseDh ?? frame.dh;
 
-  const y0 = Math.max(ify, py);
-  const y1 = Math.min(innerBottom, photoBottom);
-  if (y1 > y0) {
-    if (px > ifx) ctx.fillRect(ifx, y0, px - ifx, y1 - y0);
-    const innerRight = ifx + ifw;
-    const photoRight = px + dw;
-    if (photoRight < innerRight) ctx.fillRect(photoRight, y0, innerRight - photoRight, y1 - y0);
+  if (basePx == null || basePy == null || !baseDw || !baseDh) {
+    Object.assign(frame, computeGownFrameGeometry(outerW, outerH));
+    return frame;
   }
+
+  const innerMatPad =
+    frame.innerMatPad ??
+    frame.baseInnerMatPad ??
+    Math.max(GOWN_INNER_MAT_MIN, Math.round(Math.min(outerW, outerH) * GOWN_INNER_MAT_RATIO));
+  const accentInset = frame.baseInnerStroke ?? frame.innerStroke ?? GOWN_INNER_STROKE;
+  const slotInset = innerMatPad + Math.max(accentInset, 0);
+
+  const ifx = basePx - slotInset;
+  const ify = basePy - slotInset;
+  const ifw = baseDw + slotInset * 2;
+  const ifh = baseDh + slotInset * 2;
+
+  frame.basePx = basePx;
+  frame.basePy = basePy;
+  frame.baseDw = baseDw;
+  frame.baseDh = baseDh;
+  frame.innerMatPad = innerMatPad;
+  frame.innerFrameX = ifx;
+  frame.innerFrameY = ify;
+  frame.innerFrameW = ifw;
+  frame.innerFrameH = ifh;
+
+  if (frame.baseInnerMatPad == null) frame.baseInnerMatPad = innerMatPad;
+  if (frame.baseInnerStroke == null) frame.baseInnerStroke = accentInset || GOWN_INNER_STROKE;
+  if (frame.baseInnerFrameX == null || frame.baseInnerFrameX >= basePx) {
+    frame.baseInnerFrameX = ifx;
+  }
+  if (frame.baseInnerFrameY == null || frame.baseInnerFrameY >= basePy) {
+    frame.baseInnerFrameY = ify;
+  }
+  if (frame.baseInnerFrameW == null || frame.baseInnerFrameW <= baseDw) {
+    frame.baseInnerFrameW = ifw;
+  }
+  if (frame.baseInnerFrameH == null || frame.baseInnerFrameH <= baseDh) {
+    frame.baseInnerFrameH = ifh;
+  }
+
+  const omp =
+    frame.outerMatPad ??
+    frame.baseOuterMatPad ??
+    Math.max(GOWN_OUTER_MAT_MIN, Math.round(Math.min(outerW, outerH) * GOWN_OUTER_MAT_RATIO));
+  const border =
+    frame.border ??
+    frame.baseBorder ??
+    Math.max(14, Math.round(Math.min(outerW, outerH) * GOWN_TEAL_RATIO));
+
+  frame.outerMatPad = omp;
+  frame.border = border;
+  frame.whiteX = border;
+  frame.whiteY = border;
+  frame.whiteW = ifw + omp * 2;
+  frame.whiteH = ifh + omp * 2;
+
+  return frame;
+}
+
+export function drawGownFillMatBoard(ctx, frame, fillMatColor) {
+  const { ifx, ify, ifw, ifh } = gownInnerBoardRect(frame);
+  if (ifw <= 0 || ifh <= 0) return;
+  ctx.fillStyle = fillMatColor;
+  ctx.fillRect(ifx, ify, ifw, ifh);
 }
 
 /** Resolve gown mat colors with legacy fallbacks (padColor used when fillMatColor unset). */
@@ -183,6 +255,7 @@ export function resolveGownMatColors(frame) {
 
 /** Teal border + white mat + optional fill mat board + photo pad ring (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
+  ensureGownDrawGeometry(frame);
   const outerW = frame.outerW || 0;
   const outerH = frame.outerH || 0;
   const border = frame.border ?? 0;

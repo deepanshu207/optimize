@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=111";
+      return "/js/staticFrameCompose.mjs?v=112";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=111");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=112");
     }
-    return "/js/staticFrameCompose.mjs?v=111";
+    return "/js/staticFrameCompose.mjs?v=112";
   }
 
   async preloadStaticComposeModule() {
@@ -3343,11 +3343,23 @@ Please share payment details and license key.`;
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     await this.ensureRowComposeReady(row);
+    const fallbackUrl =
+      row.pricingImageUrl ||
+      row.dataUrl ||
+      row.imageUrl ||
+      row.layers.full ||
+      row.layers.noStickers ||
+      "";
     if (row.layers._staticFrame?.style === "gown_static") {
-      window.StaticFrameCompose.ensureGownRebuildUrls?.(
-        row.layers,
-        row.pricingImageUrl || row.imageUrl || row.dataUrl || "",
-      );
+      window.StaticFrameCompose.ensureGownRebuildUrls?.(row.layers, fallbackUrl);
+      if (
+        !row.layers._gownPhotoSource &&
+        !row.layers.productOnly &&
+        row.blob instanceof Blob &&
+        !row.layers._composeFallbackUrl
+      ) {
+        row.layers._composeFallbackUrl = URL.createObjectURL(row.blob);
+      }
     }
     const gen = ++this._borderComposeGen;
     const badgesOnly = this.variantBadgesOnlyCompose(row);
@@ -3511,9 +3523,14 @@ Please share payment details and license key.`;
     const target = row || this.findResultRow(variantId);
     if (!target?.layers?._staticFrame) return "";
     await this.preloadStaticComposeModule();
-    const url = await this.composePreviewForRow(target);
-    if (url) this.applyStaticPreviewToRow(target, url, variantId);
-    return url;
+    try {
+      const url = await this.composePreviewForRow(target);
+      if (url) this.applyStaticPreviewToRow(target, url, variantId);
+      return url;
+    } catch (e) {
+      console.warn("Static preview compose failed:", e);
+      return "";
+    }
   }
 
   async refreshStaticPreview(variantId) {
