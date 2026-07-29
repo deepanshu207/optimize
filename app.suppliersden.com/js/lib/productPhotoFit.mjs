@@ -29,6 +29,51 @@ export function effectivePhotoMargins(frame) {
   };
 }
 
+export function hasPhotoMarginGaps(frame) {
+  const m = effectivePhotoMargins(frame);
+  return m.top > 0 || m.right > 0 || m.bottom > 0 || m.left > 0;
+}
+
+/** Color for margin fill bands (explicit color, else mat / fill mat). */
+export function resolvePhotoMarginFillColor(frame) {
+  if (!frame) return "#ffffff";
+  if (frame.photoMarginFillColor) return frame.photoMarginFillColor;
+  if (frame.style === "gown_static") {
+    if (frame.fillMatEnabled !== false && frame.fillMatColor) return frame.fillMatColor;
+    return frame.padColor ?? frame.matColor ?? "#ffffff";
+  }
+  return frame.matColor ?? "#ffffff";
+}
+
+/** Paint per-side photo margin bands inside the base photo slot. */
+export function drawPhotoMarginFills(ctx, frame) {
+  if (!ctx || !frame || frame.photoMarginFillEnabled === false) return;
+  const m = effectivePhotoMargins(frame);
+  if (!m.top && !m.right && !m.bottom && !m.left) return;
+
+  const baseX = frame.basePx ?? frame.px ?? 0;
+  const baseY = frame.basePy ?? frame.py ?? 0;
+  const baseW = frame.baseDw ?? frame.dw ?? 0;
+  const baseH = frame.baseDh ?? frame.dh ?? 0;
+  if (!baseW || !baseH) return;
+
+  const fill = resolvePhotoMarginFillColor(frame);
+  ctx.fillStyle = fill;
+  if (m.top > 0) ctx.fillRect(baseX, baseY, baseW, m.top);
+  if (m.bottom > 0) ctx.fillRect(baseX, baseY + baseH - m.bottom, baseW, m.bottom);
+  if (m.left > 0) {
+    ctx.fillRect(baseX, baseY + m.top, m.left, baseH - m.top - m.bottom);
+  }
+  if (m.right > 0) {
+    ctx.fillRect(
+      baseX + baseW - m.right,
+      baseY + m.top,
+      m.right,
+      baseH - m.top - m.bottom,
+    );
+  }
+}
+
 export function maxPhotoMarginSide(frame, side) {
   const baseW = frame?.baseDw ?? frame?.dw ?? 0;
   const baseH = frame?.baseDh ?? frame?.dh ?? 0;
@@ -175,6 +220,7 @@ export function ensureFramePhotoDefaults(frame) {
   if (frame.photoPanHLocked == null) frame.photoPanHLocked = true;
   if (frame.photoPanVLocked == null) frame.photoPanVLocked = true;
   ensurePhotoMarginDefaults(frame);
+  if (frame.photoMarginFillEnabled == null) frame.photoMarginFillEnabled = true;
   return frame;
 }
 
@@ -195,5 +241,7 @@ export function snapshotPhotoControls(frame) {
     photoMarginRightLocked: frame.photoMarginRightLocked !== false,
     photoMarginBottomLocked: frame.photoMarginBottomLocked !== false,
     photoMarginLeftLocked: frame.photoMarginLeftLocked !== false,
+    photoMarginFillEnabled: frame.photoMarginFillEnabled !== false,
+    photoMarginFillColor: frame.photoMarginFillColor ?? null,
   };
 }

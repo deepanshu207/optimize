@@ -5,6 +5,7 @@
 import { compressFramedToKb, compressGownToKb } from "./lib/encoder.js?v=96";
 import {
   clampPhotoMarginSide,
+  drawPhotoMarginFills,
   drawProductPhotoCoverFit,
   ensureFramePhotoDefaults,
   frameHasProductSlot,
@@ -18,7 +19,7 @@ import {
   photoStickerScale,
   photoMarginLockField,
   snapshotPhotoControls,
-} from "./lib/productPhotoFit.mjs?v=6";
+} from "./lib/productPhotoFit.mjs?v=7";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -1301,6 +1302,10 @@ async function rebuildFrameCanvas(layers) {
 
   drawFrameBackground(ctx, frame);
 
+  if (productImg && frameHasProductSlot(frame)) {
+    drawPhotoMarginFills(ctx, frame);
+  }
+
   if (productImg) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -1510,6 +1515,8 @@ export function frameAppearanceChanged(frame, defaults) {
     "photoMarginRightLocked",
     "photoMarginBottomLocked",
     "photoMarginLeftLocked",
+    "photoMarginFillEnabled",
+    "photoMarginFillColor",
   ];
   return keys.some((k) => frame[k] !== defaults[k]);
 }
@@ -1931,6 +1938,13 @@ export function updateFrameAppearance(layers, patch) {
     patch.photoMarginLeft != null
   ) {
     normalizePhotoMargins(frame);
+  }
+  if (patch.photoMarginFillEnabled != null) {
+    frame.photoMarginFillEnabled = !!patch.photoMarginFillEnabled;
+  }
+  if (patch.photoMarginFillColor != null) {
+    const hex = normalizeFrameColor(patch.photoMarginFillColor);
+    if (hex) frame.photoMarginFillColor = hex;
   }
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);

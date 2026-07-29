@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=117";
+      return "/js/staticFrameCompose.mjs?v=118";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=117");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=118");
     }
-    return "/js/staticFrameCompose.mjs?v=117";
+    return "/js/staticFrameCompose.mjs?v=118";
   }
 
   async preloadStaticComposeModule() {
@@ -3842,6 +3842,18 @@ Please share payment details and license key.`;
     });
   }
 
+  updatePhotoMarginFillUI(container, frame) {
+    if (!container || !frame) return;
+    const enabled = frame.photoMarginFillEnabled !== false;
+    const checkbox = container.querySelector("#static-photo-margin-fill-enabled");
+    const wrap = container.querySelector(".static-photo-margin-fill-wrap");
+    if (checkbox) checkbox.checked = enabled;
+    if (wrap) wrap.classList.toggle("static-photo-margin-fill-disabled", !enabled);
+    wrap?.querySelectorAll(".static-color-row button, .static-color-row input").forEach((el) => {
+      el.disabled = !enabled;
+    });
+  }
+
   async setStaticFillMatEnabled(variantId, enabled) {
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
@@ -4513,6 +4525,7 @@ Please share payment details and license key.`;
       "static-color-inner-accent": { patchKey: "innerStrokeColor" },
       "static-color-fill-mat": { patchKey: "fillMatColor" },
       "static-color-pad": { patchKey: "padColor" },
+      "static-color-margin-fill": { patchKey: "photoMarginFillColor" },
     };
     return map[fieldId] || null;
   }
@@ -4586,6 +4599,7 @@ Please share payment details and license key.`;
       "static-color-inner-accent": { patchKey: "innerStrokeColor" },
       "static-color-fill-mat": { patchKey: "fillMatColor" },
       "static-color-pad": { patchKey: "padColor" },
+      "static-color-margin-fill": { patchKey: "photoMarginFillColor" },
     };
 
     const applyOneColor = (id) => {
@@ -4847,6 +4861,33 @@ Please share payment details and license key.`;
           <input type="range" id="static-photo-margin-${side}" min="0" max="${marginMax}" value="${marginVal}" style="width:100%;"${locked ? " disabled" : ""}>
         </div>`;
       }
+      const marginFillEnabled = frame.photoMarginFillEnabled !== false;
+      let marginFillColor = frame.photoMarginFillColor;
+      if (!marginFillColor) {
+        if (style === "gown_static") {
+          marginFillColor =
+            frame.fillMatEnabled !== false
+              ? frame.fillMatColor ?? frame.padColor ?? frame.matColor ?? "#ffffff"
+              : frame.padColor ?? frame.matColor ?? "#ffffff";
+        } else {
+          marginFillColor = frame.matColor ?? "#ffffff";
+        }
+      }
+      marginControlsHtml += `<div class="static-photo-margin-fill-wrap${
+        marginFillEnabled ? "" : " static-photo-margin-fill-disabled"
+      }" style="margin-top:8px;padding-top:6px;border-top:1px solid #e5e7eb;">
+        <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Fill the gap bands created by top/left/right/bottom margins with a solid color.</p>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:6px;">
+          <input type="checkbox" id="static-photo-margin-fill-enabled"${marginFillEnabled ? " checked" : ""}>
+          Fill margins
+        </label>`;
+      marginControlsHtml += this.buildStaticColorFieldHtml(
+        "static-color-margin-fill",
+        "Margin fill color",
+        marginFillColor,
+        "#ffffff",
+      );
+      marginControlsHtml += `</div>`;
       html += `<div class="static-photo-controls-wrap" style="margin-bottom:8px;">
         <div style="font-size:10px;font-weight:600;margin-bottom:4px;">Photo zoom & pan</div>
         <p style="font-size:9px;color:#6b7280;margin:0 0 6px;line-height:1.35;">Unlock each slider to adjust. Zoom scales from the center (100 = cover-fit). Pan shifts the photo when zoomed in, or within the frame when zoomed out — 50 is centered.</p>
@@ -5186,6 +5227,18 @@ Please share payment details and license key.`;
       slider.addEventListener("touchend", commitMargin, { passive: true });
     }
 
+    const marginFillCb = container.querySelector("#static-photo-margin-fill-enabled");
+    if (marginFillCb) {
+      marginFillCb.onchange = () => {
+        void this.setStaticFrameColors(vid, {
+          photoMarginFillEnabled: marginFillCb.checked,
+        });
+        const row = this.findResultRow(vid);
+        if (row?.layers?._staticFrame && this._editingVariantId === vid) {
+          this.updatePhotoMarginFillUI(container, row.layers._staticFrame);
+        }
+      };
+    }
 
     const hideAll = container.querySelector("#static-hide-all-stickers");
     if (hideAll) {
