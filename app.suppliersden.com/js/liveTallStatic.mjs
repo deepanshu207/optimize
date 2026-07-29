@@ -6,7 +6,7 @@
 import {
   imageToWhiteCanvas,
   trimMargins,
-} from "./lib/canvas-utils.js?v=59";
+} from "./lib/canvas-utils.js?v=97";
 import { compressFramedToKb, blobToDataUrl } from "./lib/encoder.js?v=59";
 import { estimateImageShipping } from "./lib/shipping.js?v=59";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=59";

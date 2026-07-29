@@ -2,7 +2,7 @@
  * Gown portrait promo @ 773×1094 — competitor-matched teal frame for ~₹49 band.
  * Isolated from tall_static (do not share max-fill / white-flatten logic).
  */
-import { imageToCanvas } from "./lib/canvas-utils.js?v=95";
+import { imageToCanvas } from "./lib/canvas-utils.js?v=97";
 import { blobToDataUrl, compressGownToKb } from "./lib/encoder.js?v=96";
 import { estimateImageShipping } from "./lib/shipping.js?v=95";
 import {

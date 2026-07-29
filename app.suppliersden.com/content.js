@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=124";
+      return "/js/staticFrameCompose.mjs?v=125";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=124");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=125");
     }
-    return "/js/staticFrameCompose.mjs?v=124";
+    return "/js/staticFrameCompose.mjs?v=125";
   }
 
   async importOptimizerModule(getUrl, isReady, cacheKey) {
@@ -2890,24 +2890,45 @@ Please share payment details and license key.`;
 
   normalizeEditFlags(editFlags) {
     const flags = editFlags || {};
-    const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
+    const addingDecorations = !!(
+      flags.stickersAdded ||
+      flags.borderAdded ||
+      flags.fullDecorationsAdded ||
+      flags.decorationsAdded
+    );
+    let cleanProduct = addingDecorations
+      ? false
+      : !!(flags.cleanProduct || flags.borderRemoved);
     let stickersRemoved = cleanProduct ? false : !!flags.stickersRemoved;
     let borderOnlyRemoved = cleanProduct ? false : !!flags.borderOnlyRemoved;
-    let stickersAdded = cleanProduct ? false : !!flags.stickersAdded;
-    let borderAdded = cleanProduct ? false : !!flags.borderAdded;
-    let fullDecorationsAdded = cleanProduct
-      ? false
-      : !!(flags.fullDecorationsAdded || flags.decorationsAdded);
+    let stickersAdded = !!flags.stickersAdded;
+    let borderAdded = !!flags.borderAdded;
+    let fullDecorationsAdded = !!(
+      flags.fullDecorationsAdded || flags.decorationsAdded
+    );
+
+    if (!addingDecorations && stickersRemoved && borderOnlyRemoved) {
+      cleanProduct = true;
+      stickersRemoved = false;
+      borderOnlyRemoved = false;
+    }
 
     if (fullDecorationsAdded) {
       stickersRemoved = false;
       borderOnlyRemoved = false;
       stickersAdded = false;
       borderAdded = false;
+      cleanProduct = false;
     } else {
-      if (stickersAdded) stickersRemoved = false;
+      if (stickersAdded) {
+        stickersRemoved = false;
+        cleanProduct = false;
+      }
+      if (borderAdded) {
+        borderOnlyRemoved = false;
+        cleanProduct = false;
+      }
       if (stickersRemoved) stickersAdded = false;
-      if (borderAdded) borderOnlyRemoved = false;
       if (borderOnlyRemoved) borderAdded = false;
     }
 
@@ -4298,6 +4319,9 @@ Please share payment details and license key.`;
 
     const field = this.photoMarginField(side);
     window.StaticFrameCompose.updateFrameAppearance(row.layers, { [field]: value });
+    if (window.StaticFrameCompose.reanchorPlacements) {
+      window.StaticFrameCompose.reanchorPlacements(row.layers);
+    }
     row._staticAppearanceEdited = true;
 
     try {
@@ -5794,11 +5818,13 @@ Please share payment details and license key.`;
       }
       if (target === addStickersCb && addStickersCb.checked) {
         stickerCb.checked = false;
+        borderOnlyCb.checked = false;
         cleanCb.checked = false;
         addBothCb.checked = false;
       }
       if (target === addBorderCb && addBorderCb.checked) {
         borderOnlyCb.checked = false;
+        stickerCb.checked = false;
         cleanCb.checked = false;
         addBothCb.checked = false;
       }

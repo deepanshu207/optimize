@@ -2,6 +2,10 @@
 
 const WHITE_TOL = 18;
 
+function readCanvasCtx(canvas) {
+  return canvas.getContext("2d", { willReadFrequently: true });
+}
+
 export function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -24,9 +28,12 @@ export function nearWhite(data, i) {
 }
 
 export function measureWhiteRatio(canvas) {
-  const { data } = canvas
-    .getContext("2d", { willReadFrequently: true })
-    .getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = readCanvasCtx(canvas).getImageData(
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
   let w = 0;
   const n = canvas.width * canvas.height;
   for (let i = 0; i < data.length; i += 4) {
@@ -36,7 +43,12 @@ export function measureWhiteRatio(canvas) {
 }
 
 export function measureNearWhiteRatio(canvas) {
-  const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = readCanvasCtx(canvas).getImageData(
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
   let w = 0;
   const n = canvas.width * canvas.height;
   for (let i = 0; i < data.length; i += 4) if (nearWhite(data, i)) w++;
@@ -82,7 +94,7 @@ export function flattenBackgroundWhite(canvas) {
 
 function contentBounds(canvas) {
   const { width, height } = canvas;
-  const { data } = canvas.getContext("2d").getImageData(0, 0, width, height);
+  const { data } = readCanvasCtx(canvas).getImageData(0, 0, width, height);
   let minX = width,
     minY = height,
     maxX = 0,
@@ -370,7 +382,7 @@ function colIsBorder(data, width, height, x, refs, tol) {
  */
 export function trimUniformEdges(canvas, pad = 0.02) {
   const { width, height } = canvas;
-  const { data } = canvas.getContext("2d").getImageData(0, 0, width, height);
+  const { data } = readCanvasCtx(canvas).getImageData(0, 0, width, height);
   const refs = [
     sampleCornerColor(data, width, height, "tl"),
     sampleCornerColor(data, width, height, "tr"),

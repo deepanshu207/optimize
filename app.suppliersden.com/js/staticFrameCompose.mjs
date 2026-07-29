@@ -651,15 +651,8 @@ export function xyToSliders(x, y, outerW, outerH, w, h) {
 export function positionForAnchor(anchor, frame, w, h) {
   const { px, py, dw, dh, outerW, outerH } = frame;
 
-  if (
-    (frame.style === "tall_static" ||
-      frame.style === "gown_static" ||
-      frame.style === "live_framed") &&
-    frame.px != null
-  ) {
-    const photo = frameHasProductSlot(frame)
-      ? photoAnchorRect(frame)
-      : { x: frame.px, y: frame.py, w: frame.dw, h: frame.dh };
+  if (frameHasProductSlot(frame) && frame.px != null) {
+    const photo = photoAnchorRect(frame);
     const size = Math.max(56, Math.round(Math.min(photo.w, photo.h) * 0.14));
     const inset = Math.max(6, Math.round(size * 0.06));
     const fx = photo.x;
@@ -1708,7 +1701,8 @@ export function pickStaticBaseLayer(layers, flags = {}, options = {}) {
     return { url: layers.productOnly || layers.full, drawBadges: false, rebuild: false };
   }
   if (hasBorder && !hasStickers) {
-    if (restored && layers.noStickers) {
+    const f = flags || {};
+    if (layers.noStickers && (f.borderAdded || f.fullDecorationsAdded || restored)) {
       return { url: layers.noStickers, drawBadges: false, rebuild: false };
     }
     return { url: layers.noStickers || layers.full, drawBadges: false, rebuild: true };
@@ -2147,6 +2141,18 @@ export function updateFrameAppearance(layers, patch) {
   if (patch.borderThicknessPct != null) {
     frame.borderThicknessPct = clamp(patch.borderThicknessPct, 0, BORDER_THICKNESS_MAX);
     applyBorderThickness(frame, { syncLegacyGownSlider: frame.style === "gown_static" });
+  }
+  if (
+    patch.photoMarginTop != null ||
+    patch.photoMarginRight != null ||
+    patch.photoMarginBottom != null ||
+    patch.photoMarginLeft != null ||
+    patch.borderThicknessPct != null ||
+    patch.photoZoomPct != null ||
+    patch.photoPanH != null ||
+    patch.photoPanV != null
+  ) {
+    reanchorPlacements(layers);
   }
   return true;
 }
