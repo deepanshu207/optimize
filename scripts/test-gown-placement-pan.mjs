@@ -8,6 +8,8 @@ import {
   drawProductPhotoCoverFit,
   frameHasProductSlot,
   photoAnchorRect,
+  photoContentLayout,
+  photoStickerScale,
   productPhotoRect,
 } from "../app.suppliersden.com/js/lib/productPhotoFit.mjs";
 import {
@@ -17,6 +19,18 @@ import {
   updatePlacementSliderAxis,
   updateFrameAppearance,
 } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
+
+function placementSizeForTest(p, frame) {
+  const pct = (p.sizePct ?? 100) / 100;
+  let w = Math.max(8, Math.round((p.defaultW ?? p.w ?? 48) * pct));
+  let h = Math.max(8, Math.round((p.defaultH ?? p.h ?? w) * pct));
+  if (frame && p.kind === "gownArt" && p.lockSize !== false) {
+    const z = photoStickerScale(frame);
+    w = Math.max(8, Math.round(w * z));
+    h = Math.max(8, Math.round(h * z));
+  }
+  return { w, h };
+}
 
 function mockGownLayers() {
   const frame = {
@@ -237,6 +251,91 @@ function mockGownLayers() {
   updateFrameAppearance(layers, { photoZoomPct: 89 });
   applyPositionToPlacement(p, layers._staticFrame);
   assert(p.y > yAt100, "compose re-apply moves locked gown art with zoom out");
+}
+
+// photo sticker scale tracks zoom in and out
+{
+  const base = {
+    px: 58,
+    py: 58,
+    dw: 657,
+    dh: 978,
+    basePx: 58,
+    basePy: 58,
+    baseDw: 657,
+    baseDh: 978,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  assert(Math.abs(photoStickerScale({ ...base, photoZoomPct: 100 }) - 1) < 0.01);
+  assert(photoStickerScale({ ...base, photoZoomPct: 89 }) < 1, "zoom out scale below 1");
+  assert(photoStickerScale({ ...base, photoZoomPct: 130 }) > 1, "zoom in scale above 1");
+  assert.equal(photoStickerScale({ ...base, photoZoomPct: 130 }), 1.3);
+}
+
+// locked gown art size scales with zoom; unlocked size does not
+{
+  const base = {
+    px: 58,
+    py: 58,
+    dw: 657,
+    dh: 978,
+    basePx: 58,
+    basePy: 58,
+    baseDw: 657,
+    baseDh: 978,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  const frame = { ...base, photoZoomPct: 89 };
+  const p = {
+    id: "gown-best",
+    kind: "gownArt",
+    defaultW: 200,
+    defaultH: 140,
+    sizePct: 100,
+    lockSize: true,
+  };
+  const at89 = placementSizeForTest(p, frame);
+  frame.photoZoomPct = 100;
+  const at100 = placementSizeForTest(p, frame);
+  frame.photoZoomPct = 130;
+  const at130 = placementSizeForTest(p, frame);
+  assert(at89.w < at100.w, "zoom out shrinks locked gown art");
+  assert(at130.w > at100.w, "zoom in enlarges locked gown art");
+  assert.equal(at100.w, 200);
+  p.lockSize = false;
+  frame.photoZoomPct = 89;
+  assert.equal(placementSizeForTest(p, frame).w, 200, "unlocked size ignores zoom");
+}
+
+// zoom in keeps stickers on slot while scaling (cover-crop)
+{
+  const frame = {
+    style: "gown_static",
+    outerW: 773,
+    outerH: 1094,
+    px: 58,
+    py: 58,
+    dw: 657,
+    dh: 978,
+    basePx: 58,
+    basePy: 58,
+    baseDw: 657,
+    baseDh: 978,
+    photoZoomPct: 100,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  const w = 200;
+  const h = 140;
+  const at100 = gownPlacementPosition("gown-best", frame, w, h);
+  frame.photoZoomPct = 140;
+  const wBig = Math.round(w * 1.4);
+  const hBig = Math.round(h * 1.4);
+  const at140 = gownPlacementPosition("gown-best", frame, wBig, hBig);
+  assert.equal(at140.x, at100.x, "zoom in keeps top-left anchor on slot");
+  assert.equal(at140.y, at100.y, "zoom in keeps top-left anchor on slot");
 }
 
 // placement meta init runs once

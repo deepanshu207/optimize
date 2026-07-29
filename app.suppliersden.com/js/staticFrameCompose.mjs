@@ -13,10 +13,12 @@ import {
   PHOTO_ZOOM_DEFAULT,
   PHOTO_MARGIN_MAX,
   photoAnchorRect,
+  photoContentLayout,
   photoMarginField,
+  photoStickerScale,
   photoMarginLockField,
   snapshotPhotoControls,
-} from "./lib/productPhotoFit.mjs?v=5";
+} from "./lib/productPhotoFit.mjs?v=6";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -282,18 +284,43 @@ export function isFreeShippingSlot(p) {
   return !!(p && (p.kind === "freeShipping" || p._freeShippingSlot));
 }
 
-function placementSize(p) {
+function stickerScalesWithPhotoZoom(p, frame) {
+  if (!p || !frame || !frameHasProductSlot(frame)) return false;
+  if (p.lockSize === false) return false;
+  if (p.kind === "gownArt") return true;
+  if (p.kind === "freeShipping") return false;
+  if (
+    (frame.style === "gown_static" ||
+      frame.style === "tall_static" ||
+      frame.style === "live_framed") &&
+    p.lockH !== false &&
+    p.lockV !== false
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function placementSize(p, frame) {
   ensurePlacementDefaults(p);
   const pct = clamp(p.sizePct ?? 100, 25, 200) / 100;
+  let w;
+  let h;
   if (p.defaultW != null) {
-    return {
-      w: Math.max(8, Math.round(p.defaultW * pct)),
-      h: Math.max(8, Math.round((p.defaultH ?? p.defaultW) * pct)),
-    };
+    w = Math.max(8, Math.round(p.defaultW * pct));
+    h = Math.max(8, Math.round((p.defaultH ?? p.defaultW) * pct));
+  } else {
+    const base = p.defaultSize || p.size || p.w || 48;
+    const s = Math.max(8, Math.round(base * pct));
+    w = s;
+    h = s;
   }
-  const base = p.defaultSize || p.size || p.w || 48;
-  const s = Math.max(8, Math.round(base * pct));
-  return { w: s, h: s };
+  if (frame && stickerScalesWithPhotoZoom(p, frame)) {
+    const z = photoStickerScale(frame);
+    w = Math.max(8, Math.round(w * z));
+    h = Math.max(8, Math.round(h * z));
+  }
+  return { w, h };
 }
 
 export function isGownArtPlacement(p) {
@@ -573,7 +600,7 @@ export function positionForAnchor(anchor, frame, w, h) {
 
 export function applyPositionToPlacement(placement, frame) {
   if (!placement || !frame) return placement;
-  const { w, h } = placementSize(placement);
+  const { w, h } = placementSize(placement, frame);
   const { outerW, outerH } = frame;
 
   if (frame.style === "gown_static" && placement.kind === "gownArt") {
@@ -620,7 +647,7 @@ export function applyPositionToPlacement(placement, frame) {
 
 export function applyAnchorToPlacement(placement, frame) {
   if (!placement || !frame) return placement;
-  const { w, h } = placementSize(placement);
+  const { w, h } = placementSize(placement, frame);
   const anchor = placement.anchor || "top-left";
   const { x, y } = positionForAnchor(anchor, frame, w, h);
   placement.x = x;
@@ -1340,10 +1367,10 @@ function drawFreeShippingCircle(ctx, x, y, size) {
   ctx.restore();
 }
 
-async function drawPlacementsOnCtx(ctx, placements) {
+async function drawPlacementsOnCtx(ctx, placements, frame) {
   for (const p of placements) {
     if (!p || p.drawn === false || p.hidden) continue;
-    const { w, h } = placementSize(p);
+    const { w, h } = placementSize(p, frame);
     try {
       if (p.kind === "freeShipping") {
         drawFreeShippingCircle(ctx, p.x, p.y, w);
@@ -1646,7 +1673,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   for (const p of placements) {
     applyPositionToPlacement(p, frame);
-    const { w, h } = placementSize(p);
+    const { w, h } = placementSize(p, frame);
     if (p.kind === "freeShipping") p.size = w;
     else {
       p.w = w;
@@ -1656,7 +1683,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   }
 
   const ctx = canvas.getContext("2d");
-  await drawPlacementsOnCtx(ctx, placements);
+  await drawPlacementsOnCtx(ctx, placements, frame);
 
   return compressPreview(canvas, {
     targetKb,
@@ -1767,7 +1794,7 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   }
   if (raw === FREE_SHIPPING_BADGE_VALUE) {
     if (!isFreeShippingSlot(p)) return false;
-    const { w } = placementSize(p);
+    const { w } = placementSize(p, layers._staticFrame);
     p.kind = "freeShipping";
     p._freeShippingSlot = true;
     p.defaultSize = w;
@@ -1785,7 +1812,7 @@ export function updatePlacementBadge(layers, placementId, badgeValue) {
   if (!num) return false;
 
   if (p.kind === "freeShipping" || p.kind === "gownArt") {
-    const { w, h } = placementSize(p);
+    const { w, h } = placementSize(p, layers._staticFrame);
     if (!p.gownSlot && p.id?.startsWith("gown-")) p.gownSlot = p.id;
     p.kind = "badge";
     if (p.id?.startsWith("gown-")) {
@@ -2144,7 +2171,7 @@ export function ensureStaticPlacementMeta(layers, style) {
     }
     if (style === "gown_static" && isGownArtPlacement(p)) {
       applyPositionToPlacement(p, layers._staticFrame);
-      const { w, h } = placementSize(p);
+      const { w, h } = placementSize(p, layers._staticFrame);
       const sliders = xyToSliders(
         p.x || 0,
         p.y || 0,
@@ -2156,7 +2183,7 @@ export function ensureStaticPlacementMeta(layers, style) {
       if (p.posH == null) p.posH = sliders.posH;
       if (p.posV == null) p.posV = sliders.posV;
     } else if (p.posH == null || p.posV == null) {
-      const { w, h } = placementSize(p);
+      const { w, h } = placementSize(p, layers._staticFrame);
       const sliders = xyToSliders(p.x || 0, p.y || 0, layers._staticFrame.outerW, layers._staticFrame.outerH, w, h);
       p.posH = sliders.posH;
       p.posV = sliders.posV;

@@ -103,22 +103,35 @@ export function computeProductPhotoDrawRect(productImg, frame) {
   return { x, y, w, h, imgX, imgY, sw, sh };
 }
 
-/**
- * Photo bounds for sticker anchoring. When zoomed out (letterboxed), returns the
- * visible image rect; otherwise the fixed product slot (clip) rect.
- */
-export function photoAnchorRect(frame) {
+/** Anchor rect + uniform scale for photo-linked stickers (100% zoom = scale 1). */
+export function photoContentLayout(frame) {
   const slot = productPhotoRect(frame);
-  if (!frame) return slot;
+  const fallback = { anchor: slot, scale: 1 };
+  if (!frame) return fallback;
   const iw = frame.baseDw ?? frame.dw ?? slot.w;
   const ih = frame.baseDh ?? frame.dh ?? slot.h;
-  if (!iw || !ih) return slot;
+  if (!iw || !ih || !slot.w || !slot.h) return fallback;
   const rect = computeProductPhotoDrawRect({ width: iw, height: ih }, frame);
-  if (!rect) return slot;
+  if (!rect) return fallback;
+  const zoom = clampPhotoZoom(frame.photoZoomPct) / 100;
   if (rect.sw >= rect.w && rect.sh >= rect.h) {
-    return slot;
+    return { anchor: slot, scale: zoom };
   }
-  return { x: rect.imgX, y: rect.imgY, w: rect.sw, h: rect.sh };
+  const scale = Math.min(rect.sw / rect.w, rect.sh / rect.h);
+  return {
+    anchor: { x: rect.imgX, y: rect.imgY, w: rect.sw, h: rect.sh },
+    scale,
+  };
+}
+
+/** Visible lifestyle photo bounds for sticker anchoring. */
+export function photoAnchorRect(frame) {
+  return photoContentLayout(frame).anchor;
+}
+
+/** Scale stickers with zoom: below 100% shrinks, above 100% grows, 100% = 1. */
+export function photoStickerScale(frame) {
+  return photoContentLayout(frame).scale;
 }
 
 export function drawProductPhotoCoverFit(ctx, productImg, frame) {
