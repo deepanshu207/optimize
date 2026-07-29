@@ -95,6 +95,35 @@ const cleanLive = MeeshoAPI.getEffectiveLayerCapabilities(liveLayers, {
 assert(cleanLive.canAddStickers, "live: add stickers after clean product");
 assert(cleanLive.canAddBoth, "live: add both after clean product");
 
+const liveWithFrame = {
+  ...liveLayers,
+  _staticFrame: { style: "live_standard", outerW: 800, outerH: 800, px: 40, py: 40, dw: 720, dh: 720 },
+};
+assert(
+  MeeshoAPI.resolveDisplayUrl({
+    layers: liveWithFrame,
+    editFlags: { borderAdded: true },
+    pricingImageUrl: "full",
+  }) === "noStickers",
+  "live frame: borderAdded sync URL is noStickers",
+);
+assert(
+  MeeshoAPI.resolveDisplayUrl({
+    layers: liveWithFrame,
+    editFlags: { stickersAdded: true },
+    pricingImageUrl: "full",
+  }) === "full",
+  "live frame: stickersAdded on bordered variant uses full",
+);
+assert(
+  MeeshoAPI.resolveDisplayUrl({
+    layers: liveWithFrame,
+    editFlags: { cleanProduct: true, stickersAdded: true },
+    pricingImageUrl: "full",
+  }) === "noBorder",
+  "live frame: stripped product + stickersAdded uses product canvas",
+);
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

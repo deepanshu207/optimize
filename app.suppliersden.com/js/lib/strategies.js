@@ -18,7 +18,7 @@ import {
   measureWhiteRatio,
   MEESHO_COMPACT_COVERAGE,
   MEESHO_SQUARE_SIDE,
-} from "./canvas-utils.js?v=32";
+} from "./canvas-utils.js?v=97";
 import { estimateImageShipping } from "./shipping.js?v=32";
 import { buildSmartPlan, compareVariants, strategyLabel } from "./smart-plan.js?v=32";
 

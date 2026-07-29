@@ -3,10 +3,10 @@
 function staticComposeModuleUrls() {
   const versioned =
     typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE
-      ? "/js/staticFrameCompose.mjs?v=124"
+      ? "/js/staticFrameCompose.mjs?v=125"
       : typeof chrome !== "undefined" && chrome.runtime?.getURL
-      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=124")
-      : "/js/staticFrameCompose.mjs?v=124";
+      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=125")
+      : "/js/staticFrameCompose.mjs?v=125";
   const plain = versioned.replace(/\?.*$/, "");
   return versioned === plain ? [versioned] : [versioned, plain];
 }
@@ -1935,6 +1935,11 @@ const MeeshoAPI = {
 
     const caps = this.getEffectiveLayerCapabilities(layers, flags);
     const cleanProduct = !!(flags.cleanProduct || flags.borderRemoved);
+    const strippedProduct =
+      cleanProduct &&
+      !flags.stickersAdded &&
+      !flags.borderAdded &&
+      !flags.fullDecorationsAdded;
     const fullDecorations = !!(
       flags.fullDecorationsAdded || flags.decorationsAdded
     );
@@ -1957,7 +1962,17 @@ const MeeshoAPI = {
         }
         return layers.full || result.pricingImageUrl || result.dataUrl || "";
       }
-      if (cleanProduct) {
+      if (flags.borderAdded && !flags.stickersAdded && !flags.fullDecorationsAdded) {
+        return layers.noStickers || layers.full || result.pricingImageUrl || "";
+      }
+      if (flags.stickersAdded && !flags.borderAdded && !flags.fullDecorationsAdded) {
+        const effCaps = this.getEffectiveLayerCapabilities(layers, flags);
+        if (effCaps.hasBorder) {
+          return layers.full || layers.noStickers || result.pricingImageUrl || "";
+        }
+        return layers.noBorder || layers.productOnly || layers.full || result.pricingImageUrl || "";
+      }
+      if (strippedProduct) {
         return layers.productOnly || layers.full || result.pricingImageUrl || "";
       }
       if (flags.stickersRemoved) {
@@ -1978,7 +1993,7 @@ const MeeshoAPI = {
       );
     }
 
-    if (cleanProduct) {
+    if (strippedProduct) {
       return layers.productOnly || layers.full || result.pricingImageUrl || "";
     }
     if (fullDecorations || (flags.stickersAdded && flags.borderAdded)) {
