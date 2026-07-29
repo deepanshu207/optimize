@@ -2108,7 +2108,11 @@ const MeeshoAPI = {
           !hasBorder && !!(hasFull || hasNoStickersLayer),
         canAddBoth: !(hasStickers && hasBorder) && hasFull,
         isStaticPromo,
-        canAdjustBadges: base.canAdjustBadges && hasStickers,
+        canAdjustBadges:
+          (base.canAdjustBadges ||
+            !!flags.stickersAdded ||
+            !!flags.fullDecorationsAdded) &&
+          hasStickers,
       };
     }
 
@@ -2146,7 +2150,11 @@ const MeeshoAPI = {
         !hasBorder && !!(hasFull || hasNoStickersLayer),
       canAddBoth: !(hasStickers && hasBorder) && hasFull,
       isStaticPromo: false,
-      canAdjustBadges: base.canAdjustBadges && hasStickers,
+      canAdjustBadges:
+        (base.canAdjustBadges ||
+          !!flags.stickersAdded ||
+          !!flags.fullDecorationsAdded) &&
+        hasStickers,
     };
   },
 
@@ -2201,6 +2209,7 @@ const MeeshoAPI = {
               staticAppearanceEdited: !!result._staticAppearanceEdited,
               badgesOnly:
                 !!result._badgesRepositioned && !result._staticAppearanceEdited,
+              meta: result.meta,
             },
           );
         } catch (e) {
@@ -2227,6 +2236,7 @@ const MeeshoAPI = {
             preserveKb: 0,
             preview: true,
             jpegQuality: result.meta?.jpegQuality || 0.92,
+            meta: result.meta,
           },
         );
       } catch (e) {}
