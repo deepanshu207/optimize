@@ -2183,8 +2183,8 @@ const MeeshoAPI = {
         window.StaticFrameCompose?.composeStaticPreview
       ) {
         try {
-          if (staticFrame.style === "gown_static") {
-            window.StaticFrameCompose.ensureGownRebuildUrls?.(
+          if (staticFrame) {
+            window.StaticFrameCompose.ensureStaticRebuildUrls?.(
               result.layers,
               result.pricingImageUrl || result.dataUrl || result.imageUrl || "",
             );

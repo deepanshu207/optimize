@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=113";
+      return "/js/staticFrameCompose.mjs?v=114";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=113");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=114");
     }
-    return "/js/staticFrameCompose.mjs?v=113";
+    return "/js/staticFrameCompose.mjs?v=114";
   }
 
   async preloadStaticComposeModule() {
@@ -3350,9 +3350,10 @@ Please share payment details and license key.`;
       row.layers.full ||
       row.layers.noStickers ||
       "";
-    if (row.layers._staticFrame?.style === "gown_static") {
-      window.StaticFrameCompose.ensureGownRebuildUrls?.(row.layers, fallbackUrl);
+    if (row.layers._staticFrame) {
+      window.StaticFrameCompose.ensureStaticRebuildUrls?.(row.layers, fallbackUrl);
       if (
+        row.layers._staticFrame.style === "gown_static" &&
         !row.layers._gownPhotoSource &&
         !row.layers.productOnly &&
         row.blob instanceof Blob &&
@@ -3831,7 +3832,7 @@ Please share payment details and license key.`;
 
   updateFillMatUI(container, frame) {
     if (!container || !frame) return;
-    const enabled = frame.fillMatEnabled !== false;
+    const enabled = frame.fillMatEnabled === true;
     const checkbox = container.querySelector("#static-fill-mat-enabled");
     const wrap = container.querySelector(".static-fill-mat-wrap");
     if (checkbox) checkbox.checked = enabled;
@@ -4713,7 +4714,7 @@ Please share payment details and license key.`;
         frame.outerMatColor ?? frame.matColor,
         "#ffffff",
       );
-      const fillMatEnabled = frame.fillMatEnabled !== false;
+      const fillMatEnabled = frame.fillMatEnabled === true;
       const fillMatColor =
         frame.fillMatColor ?? frame.padColor ?? frame.matColor ?? "#ffffff";
       html += `<div class="static-fill-mat-wrap${

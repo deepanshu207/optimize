@@ -249,7 +249,7 @@ export function resolveGownMatColors(frame) {
     outerMatColor: frame?.outerMatColor ?? mat,
     fillMatColor: frame?.fillMatColor ?? pad,
     padColor: pad,
-    fillMatEnabled: frame?.fillMatEnabled !== false,
+    fillMatEnabled: frame?.fillMatEnabled === true,
   };
 }
 
@@ -328,7 +328,7 @@ function buildGownStaticFrameCanvas(img) {
     borderColor: BORDER_TEAL,
     matColor: "#ffffff",
     fillMatColor: "#ffffff",
-    fillMatEnabled: true,
+    fillMatEnabled: false,
     padColor: "#ffffff",
     innerStroke: GOWN_INNER_STROKE,
     innerStrokeColor: GOWN_INNER_STROKE_COLOR,
@@ -487,7 +487,7 @@ async function buildGownStaticLayers(img) {
         matColor: "#ffffff",
         outerMatColor: "#ffffff",
         fillMatColor: "#ffffff",
-        fillMatEnabled: true,
+        fillMatEnabled: false,
         padColor: "#ffffff",
         innerStrokeColor: GOWN_INNER_STROKE_COLOR,
         gradientTop: BORDER_TEAL,

@@ -639,7 +639,7 @@ function ensureFrameDefaults(frame) {
     if (!frame.outerMatColor) frame.outerMatColor = frame.matColor;
     if (!frame.padColor) frame.padColor = frame.matColor;
     if (!frame.fillMatColor) frame.fillMatColor = frame.padColor ?? frame.matColor;
-    if (frame.fillMatEnabled == null) frame.fillMatEnabled = true;
+    if (frame.fillMatEnabled == null) frame.fillMatEnabled = false;
   }
   return frame;
 }
@@ -759,7 +759,7 @@ export function snapshotGownFrameAppearance(frame) {
     padColor: normalizeFrameColor(frame.padColor ?? frame.matColor) || defs.matColor,
     fillMatColor:
       normalizeFrameColor(frame.fillMatColor ?? frame.padColor ?? frame.matColor) || defs.matColor,
-    fillMatEnabled: frame.fillMatEnabled !== false,
+    fillMatEnabled: frame.fillMatEnabled === true,
     gradientPreset: frame.gradientPreset ?? null,
     borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
     borderThicknessLocked: frame.borderThicknessLocked !== false,
@@ -948,8 +948,8 @@ function hasStaticRebuildSources(layers) {
   );
 }
 
-/** Ensure layer blobs/urls exist so mat color edits can rebuild the frame. */
-export function ensureGownRebuildUrls(layers, fallbackDisplayUrl = "") {
+/** Ensure layer blobs/urls exist so appearance edits can rebuild the frame. */
+export function ensureStaticRebuildUrls(layers, fallbackDisplayUrl = "") {
   if (!layers) return layers;
   restoreGownPhotoSource(layers);
   if (hasStaticRebuildSources(layers)) return layers;
@@ -957,6 +957,9 @@ export function ensureGownRebuildUrls(layers, fallbackDisplayUrl = "") {
   if (url) layers._composeFallbackUrl = url;
   return layers;
 }
+
+/** @deprecated use ensureStaticRebuildUrls */
+export const ensureGownRebuildUrls = ensureStaticRebuildUrls;
 
 function resolveGownPhotoSourceUrl(layers) {
   restoreGownPhotoSource(layers);
@@ -980,7 +983,7 @@ export function shouldRebuildStaticFrame(layers, options = {}) {
     (layers._staticDefaults?.frame &&
       frameAppearanceChanged(frame, layers._staticDefaults.frame));
   if (!needsRebuild) return false;
-  if (frame.style === "gown_static" && options.staticAppearanceEdited) return true;
+  if (options.staticAppearanceEdited) return hasStaticRebuildSources(layers);
   return hasStaticRebuildSources(layers);
 }
 
@@ -1539,8 +1542,8 @@ export function pickStaticBaseLayer(layers, flags = {}) {
 export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!layers) return "";
   restoreGownPhotoSource(layers);
-  if (layers._staticFrame?.style === "gown_static") {
-    ensureGownRebuildUrls(layers, layers._composeFallbackUrl || "");
+  if (layers._staticFrame) {
+    ensureStaticRebuildUrls(layers, layers._composeFallbackUrl || "");
   }
   const targetKb = options.targetKb ?? 0;
   const preview = !!options.preview;
@@ -1552,10 +1555,10 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     return frozenLayerUrl(layers, "productOnly") || layers.productOnly || layers.full || "";
   }
 
-  const gownAppearanceEdit =
-    layers._staticFrame?.style === "gown_static" && !!options.staticAppearanceEdited;
+  const appearanceEdited =
+    !!options.staticAppearanceEdited && !!layers._staticFrame;
   const frameEdited =
-    gownAppearanceEdit ||
+    appearanceEdited ||
     shouldRebuildStaticFrame(layers, {
       staticAppearanceEdited: !!options.staticAppearanceEdited,
       badgesOnly,
@@ -1577,7 +1580,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     if (!picked.drawBadges && !frameEdited && !options.staticAppearanceEdited) {
       return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
     }
-    if (gownAppearanceEdit) {
+    if (appearanceEdited) {
       const retry = await rebuildFrameCanvas(layers);
       if (retry?.canvas) {
         canvas = retry.canvas;
@@ -2275,6 +2278,7 @@ if (typeof window !== "undefined") {
     pickStaticBaseLayer,
     composeStaticPreview,
     rebuildGownPreviewCanvas,
+    ensureStaticRebuildUrls,
     ensureGownRebuildUrls,
     updatePlacementAnchor,
     updatePlacementSliders,

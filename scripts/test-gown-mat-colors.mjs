@@ -146,12 +146,48 @@ const baseFrame = {
   );
 }
 
+// tall_static appearance edits rebuild preview like gown
+{
+  const layers = {
+    full: "data:image/jpeg;base64,tall",
+    noStickers: "data:image/jpeg;base64,tallns",
+    productOnly: "data:image/jpeg;base64,tallprod",
+    _staticFrame: {
+      style: "tall_static",
+      frameType: "tall",
+      outerW: 703,
+      outerH: 1024,
+      border: 40,
+      px: 80,
+      py: 80,
+      dw: 543,
+      dh: 864,
+      basePx: 80,
+      basePy: 80,
+      baseDw: 543,
+      baseDh: 864,
+      baseBorder: 40,
+      borderColor: "#45a9e5",
+      matColor: "#ffffff",
+      borderThicknessPct: 100,
+    },
+    _badgePlacements: [{ id: "tall-sale", num: 1, x: 10, y: 10, w: 80, h: 80 }],
+  };
+  updateFrameAppearance(layers, { matColor: "#ffee00" });
+  assert.equal(
+    shouldRebuildStaticFrame(layers, { staticAppearanceEdited: true }),
+    true,
+    "tall_static mat color edit triggers rebuild",
+  );
+}
+
 const composeCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs"),
   "utf8",
 );
 assert(composeCode.includes("ensureGownDrawGeometry"), "compose ensures gown draw geometry");
-assert(composeCode.includes("ensureGownRebuildUrls"), "compose resolves gown rebuild sources");
+assert(composeCode.includes("ensureStaticRebuildUrls"), "compose resolves static rebuild sources");
+assert(composeCode.includes("const appearanceEdited"), "compose rebuilds all static appearance edits");
 assert(
   composeCode.includes("if (frame.style === \"gown_static\") {\n    applyGownFrameLayers(frame);"),
   "rebuild applies gown layer geometry",
