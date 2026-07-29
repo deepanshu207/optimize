@@ -1918,7 +1918,7 @@ const MeeshoAPI = {
       const eff =
         typeof window !== "undefined" &&
         window.StaticFrameCompose?.getStaticEffectiveFlags
-          ? window.StaticFrameCompose.getStaticEffectiveFlags(flags)
+          ? window.StaticFrameCompose.getStaticEffectiveFlags(flags, layers)
           : null;
       if (eff) {
         if (!eff.hasBorder && !eff.hasStickers) {
@@ -2209,6 +2209,7 @@ const MeeshoAPI = {
               staticAppearanceEdited: !!result._staticAppearanceEdited,
               badgesOnly:
                 !!result._badgesRepositioned && !result._staticAppearanceEdited,
+              badgesRepositioned: !!result._badgesRepositioned,
               meta: result.meta,
             },
           );
