@@ -21,7 +21,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=107";
+} from "./liveGownStatic.mjs?v=108";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -920,16 +920,49 @@ export function staticFrameBorderEdited(frame) {
   return (frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT) !== BORDER_THICKNESS_DEFAULT;
 }
 
+function restoreGownPhotoSource(layers) {
+  if (!layers || layers._gownPhotoSource) return;
+  const fromDefaults = layers._staticDefaults?.urls?.gownPhotoSource;
+  if (fromDefaults) layers._gownPhotoSource = fromDefaults;
+}
+
+function hasStaticRebuildSources(layers) {
+  if (!layers) return false;
+  restoreGownPhotoSource(layers);
+  return !!(
+    layers._gownPhotoSource ||
+    layers.productOnly ||
+    layers.noStickers ||
+    layers.full ||
+    layers._staticDefaults?.urls?.gownPhotoSource ||
+    layers._staticDefaults?.urls?.productOnly ||
+    layers._staticDefaults?.urls?.noStickers ||
+    layers._staticDefaults?.urls?.full
+  );
+}
+
+function resolveGownPhotoSourceUrl(layers) {
+  restoreGownPhotoSource(layers);
+  return (
+    layers._gownPhotoSource ||
+    layers._staticDefaults?.urls?.gownPhotoSource ||
+    layers.productOnly ||
+    layers._staticDefaults?.urls?.productOnly ||
+    ""
+  );
+}
+
 export function shouldRebuildStaticFrame(layers, options = {}) {
   if (options.badgesOnly) return false;
   const frame = layers?._staticFrame;
   if (!frame?.outerW) return false;
-  if (!layers.productOnly && !layers.noStickers) return false;
-  if (staticFrameBorderEdited(frame)) return true;
-  if (options.staticAppearanceEdited) return true;
-  const frameDef = layers._staticDefaults?.frame;
-  if (frameDef && frameAppearanceChanged(frame, frameDef)) return true;
-  return false;
+  const needsRebuild =
+    staticFrameBorderEdited(frame) ||
+    !!options.staticAppearanceEdited ||
+    (layers._staticDefaults?.frame &&
+      frameAppearanceChanged(frame, layers._staticDefaults.frame));
+  if (!needsRebuild) return false;
+  return hasStaticRebuildSources(layers);
 }
 
 function frozenLayerUrl(layers, key) {
@@ -1122,15 +1155,32 @@ function drawFrameBackground(ctx, frame) {
 }
 
 async function loadProductForFrame(layers, frame) {
-  if (frame.style === "gown_static" && layers._gownPhotoSource) {
-    return loadImage(layers._gownPhotoSource);
+  if (frame.style === "gown_static") {
+    const gownSrc = resolveGownPhotoSourceUrl(layers);
+    if (gownSrc) {
+      try {
+        return await loadImage(gownSrc);
+      } catch (e) {
+        /* fall through to shared crop paths */
+      }
+    }
   }
-  if (layers.productOnly) return loadImage(layers.productOnly);
+  if (layers.productOnly || layers._staticDefaults?.urls?.productOnly) {
+    try {
+      return await loadImage(layers.productOnly || layers._staticDefaults.urls.productOnly);
+    } catch (e) {
+      /* fall through */
+    }
+  }
   const dw = frame.baseDw ?? frame.dw;
   const dh = frame.baseDh ?? frame.dh;
   const px = frame.basePx ?? frame.px;
   const py = frame.basePy ?? frame.py;
-  const noStickersUrl = frozenLayerUrl(layers, "noStickers");
+  const noStickersUrl =
+    frozenLayerUrl(layers, "noStickers") ||
+    frozenLayerUrl(layers, "full") ||
+    layers.full ||
+    "";
   if (!noStickersUrl || !dw || !dh || px == null || py == null) return null;
   const src = await loadImage(noStickersUrl);
   const c = document.createElement("canvas");
@@ -1142,9 +1192,13 @@ async function loadProductForFrame(layers, frame) {
 
 async function rebuildFrameCanvas(layers) {
   if (!layers?._staticFrame) return null;
+  restoreGownPhotoSource(layers);
   const frame = ensureFrameDefaults({ ...layers._staticFrame });
   ensureFrameBases(frame);
   applyBorderThickness(frame);
+  if (frame.style === "gown_static") {
+    applyGownFrameLayers(frame);
+  }
 
   let productImg = null;
   try {
@@ -1448,6 +1502,9 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   if (!canvas) {
     if (!picked.drawBadges && !frameEdited && !options.staticAppearanceEdited) {
       return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
+    }
+    if (frameEdited || options.staticAppearanceEdited) {
+      return "";
     }
     let baseUrl = picked.url;
     if (badgesOnly) {
@@ -1957,6 +2014,7 @@ export function ensureStaticPlacementMeta(layers, style) {
   if (!layers?._badgePlacements?.length) return layers;
   if (!layers._staticFrame) return layers;
 
+  restoreGownPhotoSource(layers);
   ensureFrameDefaults(layers._staticFrame);
   ensureFrameBases(layers._staticFrame);
   ensureFramePhotoDefaults(layers._staticFrame);
@@ -2020,6 +2078,7 @@ export function ensureStaticPlacementMeta(layers, style) {
 
 export function resetStaticPlacements(layers) {
   if (!layers?._staticFrame) return false;
+  restoreGownPhotoSource(layers);
   const style = layers._staticFrame.style;
   const anchorMap = DEFAULT_ANCHORS[style] || {};
   layers._placementMetaReady = false;

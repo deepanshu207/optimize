@@ -77,7 +77,7 @@ const baseFrame = {
   const padRects = ctx.fills.filter((f) => f.color === "#dddddd");
   assert.ok(fillRects.length >= 2, "fill mat draws board bands around photo");
   assert.ok(fillRects.some((r) => r.w === 697), "fill mat spans inner frame width on top/bottom bands");
-  assert.equal(padRects.length, 4, "photo pad draws as four-sided ring");
+  assert.equal(padRects.length, 4, "photo pad draws as four-sided ring when colors differ");
 }
 
 // fill mat board leaves a hole at the photo slot

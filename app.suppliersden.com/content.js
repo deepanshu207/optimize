@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=109";
+      return "/js/staticFrameCompose.mjs?v=110";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=109");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=110");
     }
-    return "/js/staticFrameCompose.mjs?v=109";
+    return "/js/staticFrameCompose.mjs?v=110";
   }
 
   async preloadStaticComposeModule() {
@@ -4696,9 +4696,10 @@ Please share payment details and license key.`;
       html += `<div class="static-fill-mat-wrap${
         fillMatEnabled ? "" : " static-fill-mat-disabled"
       }" style="margin-bottom:6px;">
+        <p style="font-size:9px;color:#6b7280;margin:0 0 4px;line-height:1.35;">Outer mat = white band between teal border and inner board (~19px). Fill mat = inner board around the photo. Photo pad = thin ring at the photo edge (~17px).</p>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px;">
           <input type="checkbox" id="static-fill-mat-enabled"${fillMatEnabled ? " checked" : ""}>
-          Fill mat (board between photo and border)
+          Fill mat (inner board around photo)
         </label>`;
       html += this.buildStaticColorFieldHtml(
         "static-color-fill-mat",

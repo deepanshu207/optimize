@@ -181,6 +181,10 @@ export function resolveGownMatColors(frame) {
   };
 }
 
+function gownMatColorsMatch(a, b) {
+  return String(a || "").toLowerCase() === String(b || "").toLowerCase();
+}
+
 /** Teal border + white mat + optional fill mat board + photo pad ring (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const outerW = frame.outerW || 0;
@@ -212,7 +216,9 @@ export function drawGownStaticFrameBackground(ctx, frame) {
     drawGownFillMatBoard(ctx, frame, fillMatColor);
   }
 
-  drawGownPhotoPadRing(ctx, frame, padColor);
+  if (!fillMatEnabled || !gownMatColorsMatch(padColor, fillMatColor)) {
+    drawGownPhotoPadRing(ctx, frame, padColor);
+  }
 }
 
 /** Fixed lifestyle photo box — size stays at baseDw×baseDh; frame layers only move it. */
