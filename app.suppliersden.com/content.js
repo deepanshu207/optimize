@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=114";
+      return "/js/staticFrameCompose.mjs?v=115";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=114");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=115");
     }
-    return "/js/staticFrameCompose.mjs?v=114";
+    return "/js/staticFrameCompose.mjs?v=115";
   }
 
   async preloadStaticComposeModule() {
@@ -3832,7 +3832,7 @@ Please share payment details and license key.`;
 
   updateFillMatUI(container, frame) {
     if (!container || !frame) return;
-    const enabled = frame.fillMatEnabled === true;
+    const enabled = frame.fillMatEnabled !== false;
     const checkbox = container.querySelector("#static-fill-mat-enabled");
     const wrap = container.querySelector(".static-fill-mat-wrap");
     if (checkbox) checkbox.checked = enabled;
@@ -4714,7 +4714,7 @@ Please share payment details and license key.`;
         frame.outerMatColor ?? frame.matColor,
         "#ffffff",
       );
-      const fillMatEnabled = frame.fillMatEnabled === true;
+      const fillMatEnabled = frame.fillMatEnabled !== false;
       const fillMatColor =
         frame.fillMatColor ?? frame.padColor ?? frame.matColor ?? "#ffffff";
       html += `<div class="static-fill-mat-wrap${

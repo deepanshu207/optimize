@@ -639,7 +639,7 @@ function ensureFrameDefaults(frame) {
     if (!frame.outerMatColor) frame.outerMatColor = frame.matColor;
     if (!frame.padColor) frame.padColor = frame.matColor;
     if (!frame.fillMatColor) frame.fillMatColor = frame.padColor ?? frame.matColor;
-    if (frame.fillMatEnabled == null) frame.fillMatEnabled = false;
+    if (frame.fillMatEnabled == null) frame.fillMatEnabled = true;
   }
   return frame;
 }
@@ -759,7 +759,7 @@ export function snapshotGownFrameAppearance(frame) {
     padColor: normalizeFrameColor(frame.padColor ?? frame.matColor) || defs.matColor,
     fillMatColor:
       normalizeFrameColor(frame.fillMatColor ?? frame.padColor ?? frame.matColor) || defs.matColor,
-    fillMatEnabled: frame.fillMatEnabled === true,
+    fillMatEnabled: frame.fillMatEnabled !== false,
     gradientPreset: frame.gradientPreset ?? null,
     borderThicknessPct: frame.borderThicknessPct ?? BORDER_THICKNESS_DEFAULT,
     borderThicknessLocked: frame.borderThicknessLocked !== false,

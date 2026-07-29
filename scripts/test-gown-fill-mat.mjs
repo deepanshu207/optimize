@@ -101,10 +101,10 @@ const baseFrame = {
 {
   const colors = resolveGownMatColors({ matColor: "#ffffff", padColor: "#fafafa" });
   assert.equal(colors.fillMatColor, "#fafafa");
-  assert.equal(colors.fillMatEnabled, false, "fill mat off by default");
+  assert.equal(colors.fillMatEnabled, true, "fill mat on by default");
 }
 
-// new gown frames default fill mat off (photo pad ring used until enabled)
+// new gown frames default fill mat on (checkbox checked)
 {
   const layers = {
     full: "data:image/jpeg;base64,abc",
@@ -123,8 +123,9 @@ const baseFrame = {
     },
   };
   ensureStaticPlacementMeta(layers, "gown_static");
-  assert.equal(layers._staticFrame.fillMatEnabled, false, "fill mat unchecked by default");
-  assert.equal(layers._staticDefaults?.frame?.fillMatEnabled, false, "snapshot stores fill mat off");
+  assert.equal(layers._staticFrame.fillMatEnabled, true, "fill mat checked by default");
+  assert.equal(layers._staticDefaults?.frame?.fillMatEnabled, true, "snapshot stores fill mat on");
+  assert.equal(resolveGownMatColors(layers._staticFrame).fillMatEnabled, true, "preview treats default as enabled");
 }
 
 // snapshot + reset keeps fill mat settings
