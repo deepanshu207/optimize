@@ -2,7 +2,9 @@
   "name": "optimize",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "python3 server.py",
     "deploy": "cp deploy/_headers app.suppliersden.com/_headers && wrangler deploy; status=$?; rm -f app.suppliersden.com/_headers; exit $status",
@@ -12,5 +14,8 @@
   },
   "devDependencies": {
     "wrangler": "^4.14.0"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.4.0"
   }
 }
