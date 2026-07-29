@@ -21,7 +21,7 @@ import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
   drawGownStaticFrameBackground,
   gownUsesBorderGradient,
-} from "./liveGownStatic.mjs?v=108";
+} from "./liveGownStatic.mjs?v=109";
 
 export const FREE_SHIPPING_BADGE_VALUE = "free";
 export const BORDER_THICKNESS_DEFAULT = 100;
@@ -934,11 +934,22 @@ function hasStaticRebuildSources(layers) {
     layers.productOnly ||
     layers.noStickers ||
     layers.full ||
+    layers._composeFallbackUrl ||
     layers._staticDefaults?.urls?.gownPhotoSource ||
     layers._staticDefaults?.urls?.productOnly ||
     layers._staticDefaults?.urls?.noStickers ||
     layers._staticDefaults?.urls?.full
   );
+}
+
+/** Ensure layer blobs/urls exist so mat color edits can rebuild the frame. */
+export function ensureGownRebuildUrls(layers, fallbackDisplayUrl = "") {
+  if (!layers) return layers;
+  restoreGownPhotoSource(layers);
+  if (hasStaticRebuildSources(layers)) return layers;
+  const url = String(fallbackDisplayUrl || layers._composeFallbackUrl || "").trim();
+  if (url) layers._composeFallbackUrl = url;
+  return layers;
 }
 
 function resolveGownPhotoSourceUrl(layers) {
@@ -1177,17 +1188,23 @@ async function loadProductForFrame(layers, frame) {
   const px = frame.basePx ?? frame.px;
   const py = frame.basePy ?? frame.py;
   const noStickersUrl =
+    layers._composeFallbackUrl ||
     frozenLayerUrl(layers, "noStickers") ||
     frozenLayerUrl(layers, "full") ||
+    layers.noStickers ||
     layers.full ||
     "";
   if (!noStickersUrl || !dw || !dh || px == null || py == null) return null;
-  const src = await loadImage(noStickersUrl);
-  const c = document.createElement("canvas");
-  c.width = dw;
-  c.height = dh;
-  c.getContext("2d").drawImage(src, px, py, dw, dh, 0, 0, dw, dh);
-  return c;
+  try {
+    const src = await loadImage(noStickersUrl);
+    const c = document.createElement("canvas");
+    c.width = dw;
+    c.height = dh;
+    c.getContext("2d").drawImage(src, px, py, dw, dh, 0, 0, dw, dh);
+    return c;
+  } catch (e) {
+    return null;
+  }
 }
 
 async function rebuildFrameCanvas(layers) {
@@ -1204,33 +1221,35 @@ async function rebuildFrameCanvas(layers) {
   try {
     productImg = await loadProductForFrame(layers, frame);
   } catch (e) {
-    return null;
+    productImg = null;
   }
-  if (!productImg || !frame.outerW) return null;
 
   const canvas = document.createElement("canvas");
+  if (!frame.outerW) return null;
   canvas.width = frame.outerW;
   canvas.height = frame.outerH;
   const ctx = canvas.getContext("2d");
 
   drawFrameBackground(ctx, frame);
 
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  if (frameHasProductSlot(frame)) {
-    drawProductPhotoCoverFit(ctx, productImg, frame);
-  } else {
-    ctx.drawImage(
-      productImg,
-      0,
-      0,
-      productImg.width,
-      productImg.height,
-      frame.px,
-      frame.py,
-      frame.dw,
-      frame.dh,
-    );
+  if (productImg) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    if (frameHasProductSlot(frame)) {
+      drawProductPhotoCoverFit(ctx, productImg, frame);
+    } else {
+      ctx.drawImage(
+        productImg,
+        0,
+        0,
+        productImg.width,
+        productImg.height,
+        frame.px,
+        frame.py,
+        frame.dw,
+        frame.dh,
+      );
+    }
   }
 
   Object.assign(layers._staticFrame, frame);
@@ -2227,6 +2246,7 @@ if (typeof window !== "undefined") {
     reanchorPlacements,
     staticFrameBorderEdited,
     shouldRebuildStaticFrame,
+    ensureGownRebuildUrls,
     BORDER_THICKNESS_DEFAULT,
     BORDER_THICKNESS_MAX,
   };

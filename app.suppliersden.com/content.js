@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=110";
+      return "/js/staticFrameCompose.mjs?v=111";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=110");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=111");
     }
-    return "/js/staticFrameCompose.mjs?v=110";
+    return "/js/staticFrameCompose.mjs?v=111";
   }
 
   async preloadStaticComposeModule() {
@@ -3343,6 +3343,12 @@ Please share payment details and license key.`;
   async composePreviewForRow(row, options = {}) {
     if (!row?.layers || !window.StaticFrameCompose?.composeStaticPreview) return "";
     await this.ensureRowComposeReady(row);
+    if (row.layers._staticFrame?.style === "gown_static") {
+      window.StaticFrameCompose.ensureGownRebuildUrls?.(
+        row.layers,
+        row.pricingImageUrl || row.imageUrl || row.dataUrl || "",
+      );
+    }
     const gen = ++this._borderComposeGen;
     const badgesOnly = this.variantBadgesOnlyCompose(row);
     const url = await window.StaticFrameCompose.composeStaticPreview(
@@ -4696,7 +4702,7 @@ Please share payment details and license key.`;
       html += `<div class="static-fill-mat-wrap${
         fillMatEnabled ? "" : " static-fill-mat-disabled"
       }" style="margin-bottom:6px;">
-        <p style="font-size:9px;color:#6b7280;margin:0 0 4px;line-height:1.35;">Outer mat = white band between teal border and inner board (~19px). Fill mat = inner board around the photo. Photo pad = thin ring at the photo edge (~17px).</p>
+        <p style="font-size:9px;color:#6b7280;margin:0 0 4px;line-height:1.35;">Outer border = teal ring. Outer mat = white band outside the inner board. Fill mat = inner board around the photo (colors the whole board when enabled). Photo pad = thin edge ring — only used when fill mat is off.</p>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px;">
           <input type="checkbox" id="static-fill-mat-enabled"${fillMatEnabled ? " checked" : ""}>
           Fill mat (inner board around photo)
@@ -4710,7 +4716,7 @@ Please share payment details and license key.`;
       html += `</div>`;
       html += this.buildStaticColorFieldHtml(
         "static-color-pad",
-        "Photo pad",
+        "Photo pad (fill mat off)",
         frame.padColor ?? frame.matColor,
         "#ffffff",
       );
