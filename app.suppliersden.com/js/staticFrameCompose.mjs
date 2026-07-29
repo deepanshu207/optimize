@@ -12,10 +12,11 @@ import {
   normalizePhotoMargins,
   PHOTO_ZOOM_DEFAULT,
   PHOTO_MARGIN_MAX,
+  photoAnchorRect,
   photoMarginField,
   photoMarginLockField,
   snapshotPhotoControls,
-} from "./lib/productPhotoFit.mjs?v=4";
+} from "./lib/productPhotoFit.mjs?v=5";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -301,10 +302,11 @@ export function isGownArtPlacement(p) {
 
 /** Gown badge x/y — matches liveGownStatic.mjs gownStaticPlacements (no canvas clamp). */
 export function gownPlacementPosition(slotId, frame, w, h) {
-  const px = frame.px ?? frame.basePx ?? 0;
-  const py = frame.py ?? frame.basePy ?? 0;
-  const dw = frame.dw ?? frame.baseDw ?? 0;
-  const dh = frame.dh ?? frame.baseDh ?? 0;
+  const photo = photoAnchorRect(frame);
+  const px = photo.x;
+  const py = photo.y;
+  const dw = photo.w;
+  const dh = photo.h;
   const ref = Math.min(dw, dh);
   const inset = Math.max(2, Math.round(ref * 0.015));
   const slot = slotId || "";
@@ -472,12 +474,15 @@ export function positionForAnchor(anchor, frame, w, h) {
       frame.style === "live_framed") &&
     frame.px != null
   ) {
-    const size = Math.max(56, Math.round(Math.min(frame.dw, frame.dh) * 0.14));
+    const photo = frameHasProductSlot(frame)
+      ? photoAnchorRect(frame)
+      : { x: frame.px, y: frame.py, w: frame.dw, h: frame.dh };
+    const size = Math.max(56, Math.round(Math.min(photo.w, photo.h) * 0.14));
     const inset = Math.max(6, Math.round(size * 0.06));
-    const fx = frame.px;
-    const fy = frame.py;
-    const fw = frame.dw;
-    const fh = frame.dh;
+    const fx = photo.x;
+    const fy = photo.y;
+    const fw = photo.w;
+    const fh = photo.h;
     let x = fx + inset;
     let y = fy + inset;
     switch (anchor) {

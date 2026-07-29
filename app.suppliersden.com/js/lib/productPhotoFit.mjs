@@ -103,6 +103,24 @@ export function computeProductPhotoDrawRect(productImg, frame) {
   return { x, y, w, h, imgX, imgY, sw, sh };
 }
 
+/**
+ * Photo bounds for sticker anchoring. When zoomed out (letterboxed), returns the
+ * visible image rect; otherwise the fixed product slot (clip) rect.
+ */
+export function photoAnchorRect(frame) {
+  const slot = productPhotoRect(frame);
+  if (!frame) return slot;
+  const iw = frame.baseDw ?? frame.dw ?? slot.w;
+  const ih = frame.baseDh ?? frame.dh ?? slot.h;
+  if (!iw || !ih) return slot;
+  const rect = computeProductPhotoDrawRect({ width: iw, height: ih }, frame);
+  if (!rect) return slot;
+  if (rect.sw >= rect.w && rect.sh >= rect.h) {
+    return slot;
+  }
+  return { x: rect.imgX, y: rect.imgY, w: rect.sw, h: rect.sh };
+}
+
 export function drawProductPhotoCoverFit(ctx, productImg, frame) {
   const rect = computeProductPhotoDrawRect(productImg, frame);
   if (!rect) return;

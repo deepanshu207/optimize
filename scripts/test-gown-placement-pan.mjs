@@ -7,11 +7,13 @@ import {
   computeProductPhotoDrawRect,
   drawProductPhotoCoverFit,
   frameHasProductSlot,
+  photoAnchorRect,
   productPhotoRect,
 } from "../app.suppliersden.com/js/lib/productPhotoFit.mjs";
 import {
   applyPositionToPlacement,
   ensureStaticPlacementMeta,
+  gownPlacementPosition,
   updatePlacementSliderAxis,
   updateFrameAppearance,
 } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
@@ -185,6 +187,56 @@ function mockGownLayers() {
   assert.equal(layers._staticFrame.photoPanH, 12);
   assert.equal(layers._staticFrame.photoPanV, 88);
   assert.equal(layers._staticFrame.photoZoomPct, 120);
+}
+
+// gown art stickers follow visible photo when zoomed out (letterboxed)
+{
+  const frame = {
+    style: "gown_static",
+    outerW: 773,
+    outerH: 1094,
+    px: 58,
+    py: 58,
+    dw: 657,
+    dh: 978,
+    basePx: 58,
+    basePy: 58,
+    baseDw: 657,
+    baseDh: 978,
+    photoZoomPct: 100,
+    photoPanH: 50,
+    photoPanV: 50,
+  };
+  const w = 200;
+  const h = 140;
+  const at100 = gownPlacementPosition("gown-best", frame, w, h);
+  frame.photoZoomPct = 89;
+  const at89 = gownPlacementPosition("gown-best", frame, w, h);
+  assert(at89.x > at100.x, "zoom out moves top-left sticker inward on X");
+  assert(at89.y > at100.y, "zoom out moves top-left sticker inward on Y");
+
+  const flash100 = gownPlacementPosition("gown-flash", frame, w, 80);
+  frame.photoZoomPct = 100;
+  const flashAt100 = gownPlacementPosition("gown-flash", frame, w, 80);
+  frame.photoZoomPct = 89;
+  const flashAt89 = gownPlacementPosition("gown-flash", frame, w, 80);
+  assert(flashAt89.x < flashAt100.x, "zoom out moves top-right sticker inward");
+
+  const anchor = photoAnchorRect(frame);
+  assert(anchor.w < 657, "letterboxed anchor is narrower than slot");
+}
+
+// locked gown art re-anchors on compose when zoom changes
+{
+  const layers = mockGownLayers();
+  ensureStaticPlacementMeta(layers, "gown_static");
+  const p = layers._badgePlacements[0];
+  p.lockH = true;
+  p.lockV = true;
+  const yAt100 = gownPlacementPosition("gown-best", layers._staticFrame, p.w, p.h).y;
+  updateFrameAppearance(layers, { photoZoomPct: 89 });
+  applyPositionToPlacement(p, layers._staticFrame);
+  assert(p.y > yAt100, "compose re-apply moves locked gown art with zoom out");
 }
 
 // placement meta init runs once
