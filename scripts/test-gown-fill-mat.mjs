@@ -69,15 +69,14 @@ const baseFrame = {
   fillMatEnabled: true,
 };
 
-// fill mat and pad use different colors
+// fill mat and pad use different colors — fill mat owns board, pad only when fill mat off
 {
   const ctx = mockCtx();
-  drawGownStaticFrameBackground(ctx, baseFrame);
+  drawGownStaticFrameBackground(ctx, { ...baseFrame, fillMatEnabled: false, fillMatColor: "#eeeeee", padColor: "#dddddd" });
   const fillRects = ctx.fills.filter((f) => f.color === "#eeeeee");
   const padRects = ctx.fills.filter((f) => f.color === "#dddddd");
-  assert.ok(fillRects.length >= 2, "fill mat draws board bands around photo");
-  assert.ok(fillRects.some((r) => r.w === 697), "fill mat spans inner frame width on top/bottom bands");
-  assert.equal(padRects.length, 4, "photo pad draws as four-sided ring when colors differ");
+  assert.equal(fillRects.length, 0, "fill mat skipped when disabled");
+  assert.equal(padRects.length, 4, "photo pad draws when fill mat disabled");
 }
 
 // fill mat board leaves a hole at the photo slot

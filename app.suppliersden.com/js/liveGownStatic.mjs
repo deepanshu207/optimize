@@ -181,10 +181,6 @@ export function resolveGownMatColors(frame) {
   };
 }
 
-function gownMatColorsMatch(a, b) {
-  return String(a || "").toLowerCase() === String(b || "").toLowerCase();
-}
-
 /** Teal border + white mat + optional fill mat board + photo pad ring (no photo). */
 export function drawGownStaticFrameBackground(ctx, frame) {
   const outerW = frame.outerW || 0;
@@ -214,9 +210,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
 
   if (fillMatEnabled && ifw > 0 && ifh > 0) {
     drawGownFillMatBoard(ctx, frame, fillMatColor);
-  }
-
-  if (!fillMatEnabled || !gownMatColorsMatch(padColor, fillMatColor)) {
+  } else {
     drawGownPhotoPadRing(ctx, frame, padColor);
   }
 }

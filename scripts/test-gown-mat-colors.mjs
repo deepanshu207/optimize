@@ -12,6 +12,7 @@ import {
 import {
   shouldRebuildStaticFrame,
   updateFrameAppearance,
+  ensureGownRebuildUrls,
 } from "../app.suppliersden.com/js/staticFrameCompose.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -66,22 +67,32 @@ const baseFrame = {
   fillMatEnabled: true,
 };
 
-// matching fill mat + pad skips redundant pad ring (full board shows fill mat color)
+// matching fill mat + pad skips pad ring (fill mat owns the inner board)
 {
   const ctx = mockCtx();
   drawGownStaticFrameBackground(ctx, baseFrame);
-  const padRects = ctx.fills.filter((f) => f.color === "#ffffff" && f.h === 17);
-  assert.equal(padRects.length, 0, "pad ring skipped when fill mat matches pad color");
+  const fillRects = ctx.fills.filter((f) => f.color === "#ffffff");
+  const padRects = fillRects.filter((f) => f.h === 17 || f.w === 17);
+  assert.ok(fillRects.length >= 2, "fill mat paints inner board");
+  assert.equal(padRects.length, 0, "pad ring skipped when fill mat enabled");
 }
 
-// different pad color still draws pad ring on top of fill mat board
+// fill mat disabled uses photo pad ring
 {
   const ctx = mockCtx();
-  drawGownStaticFrameBackground(ctx, { ...baseFrame, fillMatColor: "#ff0000", padColor: "#ffffff" });
-  const fillRects = ctx.fills.filter((f) => f.color === "#ff0000");
-  const padRects = ctx.fills.filter((f) => f.color === "#ffffff" && f.h === 17);
-  assert.ok(fillRects.length >= 2, "fill mat board draws when enabled");
-  assert.equal(padRects.length, 2, "top/bottom pad bands when colors differ");
+  drawGownStaticFrameBackground(ctx, { ...baseFrame, fillMatEnabled: false, padColor: "#dddddd" });
+  const padRects = ctx.fills.filter((f) => f.color === "#dddddd");
+  assert.equal(padRects.length, 4, "photo pad draws when fill mat disabled");
+}
+
+// different fill mat color paints full inner board band
+{
+  const ctx = mockCtx();
+  drawGownStaticFrameBackground(ctx, { ...baseFrame, fillMatColor: "#7c3aed", padColor: "#ffffff" });
+  const fillRects = ctx.fills.filter((f) => f.color === "#7c3aed");
+  const padRects = ctx.fills.filter((f) => f.color === "#ffffff" && (f.h === 17 || f.w === 17));
+  assert.ok(fillRects.some((r) => r.w === 697), "purple fill mat spans inner frame width");
+  assert.equal(padRects.length, 0, "white pad does not cover fill mat when fill mat enabled");
 }
 
 // appearance edits rebuild even when only full layer is present
@@ -119,6 +130,20 @@ const baseFrame = {
     shouldRebuildStaticFrame(layers, { staticAppearanceEdited: true }),
     true,
     "defaults gown photo source counts as rebuild input",
+  );
+}
+
+// display url fallback enables rebuild when layer blobs were stripped
+{
+  const layers = {
+    _staticFrame: { style: "gown_static", outerW: 773, outerH: 1094, ...baseFrame },
+    _badgePlacements: [],
+  };
+  ensureGownRebuildUrls(layers, "data:image/jpeg;base64,display");
+  assert.equal(
+    shouldRebuildStaticFrame(layers, { staticAppearanceEdited: true }),
+    true,
+    "compose fallback url counts as rebuild source",
   );
 }
 
