@@ -473,6 +473,97 @@ function stickersNeedCompose(flags = {}, options = {}) {
   );
 }
 
+function decorationsRestoredViaFlags(flags = {}, options = {}) {
+  const f = flags || {};
+  return !!(
+    (f.borderAdded || f.stickersAdded || f.fullDecorationsAdded) &&
+    !stickersNeedCompose(f, options) &&
+    !options.badgesRepositioned
+  );
+}
+
+function syncFrameToCanvasSize(frame, imgW, imgH) {
+  if (!frame) return frame;
+  const oldW = frame.outerW || imgW;
+  const oldH = frame.outerH || imgH;
+  if (oldW === imgW && oldH === imgH) return frame;
+  const sx = imgW / oldW;
+  const sy = imgH / oldH;
+  const s = Math.min(sx, sy);
+  const scale = (v, axis = "both") => {
+    if (v == null) return v;
+    if (axis === "x") return Math.round(v * sx);
+    if (axis === "y") return Math.round(v * sy);
+    return Math.round(v * s);
+  };
+  return {
+    ...frame,
+    outerW: imgW,
+    outerH: imgH,
+    px: scale(frame.px, "x"),
+    py: scale(frame.py, "y"),
+    dw: scale(frame.dw, "x"),
+    dh: scale(frame.dh, "y"),
+    border: scale(frame.border),
+    whitePad: scale(frame.whitePad),
+    outerMatPad: scale(frame.outerMatPad),
+    innerMatPad: scale(frame.innerMatPad),
+    innerStroke: scale(frame.innerStroke),
+    whiteW: scale(frame.whiteW, "x"),
+    whiteH: scale(frame.whiteH, "y"),
+    innerFrameX: scale(frame.innerFrameX, "x"),
+    innerFrameY: scale(frame.innerFrameY, "y"),
+    innerFrameW: scale(frame.innerFrameW, "x"),
+    innerFrameH: scale(frame.innerFrameH, "y"),
+  };
+}
+
+function rescalePlacementsForFrame(placements, oldW, oldH, newW, newH) {
+  if (!placements?.length || !oldW || !oldH) return;
+  if (oldW === newW && oldH === newH) return;
+  const sx = newW / oldW;
+  const sy = newH / oldH;
+  const s = Math.min(sx, sy);
+  for (const p of placements) {
+    if (p.x != null) p.x = Math.round(p.x * sx);
+    if (p.y != null) p.y = Math.round(p.y * sy);
+    if (p.w != null) p.w = Math.round(p.w * sx);
+    if (p.h != null) p.h = Math.round(p.h * sy);
+    if (p.size != null) p.size = Math.round(p.size * s);
+  }
+}
+
+/** Align frame geometry to a baked layer image before sticker compose. */
+export async function prepareStickerComposeFrame(layers, flags = {}, options = {}) {
+  if (!layers?._staticFrame) return layers;
+  const picked = pickStaticBaseLayer(layers, flags, {
+    badgesRepositioned: !!options.badgesRepositioned,
+  });
+  const url =
+    options.url ||
+    picked.url ||
+    layers.noStickers ||
+    layers.full ||
+    layers.noBorder ||
+    "";
+  if (!url || picked.isProductCanvas) return layers;
+  try {
+    const img = await loadImage(url);
+    const frame = layers._staticFrame;
+    const meta = options.meta || layers._composeMeta || {};
+    meta.canvasW = img.width;
+    meta.canvasH = img.height;
+    if (frame.outerW !== img.width || frame.outerH !== img.height) {
+      const oldW = frame.outerW;
+      const oldH = frame.outerH;
+      const synced = syncFrameToCanvasSize(frame, img.width, img.height);
+      Object.assign(frame, synced);
+      rescalePlacementsForFrame(layers._badgePlacements, oldW, oldH, img.width, img.height);
+    }
+  } catch (e) {}
+  return layers;
+}
+
 function frameForProductCanvas(frame, imgW, imgH) {
   if (!frame) {
     return { outerW: imgW, outerH: imgH, px: 0, py: 0, dw: imgW, dh: imgH };
@@ -1109,20 +1200,11 @@ function badgesOnlyBaseUrl(layers, flags = {}) {
   );
 }
 
-function canvasFromStaticImage(img, frame) {
+function canvasFromStaticImage(img) {
   const canvas = document.createElement("canvas");
-  const outerW = frame?.outerW || img.width;
-  const outerH = frame?.outerH || img.height;
-  canvas.width = outerW;
-  canvas.height = outerH;
-  const ctx = canvas.getContext("2d");
-  if (img.width === outerW && img.height === outerH) {
-    ctx.drawImage(img, 0, 0);
-  } else {
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, outerW, outerH);
-  }
+  canvas.width = img.width;
+  canvas.height = img.height;
+  canvas.getContext("2d").drawImage(img, 0, 0);
   return canvas;
 }
 
@@ -1620,11 +1702,15 @@ export function needsStaticCompose(result) {
 
 export function pickStaticBaseLayer(layers, flags = {}, options = {}) {
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags, layers);
+  const restored = decorationsRestoredViaFlags(flags, options);
 
   if (!hasBorder && !hasStickers) {
     return { url: layers.productOnly || layers.full, drawBadges: false, rebuild: false };
   }
   if (hasBorder && !hasStickers) {
+    if (restored && layers.noStickers) {
+      return { url: layers.noStickers, drawBadges: false, rebuild: false };
+    }
     return { url: layers.noStickers || layers.full, drawBadges: false, rebuild: true };
   }
   if (!hasBorder && hasStickers) {
@@ -1644,6 +1730,9 @@ export function pickStaticBaseLayer(layers, flags = {}, options = {}) {
       rebuild: composeStickers,
     };
   }
+  if (restored && layers.full) {
+    return { url: layers.full, drawBadges: false, rebuild: false };
+  }
   return { url: layers.noStickers || layers.full, drawBadges: true, rebuild: true };
 }
 
@@ -1658,6 +1747,17 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   const badgesOnly = !!options.badgesOnly;
   const style = layers._staticFrame?.style || "";
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags, layers);
+  const composeOpts = {
+    badgesRepositioned: !!options.badgesRepositioned,
+  };
+  const pickedEarly = pickStaticBaseLayer(layers, flags, composeOpts);
+  if (hasStickers && stickersNeedCompose(flags, options)) {
+    await prepareStickerComposeFrame(layers, flags, {
+      ...options,
+      url: pickedEarly.url,
+      badgesRepositioned: !!options.badgesRepositioned,
+    });
+  }
   if (hasStickers) {
     ensureStickerPlacements(layers, flags, options.meta || layers._composeMeta || {});
     if (layers._staticFrame && (layers._badgePlacements || []).length) {
@@ -1734,13 +1834,17 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
         if (picked.drawBadges && frame) {
           frame = frameForProductCanvas(frame, img.width, img.height);
         }
-      } else if (frame?.outerW && frame?.outerH) {
-        canvas = canvasFromStaticImage(img, frame);
       } else {
-        canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        canvas.getContext("2d").drawImage(img, 0, 0);
+        if (frame && (frame.outerW !== img.width || frame.outerH !== img.height)) {
+          const oldW = frame.outerW;
+          const oldH = frame.outerH;
+          frame = syncFrameToCanvasSize(frame, img.width, img.height);
+          if (layers._staticFrame) Object.assign(layers._staticFrame, frame);
+          if (picked.drawBadges) {
+            rescalePlacementsForFrame(layers._badgePlacements, oldW, oldH, img.width, img.height);
+          }
+        }
+        canvas = canvasFromStaticImage(img);
       }
     } catch (e) {
       return frozenLayerUrl(layers, "full") || layers.full || "";
@@ -2552,6 +2656,7 @@ if (typeof window !== "undefined") {
     bootstrapLiveFrameAsync,
     ensureFrameOuterDimensions,
     ensureStickerPlacements,
+    prepareStickerComposeFrame,
     ensureVariantPlacementMeta,
     ensureStaticPlacementMeta,
     resetStaticPlacements,
