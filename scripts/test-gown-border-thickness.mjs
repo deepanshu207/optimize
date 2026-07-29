@@ -157,6 +157,8 @@ assert(!contentCode.includes('"Inner accent"'), "gown editor removed inner accen
 assert(contentCode.includes("static-color-pad"), "gown has photo pad color");
 assert(contentCode.includes("static-color-fill-mat"), "gown has fill mat color");
 assert(contentCode.includes("static-fill-mat-enabled"), "gown has fill mat toggle");
+assert(contentCode.includes("static-photo-margin-top"), "gown has photo margin top slider");
+assert(contentCode.includes("toggleStaticPhotoMarginLock"), "photo margin lock toggles wired");
 assert(contentCode.includes("openStaticColorPicker"), "custom colour picker modal");
 assert(contentCode.includes("applyStaticGownLayerPcts"), "gown layer preview batches all sliders");
 assert(!contentCode.includes('id="${id}-r"'), "rgb inputs removed from color rows");
@@ -169,7 +171,7 @@ assert(contentCode.includes("static-photo-zoom-lock"), "editor has photo zoom lo
 assert(contentCode.includes("static-photo-zoom"), "editor has photo zoom slider");
 assert(gownCode.includes("outerMatColor"), "gown frame stores outer mat color");
 assert(gownCode.includes("fillMatColor"), "gown frame stores fill mat color");
-assert(gownCode.includes("drawGownPhotoPadRing"), "gown draws photo pad ring");
+assert(gownCode.includes("drawGownFillMatBoard"), "gown draws fill mat board around photo");
 assert(gownCode.includes("resolveGownMatColors"), "gown resolves mat colors");
 assert(contentCode.includes('static-gradient-preset'), "gown has gradient preset dropdown");
 assert(contentCode.includes('Border top'), "gown gradient uses border top label");

@@ -9,7 +9,7 @@ import {
   clampPhotoZoom,
   drawProductPhotoCoverFit,
   productPhotoRect,
-} from "./lib/productPhotoFit.mjs?v=3";
+} from "./lib/productPhotoFit.mjs?v=4";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 
 export const GOWN_STATIC_OUTER_W = 773;
@@ -143,6 +143,32 @@ function drawGownPhotoPadRing(ctx, frame, padColor) {
   ctx.fillRect(px + dw, py, pad, dh);
 }
 
+/** Fill mat board inside inner frame, outside the photo slot (visible mat between photo and border). */
+export function drawGownFillMatBoard(ctx, frame, fillMatColor) {
+  const ifx = frame.innerFrameX ?? 0;
+  const ify = frame.innerFrameY ?? 0;
+  const ifw = frame.innerFrameW ?? 0;
+  const ifh = frame.innerFrameH ?? 0;
+  if (ifw <= 0 || ifh <= 0) return;
+
+  const { x: px, y: py, w: dw, h: dh } = productPhotoRect(frame);
+  ctx.fillStyle = fillMatColor;
+
+  if (py > ify) ctx.fillRect(ifx, ify, ifw, py - ify);
+  const innerBottom = ify + ifh;
+  const photoBottom = py + dh;
+  if (photoBottom < innerBottom) ctx.fillRect(ifx, photoBottom, ifw, innerBottom - photoBottom);
+
+  const y0 = Math.max(ify, py);
+  const y1 = Math.min(innerBottom, photoBottom);
+  if (y1 > y0) {
+    if (px > ifx) ctx.fillRect(ifx, y0, px - ifx, y1 - y0);
+    const innerRight = ifx + ifw;
+    const photoRight = px + dw;
+    if (photoRight < innerRight) ctx.fillRect(photoRight, y0, innerRight - photoRight, y1 - y0);
+  }
+}
+
 /** Resolve gown mat colors with legacy fallbacks (padColor used when fillMatColor unset). */
 export function resolveGownMatColors(frame) {
   const mat = frame?.matColor ?? "#ffffff";
@@ -183,8 +209,7 @@ export function drawGownStaticFrameBackground(ctx, frame) {
   }
 
   if (fillMatEnabled && ifw > 0 && ifh > 0) {
-    ctx.fillStyle = fillMatColor;
-    ctx.fillRect(ifx, ify, ifw, ifh);
+    drawGownFillMatBoard(ctx, frame, fillMatColor);
   }
 
   drawGownPhotoPadRing(ctx, frame, padColor);
@@ -439,6 +464,14 @@ async function buildGownStaticLayers(img) {
         photoPanV: 50,
         photoPanHLocked: true,
         photoPanVLocked: true,
+        photoMarginTop: 0,
+        photoMarginRight: 0,
+        photoMarginBottom: 0,
+        photoMarginLeft: 0,
+        photoMarginTopLocked: true,
+        photoMarginRightLocked: true,
+        photoMarginBottomLocked: true,
+        photoMarginLeftLocked: true,
         gownFrameLayersLocked: true,
         outerW,
         outerH,
