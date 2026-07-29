@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=121";
+      return "/js/staticFrameCompose.mjs?v=123";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
       return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=121");
     }
-    return "/js/staticFrameCompose.mjs?v=121";
+    return "/js/staticFrameCompose.mjs?v=123";
   }
 
   async preloadStaticComposeModule() {
@@ -3191,6 +3191,13 @@ Please share payment details and license key.`;
       window.StaticFrameCompose?.ensureStickerPlacements &&
       (normalized.stickersAdded || normalized.fullDecorationsAdded)
     ) {
+      if (window.StaticFrameCompose.prepareStickerComposeFrame) {
+        await window.StaticFrameCompose.prepareStickerComposeFrame(
+          row.layers,
+          normalized,
+          { meta: row.meta || {}, url: row.layers.noStickers || row.layers.full },
+        );
+      }
       window.StaticFrameCompose.ensureStickerPlacements(
         row.layers,
         normalized,
