@@ -1589,6 +1589,12 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   const badgesOnly = !!options.badgesOnly;
   const style = layers._staticFrame?.style || "";
   const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
+  if (hasStickers) {
+    ensureStickerPlacements(layers, flags, options.meta || layers._composeMeta || {});
+    if (layers._staticFrame && (layers._badgePlacements || []).length) {
+      ensureStaticPlacementMeta(layers, layers._staticFrame.style);
+    }
+  }
 
   if (!hasBorder && !hasStickers) {
     return frozenLayerUrl(layers, "productOnly") || layers.productOnly || layers.full || "";
@@ -1667,7 +1673,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     });
   }
 
-  const placements = (layers._badgePlacements || []).filter((p) => !p.hidden && p.drawn !== false);
+  const placements = visibleStickerPlacements(layers);
   if (!placements.length) {
     return compressPreview(canvas, {
       targetKb,
@@ -2038,9 +2044,110 @@ function snapshotDefaults(layers, style) {
   }
 }
 
+export function ensureFrameOuterDimensions(layers, meta = {}) {
+  const frame = layers?._staticFrame;
+  if (!frame) return false;
+  let changed = false;
+  const m = meta || {};
+  if (!frame.outerW && (m.canvasW || m.outerW)) {
+    frame.outerW = m.canvasW || m.outerW;
+    changed = true;
+  }
+  if (!frame.outerH && (m.canvasH || m.outerH)) {
+    frame.outerH = m.canvasH || m.outerH;
+    changed = true;
+  }
+  if (!frame.outerW && frame.dw != null && frame.px != null) {
+    frame.outerW = Math.round(frame.px * 2 + frame.dw);
+    changed = true;
+  }
+  if (!frame.outerH && frame.dh != null && frame.py != null) {
+    frame.outerH = Math.round(frame.py * 2 + frame.dh);
+    changed = true;
+  }
+  if (!frame.outerW && frame.baseDw != null && frame.basePx != null) {
+    frame.outerW = Math.round(frame.basePx * 2 + frame.baseDw);
+    changed = true;
+  }
+  if (!frame.outerH && frame.baseDh != null && frame.basePy != null) {
+    frame.outerH = Math.round(frame.basePy * 2 + frame.baseDh);
+    changed = true;
+  }
+  return changed;
+}
+
+function visibleStickerPlacements(layers) {
+  return (layers?._badgePlacements || []).filter((p) => !p.hidden && p.drawn !== false);
+}
+
+function defaultStickerCount(meta = {}, style = "") {
+  if (meta.badgeCount > 0) return Math.min(meta.badgeCount, 4);
+  if (style === "live_framed") return 2;
+  return 2;
+}
+
+function seedFromMeta(meta = {}) {
+  const raw = meta.seed ?? meta.jpegQuality ?? 0;
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.abs(Math.floor(raw * 1000)) || 1;
+  return 1;
+}
+
+function createDefaultStickerPlacements(frame, meta = {}) {
+  const outerW = frame.outerW || meta.canvasW || 800;
+  const outerH = frame.outerH || meta.canvasH || 800;
+  const border =
+    frame.border ??
+    meta.borderPx ??
+    Math.max(8, Math.round(Math.min(outerW, outerH) * 0.05));
+  const count = defaultStickerCount(meta, frame.style);
+  const seed = seedFromMeta(meta);
+  const cornerSize = Math.max(56, Math.min(120, Math.round(Math.min(outerW, outerH) * 0.12)));
+  const positions = [
+    { x: border + 5, y: border + 5 },
+    { x: outerW - border - cornerSize - 5, y: border + 5 },
+    { x: border + 5, y: outerH - border - cornerSize - 5 },
+    { x: outerW - border - cornerSize - 5, y: outerH - border - cornerSize - 5 },
+  ];
+  const used = new Set();
+  const placements = [];
+  for (let i = 0; i < count && i < positions.length; i++) {
+    let num = ((seed + i * 7) % 25) + 1;
+    while (used.has(num)) num = (num % 25) + 1;
+    used.add(num);
+    placements.push({
+      id: `live-badge-${i}`,
+      label: `Badge ${i + 1}`,
+      num,
+      size: cornerSize,
+      x: positions[i].x,
+      y: positions[i].y,
+      drawn: true,
+    });
+  }
+  return placements;
+}
+
+/** Ensure editable sticker slots exist when preview flags request stickers. */
+export function ensureStickerPlacements(layers, flags = {}, meta = {}) {
+  if (!layers?._staticFrame) return layers;
+  const { hasStickers } = getStaticEffectiveFlags(flags);
+  if (!hasStickers) return layers;
+  ensureFrameOuterDimensions(layers, meta);
+  if (visibleStickerPlacements(layers).length) return layers;
+  const frame = layers._staticFrame;
+  if (!frame.outerW || !frame.outerH) return layers;
+  layers._badgePlacements = createDefaultStickerPlacements(frame, meta);
+  layers._placementMetaReady = false;
+  return layers;
+}
+
 export async function bootstrapLiveFrameAsync(row) {
   const layers = row?.layers;
-  if (!layers || layers._staticFrame) return layers;
+  if (!layers) return layers;
+  if (layers._staticFrame) {
+    ensureFrameOuterDimensions(layers, row?.meta || {});
+    return layers;
+  }
   if (!(layers._badgePlacements || []).length) return layers;
 
   const meta = row.meta || {};
@@ -2067,7 +2174,11 @@ export async function bootstrapLiveFrameAsync(row) {
 export function bootstrapLiveFrame(row) {
   const layers = row?.layers;
   const meta = row?.meta || {};
-  if (!layers || layers._staticFrame) return layers;
+  if (!layers) return layers;
+  if (layers._staticFrame) {
+    ensureFrameOuterDimensions(layers, meta);
+    return layers;
+  }
   if (!(layers._badgePlacements || []).length) return layers;
 
   const outerW = meta.canvasW || meta.outerW;
@@ -2138,6 +2249,7 @@ export async function ensureVariantPlacementMeta(row) {
   const layers = row?.layers;
   if (!layers) return layers;
   await bootstrapLiveFrameAsync(row);
+  ensureStickerPlacements(layers, row?.editFlags || {}, row?.meta || {});
   if (layers._staticFrame && (layers._badgePlacements || []).length) {
     ensureStaticPlacementMeta(layers, layers._staticFrame.style);
   }
@@ -2349,6 +2461,8 @@ if (typeof window !== "undefined") {
     formatRgbString,
     bootstrapLiveFrame,
     bootstrapLiveFrameAsync,
+    ensureFrameOuterDimensions,
+    ensureStickerPlacements,
     ensureVariantPlacementMeta,
     ensureStaticPlacementMeta,
     resetStaticPlacements,

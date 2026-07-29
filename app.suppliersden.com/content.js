@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=118";
+      return "/js/staticFrameCompose.mjs?v=119";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=118");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=119");
     }
-    return "/js/staticFrameCompose.mjs?v=118";
+    return "/js/staticFrameCompose.mjs?v=119";
   }
 
   async preloadStaticComposeModule() {
@@ -3187,6 +3187,20 @@ Please share payment details and license key.`;
     row.editFlags = normalized;
 
     await this.preloadStaticComposeModule();
+    if (
+      window.StaticFrameCompose?.ensureStickerPlacements &&
+      (normalized.stickersAdded || normalized.fullDecorationsAdded)
+    ) {
+      window.StaticFrameCompose.ensureStickerPlacements(
+        row.layers,
+        normalized,
+        row.meta || {},
+      );
+      if (window.StaticFrameCompose.ensureVariantPlacementMeta) {
+        await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+      }
+      this._staticControlsVariantId = null;
+    }
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         const url = await MeeshoAPI.resolveDisplayUrlAsync(row);
@@ -3371,6 +3385,7 @@ Please share payment details and license key.`;
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
         badgesOnly,
+        meta: row.meta,
         ...options,
       },
     );
@@ -3393,6 +3408,7 @@ Please share payment details and license key.`;
         ...this.getVariantComposeOptions(row, { preview: false }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
         badgesOnly: this.variantBadgesOnlyCompose(row),
+        meta: row.meta,
       },
     );
     return url || this.resolveDownloadUrl(row);
@@ -4663,8 +4679,11 @@ Please share payment details and license key.`;
     if (!SFC || !container) return;
 
     const frame = row.layers._staticFrame || {};
+    if (window.StaticFrameCompose?.ensureFrameOuterDimensions) {
+      window.StaticFrameCompose.ensureFrameOuterDimensions(row.layers, row.meta || {});
+    }
     const style = frame.style || row.meta?.path || row.meta?.style || "";
-    const showFrameColors = !!frame.outerW;
+    const showFrameColors = !!(frame.outerW || frame.style);
     const slots = SFC.getBadgeSlots(row);
     const placements = row.layers._badgePlacements || [];
     const presets = SFC.GRADIENT_PRESETS || [];
@@ -5432,11 +5451,19 @@ Please share payment details and license key.`;
     const addSection = panel.querySelector("#variant-edit-add-section");
     const staticSection = panel.querySelector("#variant-edit-static-badges");
     const resetBtn = panel.querySelector("#variant-edit-reset");
+    const stickerSlots = (row.layers._badgePlacements || []).length;
+    const needsStickerControls =
+      (flags.stickersAdded || flags.fullDecorationsAdded) && stickerSlots > 0;
+    const staticControlsStale =
+      needsStickerControls &&
+      staticSection &&
+      !staticSection.querySelector(".static-sticker-card");
     if (addSection) addSection.style.display = "block";
     if (staticSection) {
       if (hasAdvanced) {
         staticSection.style.display = "block";
-        const sameVariant = this._staticControlsVariantId === row.variantId;
+        const sameVariant =
+          this._staticControlsVariantId === row.variantId && !staticControlsStale;
         if (!sameVariant) {
           this._staticControlsVariantId = row.variantId;
           void this.preloadStaticComposeModule().then(() => {
