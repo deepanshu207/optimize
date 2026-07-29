@@ -399,10 +399,50 @@ function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-export function getStaticEffectiveFlags(flags = {}) {
+function layerUrlDiff(a, b) {
+  return !!(a && b && a !== b);
+}
+
+/** Base sticker/border state from generated layer URLs (before edit flags). */
+export function inferBaseLayerCaps(layers) {
+  if (!layers) return { hasStickers: true, hasBorder: true };
+
+  if (layers._staticFrame) {
+    const frameStyle = layers._staticFrame.style;
+    const isStaticPromo =
+      frameStyle === "showcase" ||
+      frameStyle === "lifestyle_promo" ||
+      frameStyle === "tall_static" ||
+      frameStyle === "gown_static";
+    const hasPlacements = !!(layers._badgePlacements || []).length;
+    const stickersFlag = layers._stickersRendered !== false;
+    const hasStickers = isStaticPromo ? stickersFlag : stickersFlag && hasPlacements;
+    const hasBorder =
+      layerUrlDiff(layers.noStickers, layers.productOnly) ||
+      layerUrlDiff(layers.full, layers.noBorder);
+    return { hasStickers, hasBorder };
+  }
+
+  const hasPlacements = !!(layers._badgePlacements || []).length;
+  const hasStickers =
+    layers._stickersRendered === true
+      ? true
+      : layers._stickersRendered === false
+      ? false
+      : hasPlacements ||
+        layerUrlDiff(layers.full, layers.noStickers) ||
+        layerUrlDiff(layers.noBorder, layers.productOnly);
+  const hasBorder =
+    layerUrlDiff(layers.noStickers, layers.productOnly) ||
+    layerUrlDiff(layers.full, layers.noBorder);
+  return { hasStickers, hasBorder };
+}
+
+export function getStaticEffectiveFlags(flags = {}, layers = null) {
   const f = flags || {};
-  let hasStickers = true;
-  let hasBorder = true;
+  const base = inferBaseLayerCaps(layers);
+  let hasStickers = base.hasStickers;
+  let hasBorder = base.hasBorder;
 
   if (f.cleanProduct && !f.stickersAdded && !f.borderAdded && !f.fullDecorationsAdded) {
     return { hasStickers: false, hasBorder: false };
@@ -422,6 +462,30 @@ export function getStaticEffectiveFlags(flags = {}) {
     hasBorder = true;
   }
   return { hasStickers, hasBorder };
+}
+
+function stickersNeedCompose(flags = {}, options = {}) {
+  const f = flags || {};
+  return !!(
+    options.badgesRepositioned ||
+    f.stickersAdded ||
+    f.fullDecorationsAdded
+  );
+}
+
+function frameForProductCanvas(frame, imgW, imgH) {
+  if (!frame) {
+    return { outerW: imgW, outerH: imgH, px: 0, py: 0, dw: imgW, dh: imgH };
+  }
+  return {
+    ...frame,
+    outerW: imgW,
+    outerH: imgH,
+    px: 0,
+    py: 0,
+    dw: imgW,
+    dh: imgH,
+  };
 }
 
 export function isEditableVariant(row) {
@@ -1026,7 +1090,7 @@ function frozenLayerUrl(layers, key) {
 
 /** Badge-only overlay: never bake on top of a layer that already has stickers. */
 function badgesOnlyBaseUrl(layers, flags = {}) {
-  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
+  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags, layers);
   if (!hasBorder && hasStickers) {
     return (
       frozenLayerUrl(layers, "noBorder") ||
@@ -1554,9 +1618,8 @@ export function needsStaticCompose(result) {
   return false;
 }
 
-export function pickStaticBaseLayer(layers, flags = {}) {
-  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
-  const style = layers._staticFrame?.style;
+export function pickStaticBaseLayer(layers, flags = {}, options = {}) {
+  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags, layers);
 
   if (!hasBorder && !hasStickers) {
     return { url: layers.productOnly || layers.full, drawBadges: false, rebuild: false };
@@ -1565,14 +1628,20 @@ export function pickStaticBaseLayer(layers, flags = {}) {
     return { url: layers.noStickers || layers.full, drawBadges: false, rebuild: true };
   }
   if (!hasBorder && hasStickers) {
-    if (style === "showcase" && layers.noBorder) {
-      return { url: layers.noBorder, drawBadges: false, isProductCanvas: true, rebuild: false };
+    const composeStickers = stickersNeedCompose(flags, options);
+    if (layers.noBorder && !composeStickers) {
+      return {
+        url: layers.noBorder,
+        drawBadges: false,
+        isProductCanvas: true,
+        rebuild: false,
+      };
     }
     return {
       url: layers.productOnly || layers.noBorder || layers.full,
-      drawBadges: true,
+      drawBadges: composeStickers,
       isProductCanvas: true,
-      rebuild: true,
+      rebuild: composeStickers,
     };
   }
   return { url: layers.noStickers || layers.full, drawBadges: true, rebuild: true };
@@ -1588,7 +1657,7 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
   const preview = !!options.preview;
   const badgesOnly = !!options.badgesOnly;
   const style = layers._staticFrame?.style || "";
-  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags);
+  const { hasStickers, hasBorder } = getStaticEffectiveFlags(flags, layers);
   if (hasStickers) {
     ensureStickerPlacements(layers, flags, options.meta || layers._composeMeta || {});
     if (layers._staticFrame && (layers._badgePlacements || []).length) {
@@ -1611,9 +1680,20 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
 
   let canvas = null;
   let frame = layers._staticFrame;
-  const picked = pickStaticBaseLayer(layers, flags);
+  const picked = pickStaticBaseLayer(layers, flags, {
+    badgesRepositioned: !!options.badgesRepositioned,
+  });
 
-  if (frameEdited && layers._staticFrame) {
+  if (
+    !picked.drawBadges &&
+    !picked.rebuild &&
+    !appearanceEdited &&
+    !options.staticAppearanceEdited
+  ) {
+    return picked.url || frozenLayerUrl(layers, "full") || layers.full || "";
+  }
+
+  if (frameEdited && picked.rebuild && layers._staticFrame) {
     const rebuilt = await rebuildFrameCanvas(layers);
     if (rebuilt) {
       canvas = rebuilt.canvas;
@@ -1646,7 +1726,15 @@ export async function composeStaticPreview(layers, flags = {}, options = {}) {
     }
     try {
       const img = await loadImage(baseUrl);
-      if (frame?.outerW && frame?.outerH) {
+      if (picked.isProductCanvas) {
+        canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+        if (picked.drawBadges && frame) {
+          frame = frameForProductCanvas(frame, img.width, img.height);
+        }
+      } else if (frame?.outerW && frame?.outerH) {
         canvas = canvasFromStaticImage(img, frame);
       } else {
         canvas = document.createElement("canvas");
@@ -2130,7 +2218,7 @@ function createDefaultStickerPlacements(frame, meta = {}) {
 /** Ensure editable sticker slots exist when preview flags request stickers. */
 export function ensureStickerPlacements(layers, flags = {}, meta = {}) {
   if (!layers?._staticFrame) return layers;
-  const { hasStickers } = getStaticEffectiveFlags(flags);
+  const { hasStickers } = getStaticEffectiveFlags(flags, layers);
   if (!hasStickers) return layers;
   ensureFrameOuterDimensions(layers, meta);
   if (visibleStickerPlacements(layers).length) return layers;
@@ -2425,6 +2513,7 @@ if (typeof window !== "undefined") {
     GRADIENT_PRESETS,
     FRAME_COLOR_SWATCHES,
     getStaticEffectiveFlags,
+    inferBaseLayerCaps,
     isGownArtPlacement,
     gownPlacementPosition,
     gownArtDimensions,

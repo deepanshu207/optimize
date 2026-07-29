@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=119";
+      return "/js/staticFrameCompose.mjs?v=121";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=119");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=121");
     }
-    return "/js/staticFrameCompose.mjs?v=119";
+    return "/js/staticFrameCompose.mjs?v=121";
   }
 
   async preloadStaticComposeModule() {
@@ -3385,6 +3385,7 @@ Please share payment details and license key.`;
         ...this.getVariantComposeOptions(row, { preview: true }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
         badgesOnly,
+        badgesRepositioned: !!row._badgesRepositioned,
         meta: row.meta,
         ...options,
       },
@@ -3408,6 +3409,7 @@ Please share payment details and license key.`;
         ...this.getVariantComposeOptions(row, { preview: false }),
         staticAppearanceEdited: !!row._staticAppearanceEdited,
         badgesOnly: this.variantBadgesOnlyCompose(row),
+        badgesRepositioned: !!row._badgesRepositioned,
         meta: row.meta,
       },
     );
