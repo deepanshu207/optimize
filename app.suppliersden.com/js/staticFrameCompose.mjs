@@ -468,7 +468,6 @@ function stickersNeedCompose(flags = {}, options = {}) {
   const f = flags || {};
   return !!(
     options.badgesRepositioned ||
-    f.stickersAdded ||
     f.fullDecorationsAdded
   );
 }

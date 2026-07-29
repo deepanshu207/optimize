@@ -80,12 +80,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=125";
+      return "/js/staticFrameCompose.mjs?v=126";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=125");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=126");
     }
-    return "/js/staticFrameCompose.mjs?v=125";
+    return "/js/staticFrameCompose.mjs?v=126";
   }
 
   async importOptimizerModule(getUrl, isReady, cacheKey) {
@@ -2888,8 +2888,10 @@ Please share payment details and license key.`;
     );
   }
 
-  normalizeEditFlags(editFlags) {
+  normalizeEditFlags(editFlags, previousFlags = {}) {
     const flags = editFlags || {};
+    const prev = previousFlags || {};
+    const wasClean = !!(prev.cleanProduct || prev.borderRemoved);
     const addingDecorations = !!(
       flags.stickersAdded ||
       flags.borderAdded ||
@@ -2923,10 +2925,16 @@ Please share payment details and license key.`;
       if (stickersAdded) {
         stickersRemoved = false;
         cleanProduct = false;
+        if (wasClean && !borderAdded) {
+          borderOnlyRemoved = true;
+        }
       }
       if (borderAdded) {
         borderOnlyRemoved = false;
         cleanProduct = false;
+        if (wasClean && !stickersAdded) {
+          stickersRemoved = true;
+        }
       }
       if (stickersRemoved) stickersAdded = false;
       if (borderOnlyRemoved) borderAdded = false;
@@ -3219,21 +3227,49 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers) return;
 
-    const normalized = this.normalizeEditFlags(editFlags);
+    const normalized = this.normalizeEditFlags(editFlags, row.editFlags);
     row.editFlags = normalized;
 
     const composeReady = await this.preloadStaticComposeModule();
+    const pickedBase =
+      composeReady && window.StaticFrameCompose?.pickStaticBaseLayer
+        ? window.StaticFrameCompose.pickStaticBaseLayer(row.layers, normalized)
+        : null;
+    const canUseBakedLayer =
+      !!pickedBase && !pickedBase.rebuild && !pickedBase.drawBadges;
+
     if (
       window.StaticFrameCompose?.ensureStickerPlacements &&
-      (normalized.stickersAdded || normalized.fullDecorationsAdded)
+      (normalized.stickersAdded || normalized.fullDecorationsAdded) &&
+      !canUseBakedLayer
     ) {
       if (window.StaticFrameCompose.prepareStickerComposeFrame) {
         await window.StaticFrameCompose.prepareStickerComposeFrame(
           row.layers,
           normalized,
-          { meta: row.meta || {}, url: row.layers.noStickers || row.layers.full },
+          {
+            meta: row.meta || {},
+            url:
+              pickedBase?.url ||
+              row.layers.noBorder ||
+              row.layers.productOnly ||
+              row.layers.full,
+          },
         );
       }
+      window.StaticFrameCompose.ensureStickerPlacements(
+        row.layers,
+        normalized,
+        row.meta || {},
+      );
+      if (window.StaticFrameCompose.ensureVariantPlacementMeta) {
+        await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+      }
+      this._staticControlsVariantId = null;
+    } else if (
+      window.StaticFrameCompose?.ensureStickerPlacements &&
+      (normalized.stickersAdded || normalized.fullDecorationsAdded)
+    ) {
       window.StaticFrameCompose.ensureStickerPlacements(
         row.layers,
         normalized,
@@ -3248,10 +3284,12 @@ Please share payment details and license key.`;
     const needsCompose =
       composeReady &&
       row.layers._staticFrame &&
-      (window.StaticFrameCompose?.needsStaticCompose?.(row) ||
-        normalized.stickersAdded ||
-        normalized.borderAdded ||
-        normalized.fullDecorationsAdded);
+      !canUseBakedLayer &&
+      (row._staticAppearanceEdited ||
+        row._badgesRepositioned ||
+        window.StaticFrameCompose?.needsStaticCompose?.(row) ||
+        !!pickedBase?.rebuild ||
+        !!pickedBase?.drawBadges);
 
     if (needsCompose && window.StaticFrameCompose?.composeStaticPreview) {
       try {

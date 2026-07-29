@@ -3,10 +3,10 @@
 function staticComposeModuleUrls() {
   const versioned =
     typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE
-      ? "/js/staticFrameCompose.mjs?v=125"
+      ? "/js/staticFrameCompose.mjs?v=126"
       : typeof chrome !== "undefined" && chrome.runtime?.getURL
-      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=125")
-      : "/js/staticFrameCompose.mjs?v=125";
+      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=126")
+      : "/js/staticFrameCompose.mjs?v=126";
   const plain = versioned.replace(/\?.*$/, "");
   return versioned === plain ? [versioned] : [versioned, plain];
 }
@@ -2219,17 +2219,27 @@ const MeeshoAPI = {
         (window.StaticFrameCompose?.BORDER_THICKNESS_DEFAULT ?? 100);
 
     if (staticFrame) {
+      const flags = result.editFlags || {};
+      const picked =
+        typeof window !== "undefined" &&
+        window.StaticFrameCompose?.pickStaticBaseLayer
+          ? window.StaticFrameCompose.pickStaticBaseLayer(result.layers, flags, {
+              badgesRepositioned: !!result._badgesRepositioned,
+            })
+          : null;
+      const canUseBakedLayer =
+        !!picked && !picked.rebuild && !picked.drawBadges;
+      if (canUseBakedLayer && picked.url) {
+        return picked.url;
+      }
       const mayNeedCompose =
         borderEdited ||
         result._staticAppearanceEdited ||
         result._badgesRepositioned ||
         (typeof window !== "undefined" &&
           window.StaticFrameCompose?.needsStaticCompose?.(result)) ||
-        !!(
-          result.editFlags?.stickersAdded ||
-          result.editFlags?.borderAdded ||
-          result.editFlags?.fullDecorationsAdded
-        );
+        !!picked?.rebuild ||
+        !!picked?.drawBadges;
       if (mayNeedCompose) {
         await ensureStaticComposeLoaded();
       }
@@ -2238,7 +2248,9 @@ const MeeshoAPI = {
         result._staticAppearanceEdited ||
         result._badgesRepositioned ||
         (typeof window !== "undefined" &&
-          window.StaticFrameCompose?.needsStaticCompose?.(result));
+          window.StaticFrameCompose?.needsStaticCompose?.(result)) ||
+        !!picked?.rebuild ||
+        !!picked?.drawBadges;
       if (
         needsCompose &&
         typeof window !== "undefined" &&
