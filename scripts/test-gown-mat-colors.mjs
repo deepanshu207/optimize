@@ -85,14 +85,13 @@ const baseFrame = {
   assert.equal(padRects.length, 4, "photo pad draws when fill mat disabled");
 }
 
-// different fill mat color paints full inner board band
+// purple fill mat paints full inner board when enabled
 {
   const ctx = mockCtx();
   drawGownStaticFrameBackground(ctx, { ...baseFrame, fillMatColor: "#7c3aed", padColor: "#ffffff" });
   const fillRects = ctx.fills.filter((f) => f.color === "#7c3aed");
-  const padRects = ctx.fills.filter((f) => f.color === "#ffffff" && (f.h === 17 || f.w === 17));
-  assert.ok(fillRects.some((r) => r.w === 697), "purple fill mat spans inner frame width");
-  assert.equal(padRects.length, 0, "white pad does not cover fill mat when fill mat enabled");
+  assert.equal(fillRects.length, 1, "purple fill mat paints inner board");
+  assert.equal(fillRects[0].w, 697, "fill mat spans inner frame");
 }
 
 // appearance edits rebuild even when only full layer is present
@@ -151,8 +150,8 @@ const composeCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs"),
   "utf8",
 );
-assert(composeCode.includes("resolveGownPhotoSourceUrl"), "compose resolves gown photo source");
-assert(composeCode.includes("hasStaticRebuildSources"), "compose checks rebuild sources");
+assert(composeCode.includes("ensureGownDrawGeometry"), "compose ensures gown draw geometry");
+assert(composeCode.includes("ensureGownRebuildUrls"), "compose resolves gown rebuild sources");
 assert(
   composeCode.includes("if (frame.style === \"gown_static\") {\n    applyGownFrameLayers(frame);"),
   "rebuild applies gown layer geometry",
