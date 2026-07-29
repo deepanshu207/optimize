@@ -1152,6 +1152,8 @@ function drawFrameBackground(ctx, frame) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(px, py, dw, dh);
     }
+  } else if (style === "gown_static") {
+    drawGownStaticFrameBackground(ctx, frame);
   } else if (
     frame.frameType === "tall" ||
     style === "tall_static" ||
@@ -1165,8 +1167,6 @@ function drawFrameBackground(ctx, frame) {
     const ww = frame.whiteW ?? outerW;
     const wh = frame.whiteH ?? outerH;
     ctx.fillRect(wx, wy, ww, wh);
-  } else if (style === "gown_static") {
-    drawGownStaticFrameBackground(ctx, frame);
   } else {
     ctx.fillStyle = frame.borderColor || "#32d74b";
     ctx.fillRect(0, 0, outerW, outerH);
@@ -1288,6 +1288,11 @@ async function rebuildFrameCanvas(layers) {
 
   Object.assign(layers._staticFrame, frame);
   return { canvas, frame };
+}
+
+/** Rebuild gown/static frame canvas for preview (mats + photo + badges). */
+export async function rebuildGownPreviewCanvas(layers) {
+  return rebuildFrameCanvas(layers);
 }
 
 function drawTruckIcon(ctx, cx, cy, size) {
@@ -2269,6 +2274,8 @@ if (typeof window !== "undefined") {
     applyPositionToPlacement,
     pickStaticBaseLayer,
     composeStaticPreview,
+    rebuildGownPreviewCanvas,
+    ensureGownRebuildUrls,
     updatePlacementAnchor,
     updatePlacementSliders,
     updatePlacementSliderAxis,
