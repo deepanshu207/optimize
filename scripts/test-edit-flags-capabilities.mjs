@@ -12,6 +12,9 @@ const root = resolve(__dirname, "..");
 await import(
   pathToFileURL(resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs")).href
 );
+const { getStaticEffectiveFlags } = await import(
+  pathToFileURL(resolve(root, "app.suppliersden.com/js/staticFrameCompose.mjs")).href
+);
 
 const meeshoApiCode = readFileSync(
   resolve(root, "app.suppliersden.com/js/meeshoApi.js"),
@@ -122,6 +125,35 @@ assert(
     pricingImageUrl: "full",
   }) === "noBorder",
   "live frame: stripped product + stickersAdded uses product canvas",
+);
+assert(
+  getStaticEffectiveFlags(
+    { stickersAdded: true, borderOnlyRemoved: true },
+    tallLayers,
+  ).hasBorder === false,
+  "static: stickersAdded after clean keeps border off",
+);
+assert(
+  getStaticEffectiveFlags(
+    { stickersAdded: true, borderOnlyRemoved: true },
+    tallLayers,
+  ).hasStickers === true,
+  "static: stickersAdded after clean enables stickers",
+);
+assert(
+  getStaticEffectiveFlags(
+    { stickersAdded: true },
+    tallLayers,
+  ).hasBorder === true,
+  "static: stickersAdded on border-only variant keeps border",
+);
+assert(
+  MeeshoAPI.resolveDisplayUrl({
+    layers: tallLayers,
+    editFlags: { stickersAdded: true, borderOnlyRemoved: true },
+    pricingImageUrl: "full",
+  }) === "noBorder",
+  "static promo: stickers only after clean uses noBorder layer",
 );
 
 if (failed) {

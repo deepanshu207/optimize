@@ -72,8 +72,10 @@ const addStickersFromClean = await page.evaluate(async () => {
   return {
     cleanProduct: row.editFlags?.cleanProduct,
     stickersAdded: row.editFlags?.stickersAdded,
+    borderOnlyRemoved: row.editFlags?.borderOnlyRemoved,
     placements: (row.layers._badgePlacements || []).length,
     changed: row.imageUrl !== row.layers.productOnly,
+    equalsNoBorder: row.imageUrl === row.layers.noBorder,
     url: row.imageUrl,
   };
 });
@@ -113,6 +115,7 @@ const layerRefs = await page.evaluate(() => {
     const r = opt.currentResults[i] || opt.currentResults[0];
     return {
       noStickers: r.layers.noStickers,
+      noBorder: r.layers.noBorder,
       productOnly: r.layers.productOnly,
     };
   });
@@ -120,11 +123,12 @@ const layerRefs = await page.evaluate(() => {
 const finalS = await imgInfo(addStickersFromClean.url);
 const finalB = await imgInfo(addBorderFromClean.url);
 const refProduct = await imgInfo(layerRefs[0].productOnly);
+const refNoBorder = await imgInfo(layerRefs[0].noBorder);
 const refNoStickersBorder = await imgInfo(layerRefs[1].noStickers);
 
 console.log(
   JSON.stringify(
-    { addStickersFromClean, addBorderFromClean, finalS, finalB, refProduct, refNoStickersBorder },
+    { addStickersFromClean, addBorderFromClean, finalS, finalB, refProduct, refNoBorder, refNoStickersBorder },
     null,
     2,
   ),
@@ -134,10 +138,15 @@ await browser.close();
 const stickerOk =
   !addStickersFromClean.cleanProduct &&
   addStickersFromClean.stickersAdded &&
+  addStickersFromClean.borderOnlyRemoved &&
   addStickersFromClean.placements > 0 &&
   addStickersFromClean.changed &&
+  addStickersFromClean.equalsNoBorder &&
   finalS &&
-  JSON.stringify(finalS.center) !== JSON.stringify(refProduct.center);
+  refNoBorder &&
+  finalS.w === refNoBorder.w &&
+  finalS.h === refNoBorder.h &&
+  JSON.stringify(finalS.edge) === JSON.stringify(refNoBorder.edge);
 
 const borderOk =
   !addBorderFromClean.cleanProduct &&
