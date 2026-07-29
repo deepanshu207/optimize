@@ -70,38 +70,69 @@ class MeeshoShippingOptimizer {
 
   getLiveAnalysisModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveAnalysisBridge.mjs?v=95";
+      return "/js/liveAnalysisBridge.mjs?v=96";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=95");
+      return chrome.runtime.getURL("js/liveAnalysisBridge.mjs?v=96");
     }
-    return "/js/liveAnalysisBridge.mjs?v=95";
+    return "/js/liveAnalysisBridge.mjs?v=96";
   }
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=123";
+      return "/js/staticFrameCompose.mjs?v=124";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=121");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=124");
     }
-    return "/js/staticFrameCompose.mjs?v=123";
+    return "/js/staticFrameCompose.mjs?v=124";
+  }
+
+  async importOptimizerModule(getUrl, isReady, cacheKey) {
+    if (isReady()) return true;
+    if (window[cacheKey]) {
+      try {
+        return await window[cacheKey];
+      } catch (e) {
+        window[cacheKey] = null;
+      }
+    }
+    if (!window[cacheKey]) {
+      window[cacheKey] = this._loadOptimizerModule(getUrl, isReady, cacheKey);
+    }
+    return window[cacheKey];
+  }
+
+  async _loadOptimizerModule(getUrl, isReady, cacheKey) {
+    const primary = getUrl();
+    const fallback = primary.replace(/\?.*$/, "");
+    const urls = primary === fallback ? [primary] : [primary, fallback];
+    for (const url of urls) {
+      try {
+        await import(url);
+        if (isReady()) return true;
+      } catch (e) {
+        console.warn("Module preload failed:", url, e);
+      }
+    }
+    window[cacheKey] = null;
+    return false;
   }
 
   async preloadStaticComposeModule() {
-    if (window.StaticFrameCompose?.composeStaticPreview) return true;
-    if (!window.__staticComposePromise) {
-      window.__staticComposePromise = (async () => {
-        try {
-          await import(this.getStaticComposeModuleUrl());
-          return !!window.StaticFrameCompose?.composeStaticPreview;
-        } catch (e) {
-          console.warn("Static compose preload:", e);
-          return false;
-        }
-      })();
-    }
-    return window.__staticComposePromise;
+    return this.importOptimizerModule(
+      () => this.getStaticComposeModuleUrl(),
+      () => !!window.StaticFrameCompose?.composeStaticPreview,
+      "__staticComposePromise",
+    );
+  }
+
+  async preloadLiveAnalysisModule() {
+    return this.importOptimizerModule(
+      () => this.getLiveAnalysisModuleUrl(),
+      () => !!window.LiveAnalysis?.runLiveAnalysis,
+      "__liveAnalysisModulePromise",
+    );
   }
 
   isStaticPromoRow(row) {
@@ -111,22 +142,6 @@ class MeeshoShippingOptimizer {
     }
     const style = row?.variantStyle || row?.meta?.path || "";
     return style === "showcase" || style === "lifestyle_promo" || style === "tall_static" || style === "gown_static";
-  }
-
-  async preloadLiveAnalysisModule() {
-    if (window.LiveAnalysis?.runLiveAnalysis) return true;
-    if (!window.__liveAnalysisModulePromise) {
-      window.__liveAnalysisModulePromise = (async () => {
-        try {
-          await import(this.getLiveAnalysisModuleUrl());
-          return !!window.LiveAnalysis?.runLiveAnalysis;
-        } catch (e) {
-          console.warn("Live analysis preload:", e);
-          return false;
-        }
-      })();
-    }
-    return window.__liveAnalysisModulePromise;
   }
 
   async runLiveStaticAnalysis(file) {
@@ -3186,7 +3201,7 @@ Please share payment details and license key.`;
     const normalized = this.normalizeEditFlags(editFlags);
     row.editFlags = normalized;
 
-    await this.preloadStaticComposeModule();
+    const composeReady = await this.preloadStaticComposeModule();
     if (
       window.StaticFrameCompose?.ensureStickerPlacements &&
       (normalized.stickersAdded || normalized.fullDecorationsAdded)
@@ -3208,6 +3223,32 @@ Please share payment details and license key.`;
       }
       this._staticControlsVariantId = null;
     }
+
+    const needsCompose =
+      composeReady &&
+      row.layers._staticFrame &&
+      (window.StaticFrameCompose?.needsStaticCompose?.(row) ||
+        normalized.stickersAdded ||
+        normalized.borderAdded ||
+        normalized.fullDecorationsAdded);
+
+    if (needsCompose && window.StaticFrameCompose?.composeStaticPreview) {
+      try {
+        const url = await this.composePreviewForRow(row);
+        if (url) {
+          this.applyStaticPreviewToRow(row, url, variantId);
+          if (this._editingVariantId === variantId) {
+            this.renderVariantEditorPanel(row);
+          } else {
+            this.refreshVariantCard(row);
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn("Variant edit compose failed:", e);
+      }
+    }
+
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrlAsync) {
       try {
         const url = await MeeshoAPI.resolveDisplayUrlAsync(row);
@@ -3563,7 +3604,10 @@ Please share payment details and license key.`;
     const row = this.findResultRow(variantId);
     if (!row?.layers?._staticFrame) return;
 
-    await this.preloadStaticComposeModule();
+    const composeReady = await this.preloadStaticComposeModule();
+    if (!composeReady) {
+      console.warn("Static compose module unavailable — badge preview may not update");
+    }
 
     const composeOpts = {
       ...this.getVariantComposeOptions(row, { preview: true }),
@@ -3572,11 +3616,13 @@ Please share payment details and license key.`;
     };
 
     const needsCompose =
-      row._staticAppearanceEdited ||
-      row._badgesRepositioned ||
-      window.StaticFrameCompose?.shouldRebuildStaticFrame?.(row.layers, {
-        staticAppearanceEdited: !!row._staticAppearanceEdited,
-      });
+      composeReady &&
+      (row._staticAppearanceEdited ||
+        row._badgesRepositioned ||
+        window.StaticFrameCompose?.shouldRebuildStaticFrame?.(row.layers, {
+          staticAppearanceEdited: !!row._staticAppearanceEdited,
+        }) ||
+        window.StaticFrameCompose?.needsStaticCompose?.(row));
 
     if (needsCompose && window.StaticFrameCompose?.composeStaticPreview) {
       try {

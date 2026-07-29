@@ -1,5 +1,30 @@
 // Meesho API Integration v7.0.0 - Enhanced Variation & Shipping Logic
 
+function staticComposeModuleUrls() {
+  const versioned =
+    typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE
+      ? "/js/staticFrameCompose.mjs?v=124"
+      : typeof chrome !== "undefined" && chrome.runtime?.getURL
+      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=124")
+      : "/js/staticFrameCompose.mjs?v=124";
+  const plain = versioned.replace(/\?.*$/, "");
+  return versioned === plain ? [versioned] : [versioned, plain];
+}
+
+async function ensureStaticComposeLoaded() {
+  if (typeof window === "undefined") return false;
+  if (window.StaticFrameCompose?.composeStaticPreview) return true;
+  for (const url of staticComposeModuleUrls()) {
+    try {
+      await import(url);
+      if (window.StaticFrameCompose?.composeStaticPreview) return true;
+    } catch (e) {
+      console.warn("Static compose import:", e);
+    }
+  }
+  return false;
+}
+
 const MeeshoAPI = {
   MAX_RESULT_VARIANTS: 200,
   // Borders outward around full-size product — profiles tuned toward ₹49 (38–48KB slabs)
@@ -2179,6 +2204,20 @@ const MeeshoAPI = {
         (window.StaticFrameCompose?.BORDER_THICKNESS_DEFAULT ?? 100);
 
     if (staticFrame) {
+      const mayNeedCompose =
+        borderEdited ||
+        result._staticAppearanceEdited ||
+        result._badgesRepositioned ||
+        (typeof window !== "undefined" &&
+          window.StaticFrameCompose?.needsStaticCompose?.(result)) ||
+        !!(
+          result.editFlags?.stickersAdded ||
+          result.editFlags?.borderAdded ||
+          result.editFlags?.fullDecorationsAdded
+        );
+      if (mayNeedCompose) {
+        await ensureStaticComposeLoaded();
+      }
       const needsCompose =
         borderEdited ||
         result._staticAppearanceEdited ||
@@ -2223,6 +2262,9 @@ const MeeshoAPI = {
     const needsLiveCompose =
       typeof window !== "undefined" &&
       window.StaticFrameCompose?.needsStaticCompose?.(result);
+    if (needsLiveCompose) {
+      await ensureStaticComposeLoaded();
+    }
     if (
       needsLiveCompose &&
       typeof window !== "undefined" &&
