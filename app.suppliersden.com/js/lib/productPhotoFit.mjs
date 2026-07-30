@@ -174,9 +174,20 @@ export function photoAnchorRect(frame) {
   return photoContentLayout(frame).anchor;
 }
 
+/** Uniform shrink of photo slot vs base geometry (margins inset the slot). */
+export function photoSlotScale(frame) {
+  const baseW = frame?.baseDw ?? frame?.dw ?? 0;
+  const baseH = frame?.baseDh ?? frame?.dh ?? 0;
+  if (!baseW || !baseH) return 1;
+  const slot = productPhotoRect(frame);
+  return Math.min(slot.w / baseW, slot.h / baseH);
+}
+
 /** Scale stickers with zoom: below 100% shrinks, above 100% grows, 100% = 1. */
 export function photoStickerScale(frame) {
-  return photoContentLayout(frame).scale;
+  const layout = photoContentLayout(frame);
+  const slotScale = photoSlotScale(frame);
+  return layout.scale * slotScale;
 }
 
 export function drawProductPhotoCoverFit(ctx, productImg, frame) {
