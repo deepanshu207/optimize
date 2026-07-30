@@ -366,8 +366,8 @@ const MeeshoAPI = {
 
     const embedded = this.getEmbeddedCategories();
 
-    // Web app: use built-in Meesho category tree (no API / JSON upload needed)
-    if (window.WEB_OPTIMIZER_MODE && embedded?.length && !forceLive) {
+    // Prefer full static tree (extension + web) unless user explicitly refreshes live
+    if (embedded?.length && !forceLive) {
       this.cache.categories = embedded;
       this._lastCategoryFetchWasEmbedded = true;
       console.log("✅ Using embedded categories:", embedded.length);
@@ -433,6 +433,9 @@ const MeeshoAPI = {
     if (window.WEB_OPTIMIZER_MODE) {
       const fromJson = await this.loadEmbeddedCategoriesFromJson();
       if (fromJson?.length) return fromJson;
+    } else if (!embedded?.length) {
+      const fromJson = await this.loadEmbeddedCategoriesFromJson();
+      if (fromJson?.length) return fromJson;
     }
 
     return null;
@@ -464,24 +467,38 @@ const MeeshoAPI = {
   },
 
   loadEmbeddedCategoriesFromJson: async function () {
-    if (!window.WEB_OPTIMIZER_MODE) return null;
     try {
-      const resp = await fetch("/data/meesho-category-tree.json", {
-        cache: "force-cache",
-      });
-      if (!resp.ok) return null;
-      const tree = await resp.json();
-      const list =
-        typeof MeeshoCategories !== "undefined"
-          ? MeeshoCategories.parseTree(tree)
-          : [];
-      if (list.length) {
-        this.cache.categories = list;
-        this._lastCategoryFetchWasEmbedded = true;
-        return list;
+      const urls = [];
+      if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+        urls.push(chrome.runtime.getURL("data/meesho-category-tree.json"));
+      }
+      if (window.WEB_OPTIMIZER_MODE) {
+        urls.push("/data/meesho-category-tree.json");
+      }
+      for (const url of urls) {
+        try {
+          const resp = await fetch(url, { cache: "force-cache" });
+          if (!resp.ok) continue;
+          const tree = await resp.json();
+          const list =
+            typeof MeeshoCategories !== "undefined" && MeeshoCategories.parseTree
+              ? MeeshoCategories.parseTree(tree)
+              : null;
+          if (list?.length) {
+            this.cache.categories = list;
+            this._lastCategoryFetchWasEmbedded = true;
+            if (typeof MeeshoCategories !== "undefined") {
+              MeeshoCategories._list = list;
+            }
+            console.log("✅ Categories loaded from JSON:", list.length);
+            return list;
+          }
+        } catch (e) {
+          console.warn("Could not load category JSON:", url, e);
+        }
       }
     } catch (e) {
-      console.warn("Could not load /data/meesho-category-tree.json", e);
+      console.warn("Could not load category tree JSON", e);
     }
     return null;
   },
