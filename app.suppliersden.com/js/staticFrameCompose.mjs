@@ -19,7 +19,7 @@ import {
   photoStickerScale,
   photoMarginLockField,
   snapshotPhotoControls,
-} from "./lib/productPhotoFit.mjs?v=7";
+} from "./lib/productPhotoFit.mjs?v=8";
 import { drawTallBadge } from "./tallStaticBadges.mjs?v=95";
 import { drawGownBadge } from "./gownStaticBadges.mjs?v=95";
 import {
@@ -290,15 +290,7 @@ function stickerScalesWithPhotoZoom(p, frame) {
   if (p.lockSize === false) return false;
   if (p.kind === "gownArt") return true;
   if (p.kind === "freeShipping") return false;
-  if (
-    (frame.style === "gown_static" ||
-      frame.style === "tall_static" ||
-      frame.style === "live_framed") &&
-    p.lockH !== false &&
-    p.lockV !== false
-  ) {
-    return true;
-  }
+  if (p.lockH !== false && p.lockV !== false) return true;
   return false;
 }
 
@@ -772,6 +764,27 @@ export function applyPositionToPlacement(placement, frame) {
         : anchor;
     placement.x = locksH ? anchor.x : sliderPos.x;
     placement.y = locksV ? anchor.y : sliderPos.y;
+    const sliders = xyToSliders(placement.x, placement.y, outerW, outerH, w, h);
+    placement.posH = sliders.posH;
+    placement.posV = sliders.posV;
+    return placement;
+  }
+
+  const locksH = placement.lockH !== false;
+  const locksV = placement.lockV !== false;
+  if (placement.anchor && frameHasProductSlot(frame)) {
+    const anchored = positionForAnchor(placement.anchor, frame, w, h);
+    if (locksH && locksV) {
+      placement.x = anchored.x;
+      placement.y = anchored.y;
+    } else {
+      const sliderPos =
+        placement.posH != null && placement.posV != null
+          ? slidersToXY(placement.posH, placement.posV, outerW, outerH, w, h)
+          : anchored;
+      placement.x = locksH ? anchored.x : sliderPos.x;
+      placement.y = locksV ? anchored.y : sliderPos.y;
+    }
     const sliders = xyToSliders(placement.x, placement.y, outerW, outerH, w, h);
     placement.posH = sliders.posH;
     placement.posV = sliders.posV;
@@ -1274,17 +1287,7 @@ export function applyBorderThickness(frame, options = {}) {
 export function reanchorPlacements(layers) {
   if (!layers?._badgePlacements?.length || !layers._staticFrame) return false;
   for (const p of layers._badgePlacements) {
-    const locksH = p.lockH !== false;
-    const locksV = p.lockV !== false;
-    if (p.anchor && locksH && locksV) {
-      applyAnchorToPlacement(p, layers._staticFrame);
-    } else if (p.posH != null && p.posV != null) {
-      applyPositionToPlacement(p, layers._staticFrame);
-    } else if (p.anchor) {
-      applyAnchorToPlacement(p, layers._staticFrame);
-    } else {
-      applyPositionToPlacement(p, layers._staticFrame);
-    }
+    applyPositionToPlacement(p, layers._staticFrame);
   }
   return true;
 }
