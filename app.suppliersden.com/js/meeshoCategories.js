@@ -86,7 +86,63 @@ const MeeshoCategories = {
     return this.getList().find((c) => c.id === parsed) || null;
   },
 
-  /** Leaf sub-sub-category label — id is what Meesho API expects (sscat_id). */
+  normalizeSearchText(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  },
+
+  /** Search leaf categories by name, path, or numeric id. */
+  search(query, limit = 100) {
+    const raw = String(query || "").trim();
+    if (!raw) return [];
+
+    const list = this.getList();
+    const idOnly = raw.match(/^\d{3,6}$/);
+    if (idOnly) {
+      const exact = this.findById(idOnly[0]);
+      return exact ? [exact] : [];
+    }
+
+    const norm = this.normalizeSearchText(raw);
+    if (!norm) return [];
+
+    const tokens = norm.split(" ").filter(Boolean);
+    const scored = [];
+
+    for (const cat of list) {
+      const hay = this.normalizeSearchText(
+        [cat.id, cat.name, cat.parentName, cat.sectionName, cat.rootName, cat.path].join(
+          " ",
+        ),
+      );
+      if (!tokens.every((tok) => hay.includes(tok))) continue;
+
+      let score = 0;
+      const nameNorm = this.normalizeSearchText(cat.name);
+      if (nameNorm === norm) score += 200;
+      if (nameNorm.startsWith(norm)) score += 80;
+      if (hay.includes(norm)) score += 40;
+      if (String(cat.id) === raw) score += 300;
+      score -= nameNorm.length * 0.01;
+      scored.push({ cat, score });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map((row) => row.cat);
+  },
+
+  findByLabel(label) {
+    const results = this.search(label, 8);
+    if (!results.length) return null;
+    const norm = this.normalizeSearchText(label);
+    const exact = results.find((c) => this.normalizeSearchText(c.name) === norm);
+    return (exact || results[0]).id;
+  },
+
   formatDisplay(cat, options = {}) {
     if (!cat?.id) return { title: "", detail: "", apiId: null };
     const title = `${cat.name} · ID ${cat.id}`;
