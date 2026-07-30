@@ -233,7 +233,7 @@ const MeeshoAPI = {
   },
 
   /** Read sscat_id from the open Meesho catalog form (edit/add listing). */
-  detectCategoryId: function () {
+  detectCategoryIdFromDom: function () {
     const pick = (raw) => this.parseCategoryId(raw);
 
     const selectors = [
@@ -278,6 +278,107 @@ const MeeshoAPI = {
       }
     }
 
+    for (const inp of document.querySelectorAll("input, textarea")) {
+      const val = (inp.value || "").trim();
+      if (/^\d{4,6}$/.test(val)) {
+        const id = pick(val);
+        if (id && typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
+          if (MeeshoCategories.findById(id)) return id;
+        }
+      }
+    }
+
+    return null;
+  },
+
+  detectCategoryIdFromLabels: function () {
+    if (typeof MeeshoCategories === "undefined" || !MeeshoCategories.findByLabel) {
+      return null;
+    }
+
+    const inputs = Array.from(
+      document.querySelectorAll(
+        'input[role="combobox"], input.MuiInputBase-input, input.MuiOutlinedInput-input, input[type="text"]',
+      ),
+    );
+
+    const categoryInputs = inputs.filter((inp) => {
+      const block =
+        inp.closest("form, section, div")?.textContent?.slice(0, 400) || "";
+      const hint = `${inp.getAttribute("aria-label") || ""} ${inp.placeholder || ""} ${inp.name || ""} ${block}`.toLowerCase();
+      return (
+        hint.includes("categor") ||
+        hint.includes("sscat") ||
+        hint.includes("sub sub") ||
+        hint.includes("sub-sub")
+      );
+    });
+
+    for (let i = categoryInputs.length - 1; i >= 0; i--) {
+      const val = (categoryInputs[i].value || "").trim();
+      if (val.length < 2 || val.length > 80) continue;
+      if (/^\d{4,6}$/.test(val)) {
+        const id = this.parseCategoryId(val);
+        if (id) return id;
+      }
+      const id = MeeshoCategories.findByLabel(val);
+      if (id) return id;
+    }
+
+    for (let i = inputs.length - 1; i >= 0; i--) {
+      const val = (inputs[i].value || "").trim();
+      if (val.length < 2 || val.length > 60 || val.includes("₹")) continue;
+      if (/^\d{4,6}$/.test(val)) {
+        const id = this.parseCategoryId(val);
+        if (id && MeeshoCategories.findById(id)) return id;
+        continue;
+      }
+      const id = MeeshoCategories.findByLabel(val);
+      if (id) return id;
+    }
+
+    return null;
+  },
+
+  detectCategoryIdFromScripts: function () {
+    const pick = (raw) => this.parseCategoryId(raw);
+    const patterns = [
+      /"sscat_id"\s*:\s*"?(\d+)"?/g,
+      /"sub_sub_category_id"\s*:\s*"?(\d+)"?/g,
+      /sscat_id["']?\s*[:=]\s*"?(\d+)"?/g,
+    ];
+
+    for (const script of document.querySelectorAll("script:not([src])")) {
+      const text = script.textContent || "";
+      if (!text.includes("sscat") && !text.includes("sub_sub")) continue;
+      for (const re of patterns) {
+        re.lastIndex = 0;
+        let match;
+        while ((match = re.exec(text))) {
+          const id = pick(match[1]);
+          if (id) return id;
+        }
+      }
+    }
+    return null;
+  },
+
+  detectCategoryId: function () {
+    const methods = [
+      () => this.detectCategoryIdFromDom(),
+      () => this.detectCategoryIdFromLabels(),
+      () => this.detectCategoryIdFromScripts(),
+    ];
+
+    for (const fn of methods) {
+      try {
+        const id = fn();
+        if (id) {
+          console.log("📁 Detected Meesho page category:", id);
+          return id;
+        }
+      } catch (e) {}
+    }
     return null;
   },
 
@@ -365,6 +466,17 @@ const MeeshoAPI = {
           if (piece) add(piece);
         }
       }
+    }
+
+    for (const el of scope.querySelectorAll(
+      "[data-src], [data-image], [data-original], [style*='background-image']",
+    )) {
+      add(el.getAttribute("data-src"));
+      add(el.getAttribute("data-image"));
+      add(el.getAttribute("data-original"));
+      const bg = el.style?.backgroundImage || "";
+      const bgMatch = bg.match(/url\(["']?([^"')]+)/i);
+      if (bgMatch) add(bgMatch[1]);
     }
 
     if (!candidates.length) {

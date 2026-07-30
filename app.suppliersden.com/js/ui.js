@@ -277,7 +277,7 @@ const OptimizerUI = {
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
                         <div style="position:relative;">
-                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search category..." style="font-size:12px;padding-right:30px;">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;">
                             <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
                         </div>
                         <div id="category-dropdown" style="display:none;max-height:180px;overflow-y:auto;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:0 0 8px 8px;margin-top:-1px;"></div>
