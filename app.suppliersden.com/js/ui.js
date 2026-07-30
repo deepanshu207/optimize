@@ -64,6 +64,38 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
+                .category-dropdown {
+                    display: none;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 0 0 8px 8px;
+                    margin-top: -1px;
+                    position: relative;
+                    z-index: 10001;
+                    box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+                }
+                .cat-item {
+                    padding: 10px 12px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #eee;
+                    font-size: 12px;
+                    transition: background 0.15s;
+                }
+                .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
+                .cat-item-name {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 8px;
+                    color: #111827;
+                    font-weight: 600;
+                }
+                .cat-item-id { font-size: 10px; color: #6b7280; white-space: nowrap; font-weight: 500; }
+                .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
+                .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
+                .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
                     .opt-modal-ext .opt-header { border-radius: 0 !important; }
@@ -276,11 +308,12 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div style="position:relative;">
-                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;">
+                        <div style="position:relative;z-index:10000;">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
                             <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
                         </div>
-                        <div id="category-dropdown" style="display:none;max-height:180px;overflow-y:auto;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:0 0 8px 8px;margin-top:-1px;"></div>
+                        <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+                        <div id="category-dropdown" class="category-dropdown"></div>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
