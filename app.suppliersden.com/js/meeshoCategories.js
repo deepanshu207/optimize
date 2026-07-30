@@ -80,6 +80,37 @@ const MeeshoCategories = {
     return women?.id || list[0]?.id || null;
   },
 
+  findById(id) {
+    const parsed = parseInt(id, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return this.getList().find((c) => c.id === parsed) || null;
+  },
+
+  /** Leaf sub-sub-category label — id is what Meesho API expects (sscat_id). */
+  formatDisplay(cat, options = {}) {
+    if (!cat?.id) return { title: "", detail: "", apiId: null };
+    const title = `${cat.name} · ID ${cat.id}`;
+    const path = cat.path || cat.parentName || "";
+    const parts = [];
+    if (path) parts.push(path);
+    parts.push(`sscat_id ${cat.id} for live pricing`);
+    if (options.source === "page") parts.push("from Meesho page");
+    else if (options.source === "default") parts.push("default");
+    else if (options.source === "user") parts.push("your selection");
+    return { title, detail: parts.join(" · "), apiId: cat.id, path };
+  },
+
+  formatIdOnly(id, options = {}) {
+    const parsed = parseInt(id, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return { title: "", detail: "", apiId: null };
+    }
+    const title = `Category ID ${parsed}`;
+    const parts = [`sscat_id ${parsed} for live pricing`];
+    if (options.source === "page") parts.push("from Meesho page");
+    return { title, detail: parts.join(" · "), apiId: parsed, path: "" };
+  },
+
   async loadTreeFromUrl(url) {
     const resp = await fetch(url, { cache: "force-cache" });
     if (!resp.ok) throw new Error("Category tree fetch failed: " + resp.status);

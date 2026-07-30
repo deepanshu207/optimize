@@ -1313,6 +1313,7 @@ Please share payment details and license key.`;
   categoryMatchesQuery(cat, query) {
     if (!query) return true;
     const hay = [
+      cat.id,
       cat.name,
       cat.parentName,
       cat.sectionName,
@@ -1323,6 +1324,141 @@ Please share payment details and license key.`;
       .join(" ")
       .toLowerCase();
     return hay.includes(query);
+  }
+
+  findCategoryById(id) {
+    const parsed = parseInt(id, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
+      return MeeshoCategories.findById(parsed);
+    }
+    return this.allCategories?.find((c) => c.id === parsed) || null;
+  }
+
+  formatCategoryUi(cat, options = {}) {
+    if (!cat?.id) return { title: "", detail: "" };
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.formatDisplay) {
+      return MeeshoCategories.formatDisplay(cat, options);
+    }
+    const title = `${cat.name} · ID ${cat.id}`;
+    const path = cat.path || cat.parentName || "";
+    const detail = [path, `sscat_id ${cat.id} for live pricing`]
+      .filter(Boolean)
+      .join(" · ");
+    return { title, detail, apiId: cat.id, path };
+  }
+
+  formatCategoryIdUi(id, options = {}) {
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.formatIdOnly) {
+      return MeeshoCategories.formatIdOnly(id, options);
+    }
+    const parsed = parseInt(id, 10);
+    return {
+      title: `Category ID ${parsed}`,
+      detail: `sscat_id ${parsed} for live pricing`,
+      apiId: parsed,
+      path: "",
+    };
+  }
+
+  paintCategorySelection(display, { showSelected = true } = {}) {
+    const selectedCategory = document.getElementById("selected-category");
+    const selectedCategoryName = document.getElementById("selected-category-name");
+    const selectedCategoryDetail = document.getElementById("selected-category-detail");
+
+    if (!display?.title) {
+      if (selectedCategory) selectedCategory.style.display = "none";
+      if (selectedCategoryName) selectedCategoryName.textContent = "";
+      if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
+      return;
+    }
+
+    if (showSelected && selectedCategory) selectedCategory.style.display = "block";
+    if (selectedCategoryName) selectedCategoryName.textContent = display.title;
+    if (selectedCategoryDetail) {
+      selectedCategoryDetail.textContent = display.detail || "";
+    }
+  }
+
+  refreshCategoryApiPreview(resolved) {
+    const preview = document.getElementById("category-api-preview");
+    if (!preview) return;
+
+    const categorySelect = document.getElementById("category-select");
+    const peek = resolved || this.peekCategoryForLiveApi(categorySelect);
+    if (!peek?.id) {
+      preview.style.display = "none";
+      preview.textContent = "";
+      return;
+    }
+
+    const cat = peek.cat || this.findCategoryById(peek.id);
+    const display = cat
+      ? this.formatCategoryUi(cat, { source: peek.source })
+      : this.formatCategoryIdUi(peek.id, { source: peek.source });
+
+    const action =
+      peek.source === "user"
+        ? "Will request"
+        : peek.source === "page"
+          ? "Will request (from Meesho page)"
+          : peek.source === "default"
+            ? "Will request (default)"
+            : "Will request";
+
+    preview.style.display = "block";
+    preview.textContent = `${action}: ${display.title}${
+      display.path ? ` — ${display.path}` : ""
+    }. Meesho API uses leaf sscat_id ${peek.id} (not the full path).`;
+  }
+
+  peekCategoryForLiveApi(categorySelect) {
+    const manualMode = this.isManualShippingMode();
+    const needsCategoryForLiveApi =
+      !window.WEB_OPTIMIZER_MODE && !manualMode && typeof MeeshoAPI !== "undefined";
+
+    const userPick = categorySelect?.value
+      ? parseInt(categorySelect.value, 10)
+      : null;
+    if (userPick > 0) {
+      return {
+        id: userPick,
+        source: "user",
+        cat: this.findCategoryById(userPick),
+      };
+    }
+
+    if (typeof MeeshoAPI !== "undefined" && !userPick) {
+      MeeshoAPI.syncCatalogPricing?.();
+    }
+
+    if (typeof MeeshoAPI !== "undefined") {
+      const pageId = MeeshoAPI.detectCategoryId?.();
+      if (pageId > 0) {
+        return {
+          id: pageId,
+          source: "page",
+          cat: this.findCategoryById(pageId),
+        };
+      }
+    }
+
+    if (!needsCategoryForLiveApi) {
+      return { id: null, source: "none", cat: null };
+    }
+
+    const defId =
+      typeof MeeshoCategories !== "undefined"
+        ? MeeshoCategories.getDefaultCategoryId()
+        : 10004;
+    if (defId) {
+      return {
+        id: defId,
+        source: "default",
+        cat: this.findCategoryById(defId),
+      };
+    }
+    return { error: true };
   }
 
   getDefaultCategorySlice(limit = 50) {
@@ -1381,8 +1517,11 @@ Please share payment details and license key.`;
         categoryClear.style.display = "none";
         if (categorySelect) categorySelect.value = "";
         if (selectedCategory) selectedCategory.style.display = "none";
+        const selectedCategoryDetail = document.getElementById("selected-category-detail");
+        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
         this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+        this.refreshCategoryApiPreview();
       };
     }
 
@@ -1401,6 +1540,8 @@ Please share payment details and license key.`;
     console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
       this.applyDefaultCategoryIfNeeded();
+    } else {
+      this.refreshCategoryApiPreview();
     }
     return true;
   }
@@ -1417,12 +1558,17 @@ Please share payment details and license key.`;
 
     let html = "";
     categories.forEach((cat) => {
-      const parent = cat.path || cat.parentName || "";
+      const path = cat.path || cat.parentName || "";
+      const safeName = String(cat.name || "").replace(/"/g, "&quot;");
+      const safePath = String(path).replace(/"/g, "&quot;");
       html += `
-                <div class="cat-item" data-id="${cat.id}" data-name="${cat.name}" data-parent="${parent}" 
+                <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}" 
                      style="padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;transition:background 0.2s;">
-                    <div style="color:#2c2c2f;">${cat.name}</div>
-                    <div style="font-size:10px;color:#131415;">${parent}</div>
+                    <div style="display:flex;justify-content:space-between;gap:8px;color:#2c2c2f;">
+                      <span>${cat.name}</span>
+                      <span style="font-size:10px;color:#6b7280;white-space:nowrap;">ID ${cat.id}</span>
+                    </div>
+                    <div style="font-size:10px;color:#131415;margin-top:2px;">${path || "Leaf category (sscat_id)"}</div>
                 </div>
             `;
     });
@@ -1433,33 +1579,18 @@ Please share payment details and license key.`;
         (item.style.background = "rgba(102,126,234,0.2)");
       item.onmouseleave = () => (item.style.background = "transparent");
       item.onclick = () => {
-        const id = item.dataset.id;
-        const name = item.dataset.name;
-        const parent = item.dataset.parent;
-
-        const categorySelect = document.getElementById("category-select");
-        const categorySearch = document.getElementById("category-search");
-        const selectedCategory = document.getElementById("selected-category");
-        const selectedCategoryName = document.getElementById(
-          "selected-category-name"
-        );
-        const categoryClear = document.getElementById("category-clear");
+        const id = parseInt(item.dataset.id, 10);
+        const cat =
+          this.allCategories?.find((c) => c.id === id) ||
+          this.findCategoryById(id) || {
+            id,
+            name: item.dataset.name,
+            path: item.dataset.path,
+            parentName: item.dataset.path,
+          };
+        this.applyCategorySelection(cat, { source: "user" });
         const categoryDropdown = document.getElementById("category-dropdown");
-
-        if (categorySelect) categorySelect.value = id;
-        if (categorySearch) categorySearch.value = name;
-        if (selectedCategory) selectedCategory.style.display = "block";
-        if (selectedCategoryName) {
-          selectedCategoryName.textContent = parent
-            ? `${name} (${parent})`
-            : name;
-        }
         if (categoryDropdown) categoryDropdown.style.display = "none";
-        if (categoryClear) categoryClear.style.display = "block";
-
-        if (typeof MeeshoAPI !== "undefined") {
-          MeeshoAPI.setCategory(parseInt(id, 10));
-        }
       };
     });
   }
@@ -1541,32 +1672,144 @@ Please share payment details and license key.`;
     }
   }
 
+  applyCategorySelection(catOrId, options = {}) {
+    const categorySelect = document.getElementById("category-select");
+    const categorySearch = document.getElementById("category-search");
+    const categoryClear = document.getElementById("category-clear");
+
+    const cat =
+      typeof catOrId === "object"
+        ? catOrId
+        : this.findCategoryById(catOrId);
+    if (!cat?.id) return false;
+
+    const display = this.formatCategoryUi(cat, { source: options.source });
+
+    if (categorySelect) categorySelect.value = String(cat.id);
+    if (categorySearch) {
+      categorySearch.value = `${cat.name} (${cat.id})`;
+    }
+    this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
+    if (categoryClear) categoryClear.style.display = "block";
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(cat.id);
+    }
+    this.refreshCategoryApiPreview({
+      id: cat.id,
+      source: options.source || "user",
+      cat,
+    });
+    return true;
+  }
+
+  applyCategoryByIdOnly(id, options = {}) {
+    const categorySelect = document.getElementById("category-select");
+    const categorySearch = document.getElementById("category-search");
+    const categoryClear = document.getElementById("category-clear");
+    const parsed = parseInt(id, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return false;
+
+    const known = this.findCategoryById(parsed);
+    if (known) {
+      return this.applyCategorySelection(known, options);
+    }
+
+    const display = this.formatCategoryIdUi(parsed, { source: options.source });
+
+    if (categorySelect) categorySelect.value = String(parsed);
+    if (categorySearch) categorySearch.value = `ID ${parsed}`;
+    this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
+    if (categoryClear) categoryClear.style.display = "block";
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(parsed);
+    }
+    this.refreshCategoryApiPreview({
+      id: parsed,
+      source: options.source || "page",
+      cat: null,
+    });
+    return true;
+  }
+
+  /**
+   * Live API category priority: optimizer dropdown → Meesho page sscat → Kurtis default.
+   */
+  resolveCategoryForLiveApi(categorySelect) {
+    const resolved = this.peekCategoryForLiveApi(categorySelect);
+    if (resolved.error) return resolved;
+
+    if (resolved.id) {
+      if (resolved.cat) {
+        if (resolved.source !== "user") {
+          this.applyCategorySelection(resolved.cat, {
+            source: resolved.source,
+            showSelected: true,
+          });
+        } else {
+          this.refreshCategoryApiPreview(resolved);
+        }
+      } else if (resolved.source === "page") {
+        this.applyCategoryByIdOnly(resolved.id, { source: "page" });
+      } else if (resolved.source === "default") {
+        const defCat = this.findCategoryById(resolved.id);
+        if (defCat) {
+          this.applyCategorySelection(defCat, { source: "default" });
+        }
+      } else {
+        this.refreshCategoryApiPreview(resolved);
+      }
+
+      if (typeof MeeshoAPI !== "undefined") {
+        MeeshoAPI.setCategory(resolved.id);
+      }
+    }
+
+    return resolved;
+  }
+
   applyDefaultCategoryIfNeeded() {
     const categorySelect = document.getElementById("category-select");
-    if (!categorySelect || categorySelect.value || !this.allCategories?.length) return;
-
-    const defId =
-      typeof MeeshoCategories !== "undefined"
-        ? MeeshoCategories.getDefaultCategoryId()
-        : 10004;
-    const def =
-      this.allCategories.find((c) => c.id === defId) || this.allCategories[0];
-    if (!def) return;
-
-    categorySelect.value = String(def.id);
-    const categorySearch = document.getElementById("category-search");
-    const selectedCategory = document.getElementById("selected-category");
-    const selectedCategoryName = document.getElementById(
-      "selected-category-name"
-    );
-    if (categorySearch) categorySearch.value = def.name;
-    if (selectedCategory) selectedCategory.style.display = "block";
-    if (selectedCategoryName) {
-      selectedCategoryName.textContent = `${def.name} (${def.parentName})`;
+    if (!categorySelect || categorySelect.value || !this.allCategories?.length) {
+      this.refreshCategoryApiPreview();
+      return;
     }
+
+    let targetCat = null;
+    let source = "default";
+
     if (typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(def.id);
+      MeeshoAPI.syncCatalogPricing?.();
+      const pageId = MeeshoAPI.detectCategoryId?.();
+      if (pageId > 0) {
+        targetCat = this.findCategoryById(pageId);
+        if (targetCat) {
+          source = "page";
+          console.log("📁 Using Meesho page category:", pageId, targetCat.name);
+        } else {
+          this.applyCategoryByIdOnly(pageId, { source: "page" });
+          console.log("📁 Meesho page category (not in list):", pageId);
+          return;
+        }
+      }
     }
+
+    if (!targetCat) {
+      const defId =
+        typeof MeeshoCategories !== "undefined"
+          ? MeeshoCategories.getDefaultCategoryId()
+          : 10004;
+      targetCat =
+        this.findCategoryById(defId) ||
+        this.allCategories.find((c) => c.id === defId) ||
+        this.allCategories[0];
+      source = "default";
+    }
+
+    if (!targetCat) {
+      this.refreshCategoryApiPreview();
+      return;
+    }
+    this.applyCategorySelection(targetCat, { source });
   }
 
   gatherSettings() {
@@ -1586,14 +1829,11 @@ Please share payment details and license key.`;
       void MeeshoAPI.preloadBadges();
     }
 
-    // Set category in MeeshoAPI
+    // Set category in MeeshoAPI (dropdown wins; else page-detected sscat)
     const categorySelect = document.getElementById("category-select");
-    if (
-      categorySelect &&
-      categorySelect.value &&
-      typeof MeeshoAPI !== "undefined"
-    ) {
-      MeeshoAPI.setCategory(parseInt(categorySelect.value));
+    const resolved = this.resolveCategoryForLiveApi(categorySelect);
+    if (resolved.id && typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(resolved.id);
     }
     if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.syncCatalogPricing) {
       const pricing = MeeshoAPI.syncCatalogPricing();
@@ -1936,26 +2176,21 @@ Please share payment details and license key.`;
     }
 
     const categorySelect = document.getElementById("category-select");
-    const manualMode = this.isManualShippingMode();
-    const needsCategoryForLiveApi =
-      !window.WEB_OPTIMIZER_MODE && !manualMode && typeof MeeshoAPI !== "undefined";
-
-    if (categorySelect?.value && typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(parseInt(categorySelect.value, 10));
-    } else if (needsCategoryForLiveApi) {
-      const defId =
-        typeof MeeshoCategories !== "undefined"
-          ? MeeshoCategories.getDefaultCategoryId()
-          : 10004;
-      if (defId) {
-        MeeshoAPI.setCategory(defId);
-      } else {
-        OptimizerUtils.showNotification(
-          "Select a category for live Meesho shipping checks",
-          "error"
-        );
-        return;
-      }
+    const resolved = this.resolveCategoryForLiveApi(categorySelect);
+    if (resolved.error) {
+      OptimizerUtils.showNotification(
+        "Select a category for live Meesho shipping checks",
+        "error"
+      );
+      return;
+    }
+    if (resolved.id && typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(resolved.id);
+      const cat = resolved.cat || this.findCategoryById(resolved.id);
+      const label = cat
+        ? this.formatCategoryUi(cat, { source: resolved.source }).title
+        : `ID ${resolved.id}`;
+      console.log(`📁 Live API category (${resolved.source}):`, label);
     }
 
     this.isProcessing = true;
@@ -2167,26 +2402,21 @@ Please share payment details and license key.`;
     }
 
     const categorySelect = document.getElementById("category-select");
-    const manualMode = this.isManualShippingMode();
-    const needsCategoryForLiveApi =
-      !window.WEB_OPTIMIZER_MODE && !manualMode && typeof MeeshoAPI !== "undefined";
-
-    if (categorySelect?.value && typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(parseInt(categorySelect.value, 10));
-    } else if (needsCategoryForLiveApi) {
-      const defId =
-        typeof MeeshoCategories !== "undefined"
-          ? MeeshoCategories.getDefaultCategoryId()
-          : 10004;
-      if (defId) {
-        MeeshoAPI.setCategory(defId);
-      } else {
-        OptimizerUtils.showNotification(
-          "Select a category for live Meesho shipping checks",
-          "error"
-        );
-        return;
-      }
+    const resolved = this.resolveCategoryForLiveApi(categorySelect);
+    if (resolved.error) {
+      OptimizerUtils.showNotification(
+        "Select a category for live Meesho shipping checks",
+        "error"
+      );
+      return;
+    }
+    if (resolved.id && typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.setCategory(resolved.id);
+      const cat = resolved.cat || this.findCategoryById(resolved.id);
+      const label = cat
+        ? this.formatCategoryUi(cat, { source: resolved.source }).title
+        : `ID ${resolved.id}`;
+      console.log(`📁 Live API category (${resolved.source}):`, label);
     }
 
     this.isProcessing = true;
