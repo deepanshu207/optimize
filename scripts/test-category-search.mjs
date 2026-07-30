@@ -34,6 +34,21 @@ assert(
 const byId = MeeshoCategories.search("10253", 5);
 assert(byId[0]?.id === 10253, "search by numeric id 10253");
 
+const byIdPrefix = MeeshoCategories.search("id:10253", 5);
+assert(byIdPrefix[0]?.id === 10253, "search by id:10253 prefix");
+
+const bySscat = MeeshoCategories.search("sscat_id 10123", 5);
+assert(bySscat[0]?.id === 10123, "search by sscat_id 10123");
+
+const byDisplay = MeeshoCategories.parseQueryId("Top & Bottom Sets (10253)");
+assert(byDisplay === 10253, "parseQueryId from Name (ID) display");
+
+const gown = MeeshoCategories.search("gown ethnic", 10);
+assert(
+  gown.some((c) => c.id === 10123),
+  "text search finds Gowns - Ethnic",
+);
+
 const labelId = MeeshoCategories.findByLabel("Kurtis");
 assert(labelId === 10004, "findByLabel resolves Kurtis to 10004");
 

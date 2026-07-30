@@ -1381,24 +1381,86 @@ Please share payment details and license key.`;
 
   parseCategorySearchQuery(raw) {
     const text = String(raw || "").trim();
+    if (!text) return { mode: "empty", text: "" };
+
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.parseQueryId) {
+      const id = MeeshoCategories.parseQueryId(text);
+      if (id) return { mode: "id", id, text };
+    }
+
     if (/^\d{3,6}$/.test(text)) {
       return { mode: "id", id: parseInt(text, 10), text };
     }
-    const stripped = text.replace(/\s*\(\d{3,6}\)\s*$/, "").trim();
-    const idFromSuffix = text.match(/\((\d{3,6})\)\s*$/);
-    if (idFromSuffix) {
+
+    const prefix = text.match(
+      /^(?:#|id\s*[:=]?\s*|sscat(?:_id)?\s*[:=]?\s*)(\d{3,6})$/i,
+    );
+    if (prefix) {
+      return { mode: "id", id: parseInt(prefix[1], 10), text };
+    }
+
+    const suffixParen = text.match(/\((\d{3,6})\)\s*$/);
+    if (suffixParen) {
       return {
         mode: "id",
-        id: parseInt(idFromSuffix[1], 10),
-        text: stripped || text,
+        id: parseInt(suffixParen[1], 10),
+        text: text.replace(/\s*\(\d{3,6}\)\s*$/, "").trim(),
       };
     }
-    return { mode: "text", text: stripped || text };
+
+    const suffixDot = text.match(/·\s*id\s*(\d{3,6})\s*$/i);
+    if (suffixDot) {
+      return { mode: "id", id: parseInt(suffixDot[1], 10), text };
+    }
+
+    return { mode: "text", text };
+  }
+
+  resolveCategoryFromSearchInput(raw, limit = 12) {
+    const query = String(raw || "").trim();
+    if (!query) return { status: "empty" };
+
+    const parsed = this.parseCategorySearchQuery(query);
+    if (parsed.mode === "id") {
+      const cat = this.findCategoryById(parsed.id);
+      if (cat) return { status: "resolved", cat, hits: [cat], query };
+      return { status: "not_found", query };
+    }
+
+    const hits = this.filterCategoriesForSearch(query, limit);
+    if (!hits.length) return { status: "not_found", query };
+    if (hits.length === 1) return { status: "resolved", cat: hits[0], hits, query };
+
+    const norm =
+      typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
+        ? MeeshoCategories.normalizeSearchText(parsed.text)
+        : parsed.text.toLowerCase();
+    const exact = hits.find((c) => {
+      const nameNorm =
+        typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
+          ? MeeshoCategories.normalizeSearchText(c.name)
+          : String(c.name || "").toLowerCase();
+      return nameNorm === norm || String(c.id) === parsed.text;
+    });
+    if (exact) return { status: "resolved", cat: exact, hits, query };
+
+    return { status: "ambiguous", hits, query };
+  }
+
+  applyCategoryFromSearchInput(raw) {
+    const result = this.resolveCategoryFromSearchInput(raw);
+    if (result.status === "resolved" && result.cat) {
+      this.applyCategorySelection(result.cat, { source: "user" });
+      const categoryDropdown = document.getElementById("category-dropdown");
+      if (categoryDropdown) categoryDropdown.style.display = "none";
+      return result;
+    }
+    return result;
   }
 
   filterCategoriesForSearch(raw, limit = 100) {
     const parsed = this.parseCategorySearchQuery(raw);
-    if (!parsed.text && parsed.mode !== "id") {
+    if (parsed.mode === "empty") {
       return this.getDefaultCategorySlice(Math.min(limit, 50));
     }
 
@@ -1436,44 +1498,25 @@ Please share payment details and license key.`;
       return {
         ok: false,
         message:
-          "Select a category from search — required for live Meesho pricing (e.g. Gowns - Ethnic · 10123)",
+          "Search by category name or ID (e.g. gown, 10123, or id:10253) — then pick or press Enter",
       };
     }
 
-    const parsed = this.parseCategorySearchQuery(raw);
-    if (parsed.mode === "id") {
-      const cat = this.findCategoryById(parsed.id);
-      if (cat) {
-        this.applyCategorySelection(cat, { source: "user" });
-        return { ok: true, id: cat.id };
-      }
+    const resolved = this.resolveCategoryFromSearchInput(raw, 12);
+    if (resolved.status === "resolved" && resolved.cat) {
+      this.applyCategorySelection(resolved.cat, { source: "user" });
+      return { ok: true, id: resolved.cat.id };
     }
-
-    const hits = this.filterCategoriesForSearch(raw, 8);
-    if (hits.length === 1) {
-      this.applyCategorySelection(hits[0], { source: "user" });
-      return { ok: true, id: hits[0].id };
-    }
-    if (hits.length > 1) {
-      const needle = parsed.text.toLowerCase();
-      const exact = hits.find(
-        (c) =>
-          String(c.name || "").toLowerCase() === needle ||
-          String(c.id) === needle,
-      );
-      if (exact) {
-        this.applyCategorySelection(exact, { source: "user" });
-        return { ok: true, id: exact.id };
-      }
+    if (resolved.status === "ambiguous") {
       return {
         ok: false,
-        message: `Pick a category from the list (${hits.length} matches for "${raw}")`,
+        message: `Pick a category from the list (${resolved.hits.length} matches for "${raw}")`,
       };
     }
 
     return {
       ok: false,
-      message: `No category found for "${raw}" — pick from dropdown`,
+      message: `No category found for "${raw}" — try name or numeric ID (e.g. 10253)`,
     };
   }
 
@@ -1707,10 +1750,12 @@ Please share payment details and license key.`;
   findCategoryById(id) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    const fromAll = this.allCategories?.find((c) => c.id === parsed);
+    if (fromAll) return fromAll;
     if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
       return MeeshoCategories.findById(parsed);
     }
-    return this.allCategories?.find((c) => c.id === parsed) || null;
+    return null;
   }
 
   formatCategoryUi(cat, options = {}) {
@@ -1862,6 +1907,12 @@ Please share payment details and license key.`;
     if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
     this.allCategories = categories;
+    if (typeof MeeshoCategories !== "undefined") {
+      MeeshoCategories._list = categories;
+      if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
+        MeeshoCategories.LIST = categories;
+      }
+    }
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
     categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
     const countHint = document.getElementById("category-count-hint");
@@ -1889,6 +1940,50 @@ Please share payment details and license key.`;
         this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
       }
       categoryDropdown.style.display = "block";
+    };
+
+    categorySearch.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const raw = categorySearch.value.trim();
+      if (!raw) return;
+      const result = this.applyCategoryFromSearchInput(raw);
+      if (result.status === "resolved") {
+        OptimizerUtils.showNotification(
+          `Category: ${result.cat.name} (ID ${result.cat.id})`,
+          "success",
+        );
+        return;
+      }
+      if (result.status === "ambiguous" && result.hits?.length) {
+        this.applyCategorySelection(result.hits[0], { source: "user" });
+        categoryDropdown.style.display = "none";
+        OptimizerUtils.showNotification(
+          `Selected top match: ${result.hits[0].name} (ID ${result.hits[0].id})`,
+          "info",
+        );
+        return;
+      }
+      OptimizerUtils.showNotification(
+        result.status === "not_found"
+          ? `No category found for "${raw}"`
+          : "Type a category name or ID",
+        "error",
+      );
+    };
+
+    categorySearch.onblur = () => {
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (active?.closest?.("#category-dropdown")) return;
+        const raw = categorySearch.value.trim();
+        if (!raw) return;
+        const selected = parseInt(categorySelect?.value, 10);
+        const parsed = this.parseCategorySearchQuery(raw);
+        if (parsed.mode === "id" && selected !== parsed.id) {
+          this.applyCategoryFromSearchInput(raw);
+        }
+      }, 200);
     };
 
     if (categoryClear) {
