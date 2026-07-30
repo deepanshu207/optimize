@@ -1979,8 +1979,8 @@ Please share payment details and license key.`;
         const raw = categorySearch.value.trim();
         if (!raw) return;
         const selected = parseInt(categorySelect?.value, 10);
-        const parsed = this.parseCategorySearchQuery(raw);
-        if (parsed.mode === "id" && selected !== parsed.id) {
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
+        if (result.status === "resolved" && result.cat?.id && selected !== result.cat.id) {
           this.applyCategoryFromSearchInput(raw);
         }
       }, 200);

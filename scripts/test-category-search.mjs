@@ -43,6 +43,21 @@ assert(bySscat[0]?.id === 10123, "search by sscat_id 10123");
 const byDisplay = MeeshoCategories.parseQueryId("Top & Bottom Sets (10253)");
 assert(byDisplay === 10253, "parseQueryId from Name (ID) display");
 
+const byDotId = MeeshoCategories.parseQueryId("Gowns - Ethnic · ID 10123");
+assert(byDotId === 10123, "parseQueryId from Name · ID display");
+
+const byHash = MeeshoCategories.parseQueryId("#10253");
+assert(byHash === 10253, "parseQueryId from #10253");
+
+const kurtisHits = MeeshoCategories.search("Kurtis", 8);
+const kurtisExact = kurtisHits.find(
+  (c) => MeeshoCategories.normalizeSearchText(c.name) === "kurtis",
+);
+assert(
+  kurtisExact?.id === 10004,
+  "exact name Kurtis is top exact match among similar categories",
+);
+
 const gown = MeeshoCategories.search("gown ethnic", 10);
 assert(
   gown.some((c) => c.id === 10123),
