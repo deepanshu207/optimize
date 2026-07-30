@@ -83,12 +83,12 @@ class MeeshoShippingOptimizer {
 
   getLiveVariantReportModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveVariantReport.mjs?v=1";
+      return "/js/liveVariantReport.mjs?v=2";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=1");
+      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=2");
     }
-    return "/js/liveVariantReport.mjs?v=1";
+    return "/js/liveVariantReport.mjs?v=2";
   }
 
   getStaticComposeModuleUrl() {

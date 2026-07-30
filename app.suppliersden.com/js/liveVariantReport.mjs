@@ -27,7 +27,7 @@ export function scoreVariant(row) {
   let score = 0;
   if (row.isVerified) score += 100;
   if (row.liveVerified) score += 50;
-  if (!row.duplicatePid) score += 25;
+  if (row.duplicatePid) score += 25;
   if (!row.noPid) score += 10;
   if (row.manualPrice) score += 5;
   return score;
@@ -111,25 +111,35 @@ export function pickRecommendedVariants(variants) {
 function variantRowMeta(row) {
   const meta = row.meta || {};
   return {
-    path: meta.path || row.variantStyle || "",
+    path: meta.path || meta.style || row.variantStyle || "",
     mode: meta.mode || "",
     kb: meta.kb || meta.actualKb || meta.targetKb || "",
-    width: meta.width || meta.productW || "",
-    height: meta.height || meta.productH || "",
+    width: meta.width || meta.canvasW || meta.productW || "",
+    height: meta.height || meta.canvasH || meta.productH || "",
+    borderPx: meta.borderPx ?? "",
+    badgeCount: meta.badgeCount ?? "",
+    jpegQuality: meta.jpegQuality ?? "",
     estInr: meta.estInr || row.estShipping || "",
   };
 }
 
 function flattenVariant(row, extra = {}) {
   const m = variantRowMeta(row);
+  const shipping = num(row.shippingCost);
+  const baseline = num(extra.baseline);
+  const savings =
+    baseline > 0 && shipping > 0
+      ? baseline - shipping
+      : num(row.savings);
   return {
     variantId: row.variantId || "",
     name: row.name || "",
-    shippingCost: num(row.shippingCost),
+    shippingCost: shipping,
     estShipping: num(row.estShipping || m.estInr),
     isVerified: !!row.isVerified,
     liveVerified: !!row.liveVerified,
-    duplicatePid: !!row.duplicatePid,
+    duplicatePid: row.duplicatePid || "",
+    hasDuplicatePid: !!row.duplicatePid,
     noPid: !!row.noPid,
     manualPrice: !!row.manualPrice,
     variantStyle: row.variantStyle || "",
@@ -138,7 +148,11 @@ function flattenVariant(row, extra = {}) {
     kb: m.kb,
     width: m.width,
     height: m.height,
-    savings: num(row.savings),
+    borderPx: m.borderPx,
+    badgeCount: m.badgeCount,
+    jpegQuality: m.jpegQuality,
+    liveTotalPrice: row.liveTotalPrice ?? "",
+    savings,
     meeshoPriceUsed: row.meeshoPriceUsed ?? "",
     source: extra.source || "primary",
     recommended: !!extra.recommended,
@@ -280,6 +294,7 @@ export function analyzeLiveVariants(variants, context = {}) {
       source,
       recommended: pickIds.has(row.variantId),
       pickRank: pickIdx >= 0 ? pickIdx + 1 : "",
+      baseline: num(context.baselineShipping),
     });
   });
 
@@ -340,6 +355,12 @@ export function exportReportCsv(analysis) {
       "gap_to_next",
       "tier_count",
       "notes",
+      "savings_vs_baseline",
+      "border_px",
+      "badge_count",
+      "jpeg_quality",
+      "live_total_price",
+      "meesho_price_used",
     ]),
   );
 
@@ -364,12 +385,13 @@ export function exportReportCsv(analysis) {
     ["all_rupee_pairs", (analysis.allRupeePairs || []).map((p) => p.join("-")).join("|")],
   ];
 
+  const emptyTail = ["", "", "", "", "", ""];
   for (const [key, value] of metaRows) {
-    lines.push(csvRow(["META", key, value, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]));
+    lines.push(csvRow(["META", key, value, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ...emptyTail]));
   }
 
   for (const note of analysis.patternNotes || []) {
-    lines.push(csvRow(["PATTERN", "", note, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]));
+    lines.push(csvRow(["PATTERN", "", note, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ...emptyTail]));
   }
 
   for (const tier of analysis.priceTiers || []) {
@@ -398,6 +420,7 @@ export function exportReportCsv(analysis) {
         tier.gapToNext,
         tier.count,
         `verified=${tier.verifiedCount};no_pid=${tier.noPidCount};dup_pid=${tier.duplicatePidCount}`,
+        ...emptyTail,
       ]),
     );
   }
@@ -428,36 +451,52 @@ export function exportReportCsv(analysis) {
         "",
         "",
         "",
+        v.savings,
+        v.borderPx,
+        v.badgeCount,
+        v.jpegQuality,
+        v.liveTotalPrice,
+        v.meeshoPriceUsed,
       ]),
     );
   }
 
   for (const pick of rec.picks || []) {
+    const flat = flattenVariant(pick, {
+      recommended: true,
+      baseline: num(ctx.baselineShipping),
+    });
     lines.push(
       csvRow([
         "RECOMMENDATION",
         "",
         "",
-        pick.variantId,
-        pick.name,
-        pick.shippingCost,
+        flat.variantId,
+        flat.name,
+        flat.shippingCost,
         "",
-        pick.isVerified,
-        pick.liveVerified,
-        pick.duplicatePid,
-        pick.noPid,
-        pick.variantStyle,
-        variantRowMeta(pick).path,
-        "",
-        "",
-        "",
+        flat.isVerified,
+        flat.liveVerified,
+        flat.duplicatePid,
+        flat.noPid,
+        flat.variantStyle,
+        flat.path,
+        flat.kb,
+        flat.width,
+        flat.height,
         "",
         true,
         "",
-        scoreVariant(pick),
+        flat.score,
         "",
         "",
         rec.reason,
+        flat.savings,
+        flat.borderPx,
+        flat.badgeCount,
+        flat.jpegQuality,
+        flat.liveTotalPrice,
+        flat.meeshoPriceUsed,
       ]),
     );
   }
@@ -550,9 +589,13 @@ export function exportReportTxt(analysis) {
   lines.push("ALL VARIANTS");
   lines.push("-".repeat(72));
   for (const v of analysis.variantRows || []) {
+    const dim =
+      v.width && v.height ? `${v.width}×${v.height}px` : "—";
+    const kb = v.kb ? `${v.kb}KB` : "—";
     const flag = v.recommended ? " ★ RECOMMENDED" : "";
+    const pid = v.duplicatePid ? ` pid=${v.duplicatePid}` : "";
     lines.push(
-      `${v.name} | ₹${v.shippingCost || "—"} | est₹${v.estShipping || "—"} | ${v.path || v.variantStyle} | ${v.kb}KB | ${v.source}${flag}`,
+      `${v.name} | ₹${v.shippingCost || "—"} | ${dim} | border ${v.borderPx || "—"}px | badges ${v.badgeCount ?? "—"} | ${kb} | ${v.path || v.variantStyle}${pid}${flag}`,
     );
   }
   lines.push("");
@@ -589,7 +632,7 @@ export function parseReportCsv(text) {
         estShipping: num(row[idx("est_inr")]),
         isVerified: row[idx("verified")] === "true",
         liveVerified: row[idx("live_verified")] === "true",
-        duplicatePid: row[idx("duplicate_pid")] === "true",
+        duplicatePid: row[idx("duplicate_pid")] || "",
         noPid: row[idx("no_pid")] === "true",
         variantStyle: row[idx("variant_style")],
         meta: {
@@ -658,18 +701,16 @@ export function downloadReportBlob(content, filename, mime) {
 }
 
 /**
- * Build analysis and download CSV + TXT together.
+ * Build analysis and download a single CSV report (Excel-friendly).
  */
 export function createAndDownloadReport(variants, context = {}) {
   const analysis = analyzeLiveVariants(variants, context);
   const csv = exportReportCsv(analysis);
-  const txt = exportReportTxt(analysis);
-  const csvName = buildReportFilename(analysis, "csv");
-  const txtName = buildReportFilename(analysis, "txt");
-  downloadReportBlob(csv, csvName, "text/csv;charset=utf-8");
-  setTimeout(() => {
-    downloadReportBlob(txt, txtName, "text/plain;charset=utf-8");
-  }, 400);
+  downloadReportBlob(
+    csv,
+    buildReportFilename(analysis, "csv"),
+    "text/csv;charset=utf-8",
+  );
   return analysis;
 }
 
