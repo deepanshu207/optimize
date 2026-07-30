@@ -47,6 +47,21 @@ assert(
 );
 assert(defaults.length === 50, "default slice returns 50 items");
 
+const kurtisDisplay = MeeshoCategories.formatDisplay(kurtis, { source: "default" });
+assert(
+  kurtisDisplay.title === "Kurtis · ID 10004",
+  "formatDisplay shows leaf name and id",
+);
+assert(
+  kurtisDisplay.detail.includes("sscat_id 10004") &&
+    kurtisDisplay.detail.includes(kurtis.path),
+  "formatDisplay includes path and sscat_id note",
+);
+assert(
+  MeeshoCategories.findById(10004)?.name === "Kurtis",
+  "findById returns leaf category",
+);
+
 const womenSearch = list.filter((c) =>
   `${c.name} ${c.path}`.toLowerCase().includes("women fashion"),
 );

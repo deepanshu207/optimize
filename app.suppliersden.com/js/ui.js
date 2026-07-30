@@ -287,7 +287,9 @@ const OptimizerUI = {
                         <div id="selected-category" style="margin-top:8px;padding:8px;background:rgba(102,126,234,0.15);border-radius:6px;display:none;">
                             <span style="font-size:11px;color:#a78bfa;">✓ </span>
                             <span id="selected-category-name" style="font-size:12px;color:black;font-weight:600;"></span>
+                            <div id="selected-category-detail" style="font-size:10px;color:#4b5563;margin-top:4px;line-height:1.4;"></div>
                         </div>
+                        <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.4;display:none;"></div>
                         <input type="hidden" id="category-select" value="">
                     </div>
 
