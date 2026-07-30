@@ -52,6 +52,7 @@ class MeeshoShippingOptimizer {
     this._uploadUserCleared = false;
     this._livePricingCategory = null;
     this._categorySelectionSource = null;
+    this._categoryUserEditing = false;
     this.init();
   }
 
@@ -1483,9 +1484,29 @@ Please share payment details and license key.`;
   resolveCategorySelectionForGenerate(categorySelect) {
     const manualMode = this.isManualShippingMode();
     const needsCategory = !window.WEB_OPTIMIZER_MODE && !manualMode;
+    const searchEl = document.getElementById("category-search");
+    const raw = searchEl?.value?.trim() || "";
 
-    if (!this._categoryUserPicked) {
-      this.applyPageCategoryIfAvailable();
+    const resolveTypedCategory = () => {
+      const resolved = this.resolveCategoryFromSearchInput(raw, 12);
+      if (resolved.status === "resolved" && resolved.cat) {
+        this.applyCategorySelection(resolved.cat, { source: "user" });
+        return { ok: true, id: resolved.cat.id };
+      }
+      if (resolved.status === "ambiguous") {
+        return {
+          ok: false,
+          message: `Pick a category from the list (${resolved.hits.length} matches for "${raw}")`,
+        };
+      }
+      return {
+        ok: false,
+        message: `No category found for "${raw}" — try name or numeric ID (e.g. 10253)`,
+      };
+    };
+
+    if (raw && (this._categoryUserEditing || !parseInt(categorySelect?.value, 10))) {
+      return resolveTypedCategory();
     }
 
     const selected = parseInt(categorySelect?.value, 10);
@@ -1497,9 +1518,11 @@ Please share payment details and license key.`;
       return { ok: true, id: null };
     }
 
-    const searchEl = document.getElementById("category-search");
-    const raw = searchEl?.value?.trim() || "";
     if (!raw) {
+      if (!this._categoryUserPicked && this.applyPageCategoryIfAvailable({ force: true })) {
+        const pageSelected = parseInt(categorySelect?.value, 10);
+        if (pageSelected > 0) return { ok: true, id: pageSelected };
+      }
       return {
         ok: false,
         message:
@@ -1507,22 +1530,7 @@ Please share payment details and license key.`;
       };
     }
 
-    const resolved = this.resolveCategoryFromSearchInput(raw, 12);
-    if (resolved.status === "resolved" && resolved.cat) {
-      this.applyCategorySelection(resolved.cat, { source: "user" });
-      return { ok: true, id: resolved.cat.id };
-    }
-    if (resolved.status === "ambiguous") {
-      return {
-        ok: false,
-        message: `Pick a category from the list (${resolved.hits.length} matches for "${raw}")`,
-      };
-    }
-
-    return {
-      ok: false,
-      message: `No category found for "${raw}" — try name or numeric ID (e.g. 10253)`,
-    };
+    return resolveTypedCategory();
   }
 
   buildLivePricingOptions(resolved) {
@@ -1606,8 +1614,9 @@ Please share payment details and license key.`;
     );
   }
 
-  applyPageCategoryIfAvailable() {
+  applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
+    if (this._categoryUserEditing && !options.force) return false;
 
     MeeshoAPI.syncCatalogPricing?.();
     const pageId = MeeshoAPI.detectCategoryId?.();
@@ -1944,8 +1953,14 @@ Please share payment details and license key.`;
     if (categoryError) categoryError.style.display = "none";
 
     categorySearch.onfocus = () => {
+      this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
+      setTimeout(() => {
+        try {
+          categorySearch.select();
+        } catch (e) {}
+      }, 0);
       this.renderCategoryDropdown(
         raw
           ? this.filterCategoriesForSearch(raw, 150)
@@ -1956,8 +1971,13 @@ Please share payment details and license key.`;
     };
 
     categorySearch.oninput = () => {
+      this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
+      if (categorySelect) categorySelect.value = "";
+      if (selectedCategory) selectedCategory.style.display = "none";
+      this._categorySelectionSource = null;
+      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
 
       if (!raw) {
         this.renderCategoryDropdown(this.getDefaultCategorySlice(50), {
@@ -2016,7 +2036,10 @@ Please share payment details and license key.`;
     };
 
     if (categoryClear) {
-      categoryClear.onclick = () => {
+      const clearForTyping = (e) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this._categoryUserEditing = true;
         categorySearch.value = "";
         categoryClear.style.display = "none";
         if (categorySelect) categorySelect.value = "";
@@ -2030,8 +2053,18 @@ Please share payment details and license key.`;
           showSearchHint: true,
         });
         this.refreshCategoryApiPreview();
-        this.applyPageCategoryIfAvailable();
+        categoryDropdown.style.display = "block";
+        setTimeout(() => {
+          try {
+            categorySearch.focus({ preventScroll: true });
+          } catch (err) {
+            categorySearch.focus();
+          }
+        }, 0);
       };
+      categoryClear.onmousedown = clearForTyping;
+      categoryClear.ontouchstart = clearForTyping;
+      categoryClear.onclick = clearForTyping;
     }
 
     if (!this._categoryClickBound) {
@@ -2217,6 +2250,7 @@ Please share payment details and license key.`;
       this._categoryUserPicked = true;
     }
     this._categorySelectionSource = options.source || "user";
+    this._categoryUserEditing = false;
 
     if (categorySelect) categorySelect.value = String(cat.id);
     if (categorySearch) {
@@ -2252,6 +2286,7 @@ Please share payment details and license key.`;
     if (categorySelect) categorySelect.value = String(parsed);
     if (categorySearch) categorySearch.value = `ID ${parsed}`;
     this._categorySelectionSource = options.source || "page";
+    this._categoryUserEditing = false;
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
