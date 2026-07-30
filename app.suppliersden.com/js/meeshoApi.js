@@ -83,6 +83,7 @@ const MeeshoAPI = {
     supplierId: null,
     supplierTag: null,
     categoryId: null,
+    catalogImageUrl: null,
     browserId: null,
     price: 100,
     categories: null,
@@ -225,15 +226,261 @@ const MeeshoAPI = {
     return null;
   },
 
+  parseCategoryId: function (raw) {
+    if (raw == null || raw === "") return null;
+    const id = parseInt(String(raw).trim(), 10);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  },
+
+  /** Read sscat_id from the open Meesho catalog form (edit/add listing). */
   detectCategoryId: function () {
-    const sel = document.querySelector(
-      'select[name*="sscat"], select[name*="category"], input[name*="sscat"]'
-    );
-    if (sel?.value) {
-      const id = parseInt(sel.value, 10);
-      if (Number.isFinite(id) && id > 0) return id;
+    const pick = (raw) => this.parseCategoryId(raw);
+
+    const selectors = [
+      'input[name="sscat_id"]',
+      'input[name*="sscat"]',
+      'select[name*="sscat"]',
+      'select[name*="category"]',
+      'input[name*="sub_sub_category"]',
+      'input[name*="subSubCategory"]',
+      'input[id*="sscat"]',
+      '[data-sscat-id]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const fromVal = el.value ?? el.getAttribute?.("value");
+      const id = pick(fromVal);
+      if (id) return id;
+      const dataId = pick(
+        el.dataset?.sscatId ?? el.getAttribute?.("data-sscat-id"),
+      );
+      if (dataId) return dataId;
     }
-    return this.cache.categoryId;
+
+    try {
+      const u = new URL(location.href);
+      for (const key of ["sscat_id", "sscat", "category_id", "categoryId"]) {
+        const id = pick(u.searchParams.get(key));
+        if (id) return id;
+      }
+    } catch (e) {}
+
+    for (const inp of document.querySelectorAll('input[type="hidden"]')) {
+      const name = (inp.name || "").toLowerCase();
+      if (
+        name.includes("sscat") ||
+        name.includes("sub_sub") ||
+        (name.includes("category") && name.includes("id"))
+      ) {
+        const id = pick(inp.value);
+        if (id) return id;
+      }
+    }
+
+    return null;
+  },
+
+  /**
+   * Category priority: explicit user pick → Meesho page form → Kurtis/default.
+   */
+  resolveCategoryId: function (options = {}) {
+    const userId = this.parseCategoryId(options.userCategoryId);
+    if (userId) return userId;
+
+    if (!options.skipPageDetect) {
+      const pageId = this.detectCategoryId();
+      if (pageId) return pageId;
+      if (this.cache.categoryId) return this.cache.categoryId;
+    }
+
+    if (options.allowDefault !== false) {
+      if (typeof MeeshoCategories !== "undefined") {
+        const def = MeeshoCategories.getDefaultCategoryId();
+        if (def) return def;
+      }
+      return 10004;
+    }
+
+    return null;
+  },
+
+  isMeeshoHostedImageUrl: function (url) {
+    if (!url || typeof url !== "string") return false;
+    const raw = url.trim();
+    if (!raw || raw.startsWith("blob:") || raw.startsWith("data:")) return false;
+    try {
+      const host = new URL(raw, location.origin).hostname.toLowerCase();
+      return host.includes("meesho") || host.includes("cdnmeesho");
+    } catch (e) {
+      return false;
+    }
+  },
+
+  normalizeCatalogImageUrl: function (url) {
+    if (!url || typeof url !== "string") return null;
+    const raw = url.trim();
+    if (!this.isMeeshoHostedImageUrl(raw)) return null;
+    try {
+      const u = new URL(raw, location.origin);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+      return u.href;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /** Existing product image already on the Meesho catalog page (skip re-upload when unchanged). */
+  detectCatalogImageUrl: function () {
+    const candidates = [];
+    const add = (url) => {
+      const normalized = this.normalizeCatalogImageUrl(url);
+      if (normalized) candidates.push(normalized);
+    };
+
+    for (const inp of document.querySelectorAll(
+      'input[type="hidden"], input[type="text"]',
+    )) {
+      const name = (inp.name || "").toLowerCase();
+      if (
+        (name.includes("image") || name.includes("photo") || name.includes("catalog")) &&
+        inp.value
+      ) {
+        add(inp.value);
+      }
+    }
+
+    const front = document.querySelector("#changeFrontImage");
+    const scope =
+      front?.closest(
+        'form, section, [class*="catalog"], [class*="upload"], [class*="image"]',
+      ) || document;
+
+    for (const img of scope.querySelectorAll("img[src], img[srcset]")) {
+      add(img.currentSrc || img.src);
+      const srcset = img.getAttribute("srcset");
+      if (srcset) {
+        for (const part of srcset.split(",")) {
+          const piece = part.trim().split(/\s+/)[0];
+          if (piece) add(piece);
+        }
+      }
+    }
+
+    if (!candidates.length) {
+      for (const img of document.querySelectorAll(
+        'img[src*="meesho"], img[src*="cdnmeesho"]',
+      )) {
+        add(img.currentSrc || img.src);
+      }
+    }
+
+    const scored = candidates.map((url) => {
+      const low = url.toLowerCase();
+      let score = 0;
+      if (low.includes("thumbnail") || low.includes("_thumb") || low.includes("/thumb")) {
+        score -= 10;
+      }
+      if (low.includes("icon") || low.includes("logo") || low.includes("badge")) {
+        score -= 20;
+      }
+      if (/\d{3,4}x\d{3,4}/.test(low)) score += 4;
+      return { url, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+
+    const best = scored[0]?.url || null;
+    if (best) this.cache.catalogImageUrl = best;
+    return best || this.cache.catalogImageUrl || null;
+  },
+
+  blobImageSize: async function (blob) {
+    if (!blob) return { w: 0, h: 0 };
+    if (typeof createImageBitmap === "function") {
+      const bmp = await createImageBitmap(blob);
+      const size = { w: bmp.width, h: bmp.height };
+      bmp.close?.();
+      return size;
+    }
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ w: 0, h: 0 });
+      };
+      img.src = url;
+    });
+  },
+
+  blobMatchesRemoteImage: async function (blob, remoteUrl, options = {}) {
+    if (!blob || !remoteUrl) return false;
+    try {
+      const remoteBlob =
+        options._cachedRemoteBlob ||
+        (await fetch(remoteUrl, { credentials: "include" }).then((r) => r.blob()));
+      if (!remoteBlob?.size || !blob.size) return false;
+
+      const sizeRatio = blob.size / remoteBlob.size;
+      if (sizeRatio < 0.97 || sizeRatio > 1.03) return false;
+
+      const [local, remote] = await Promise.all([
+        this.blobImageSize(blob),
+        this.blobImageSize(remoteBlob),
+      ]);
+      if (!local.w || !remote.w) return false;
+      return local.w === remote.w && local.h === remote.h;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  prepareCatalogImageReuse: async function (originalBlob) {
+    const catalogImageUrl = this.detectCatalogImageUrl();
+    if (!catalogImageUrl || !originalBlob) {
+      return { catalogImageUrl: null, sourceMatchesPage: false, cachedRemoteBlob: null };
+    }
+
+    let cachedRemoteBlob = null;
+    try {
+      cachedRemoteBlob = await fetch(catalogImageUrl, {
+        credentials: "include",
+      }).then((r) => r.blob());
+    } catch (e) {
+      console.warn("Could not fetch Meesho page image for reuse check:", e.message);
+    }
+
+    const sourceMatchesPage = cachedRemoteBlob
+      ? await this.blobMatchesRemoteImage(originalBlob, catalogImageUrl, {
+          _cachedRemoteBlob: cachedRemoteBlob,
+        })
+      : false;
+
+    if (sourceMatchesPage) {
+      console.log("♻️ Source image matches Meesho page — will reuse page URL when unchanged");
+    }
+
+    return { catalogImageUrl, sourceMatchesPage, cachedRemoteBlob };
+  },
+
+  uploadImageForPricing: async function (blob, filename, options = {}) {
+    const pageUrl = options.catalogImageUrl || this.detectCatalogImageUrl();
+    if (
+      options.preferPageImage &&
+      pageUrl &&
+      options.compareBlob !== false
+    ) {
+      const same = await this.blobMatchesRemoteImage(blob, pageUrl, options);
+      if (same) {
+        console.log("♻️ Reusing Meesho page image URL (skip upload)");
+        return pageUrl;
+      }
+    }
+    return this.uploadImage(blob, filename);
   },
 
   /** Parse ₹ from Meesho catalog pricing card (supplier panel). */
@@ -299,6 +546,11 @@ const MeeshoAPI = {
     if (formPrice && !catalog.meeshoPrice) {
       this.cache.price = formPrice;
     }
+    const pageCategoryId = this.detectCategoryId();
+    if (pageCategoryId && !this.cache.categoryId) {
+      this.cache.categoryId = pageCategoryId;
+    }
+    this.detectCatalogImageUrl();
     return { ...catalog, priceUsed: this.cache.price || 100 };
   },
 
@@ -343,8 +595,16 @@ const MeeshoAPI = {
   },
 
   setCategory: function (id) {
-    this.cache.categoryId = parseInt(id);
-    console.log("📁 Category set to:", id);
+    if (id == null || id === "" || id === false) {
+      this.cache.categoryId = null;
+      console.log("📁 Category cleared");
+      return;
+    }
+    const parsed = this.parseCategoryId(id);
+    if (parsed) {
+      this.cache.categoryId = parsed;
+      console.log("📁 Category set to:", parsed);
+    }
   },
 
   getHeaders: function () {
@@ -925,6 +1185,8 @@ const MeeshoAPI = {
       await this.preloadBadges();
     }
 
+    const imageReuse = await this.prepareCatalogImageReuse(originalBlob);
+
     const results = [];
     let bestResult = null;
     let attempt = 0;
@@ -946,9 +1208,15 @@ const MeeshoAPI = {
         const variation = await this.generateVariation(originalBlob, attempt);
         if (!variation?.blob) continue;
 
-        const imageUrl = await this.uploadImage(
+        const imageUrl = await this.uploadImageForPricing(
           variation.blob,
           `v${attempt}.jpg`,
+          {
+            catalogImageUrl: imageReuse.catalogImageUrl,
+            preferPageImage: imageReuse.sourceMatchesPage,
+            compareBlob: true,
+            _cachedRemoteBlob: imageReuse.cachedRemoteBlob,
+          },
         );
         if (!imageUrl) {
           uploadFailures++;
@@ -1206,6 +1474,8 @@ const MeeshoAPI = {
       await this.preloadBadges();
     }
 
+    const imageReuse = await this.prepareCatalogImageReuse(originalBlob);
+
     const highLine = Math.max(targetShipping + 25, 80);
     const EXPLORE_PRICED_MIN = 4;
 
@@ -1310,9 +1580,15 @@ const MeeshoAPI = {
           continue;
         }
 
-        const imageUrl = await this.uploadImage(
+        const imageUrl = await this.uploadImageForPricing(
           variation.blob,
           `tv${attempt}.jpg`,
+          {
+            catalogImageUrl: imageReuse.catalogImageUrl,
+            preferPageImage: imageReuse.sourceMatchesPage,
+            compareBlob: true,
+            _cachedRemoteBlob: imageReuse.cachedRemoteBlob,
+          },
         );
         if (!imageUrl) {
           uploadFailures++;
