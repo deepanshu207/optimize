@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, "..");
+
+const code = readFileSync(
+  resolve(root, "app.suppliersden.com/js/meeshoCategories.js"),
+  "utf8",
+);
+const window = {};
+// eslint-disable-next-line no-eval
+eval(code.replace("window.MeeshoCategories", "window.MeeshoCategories"));
+const MeeshoCategories = window.MeeshoCategories;
+
+const list = MeeshoCategories.getList();
+const women = list.filter((c) => c.rootName === "Women Fashion");
+const kurtis = list.find((c) => c.id === 10004);
+const ethnic = women.filter((c) => c.sectionName === "Ethnic Wear");
+
+let failed = 0;
+function assert(cond, msg) {
+  if (!cond) {
+    console.error("FAIL:", msg);
+    failed++;
+  } else {
+    console.log("ok:", msg);
+  }
+}
+
+assert(list.length >= 3000, `full tree has ${list.length} leaf categories`);
+assert(women.length >= 150, `Women Fashion has ${women.length} leaf categories`);
+assert(kurtis?.name === "Kurtis", "default Kurtis category exists");
+assert(
+  kurtis?.path?.includes("Women Fashion") &&
+    kurtis?.path?.includes("Ethnic Wear"),
+  "Kurtis path includes Women Fashion hierarchy",
+);
+assert(ethnic.length >= 20, `Ethnic Wear section has ${ethnic.length} categories`);
+
+const defaults = MeeshoCategories.getDefaultList(50);
+assert(
+  defaults.every((c) => c.rootName === "Women Fashion"),
+  "default dropdown slice is Women Fashion only",
+);
+assert(defaults.length === 50, "default slice returns 50 items");
+
+const womenSearch = list.filter((c) =>
+  `${c.name} ${c.path}`.toLowerCase().includes("women fashion"),
+);
+assert(womenSearch.length >= women.length, "Women Fashion searchable via path");
+
+if (failed) {
+  console.error(`\n${failed} test(s) failed`);
+  process.exit(1);
+}
+console.log("\nAll category tests passed");
