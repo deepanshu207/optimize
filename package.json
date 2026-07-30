@@ -10,7 +10,8 @@
     "deploy": "cp deploy/_headers app.suppliersden.com/_headers && wrangler deploy; status=$?; rm -f app.suppliersden.com/_headers; exit $status",
     "build:extension": "bash scripts/build-extension-zip.sh",
     "verify:deploy": "node scripts/verify-deploy.mjs",
-    "build:categories": "node scripts/build-meesho-categories.mjs"
+    "build:categories": "node scripts/build-meesho-categories.mjs",
+    "test:live-report": "node scripts/test-live-variant-report.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.14.0"
