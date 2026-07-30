@@ -2412,6 +2412,8 @@ Please share payment details and license key.`;
       console.log(`📁 Live API category (${resolved.source}):`, label);
     }
 
+    const manualMode = this.isManualShippingMode();
+
     this.isProcessing = true;
     this.shouldStop = false;
     this.testLabCurrentResults = [];
@@ -2637,6 +2639,8 @@ Please share payment details and license key.`;
         : `ID ${resolved.id}`;
       console.log(`📁 Live API category (${resolved.source}):`, label);
     }
+
+    const manualMode = this.isManualShippingMode();
 
     this.isProcessing = true;
     this.shouldStop = false;
