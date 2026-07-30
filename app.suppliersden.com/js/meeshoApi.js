@@ -159,7 +159,10 @@ const MeeshoAPI = {
     this.syncFromSession();
     this.detectAllValues();
     // Avoid API calls when user is not authenticated yet.
-    if (this.cache.supplierId) this.fetchCategories();
+    // Categories load on demand in the optimizer UI (full static tree for extension).
+    if (this.cache.supplierId && window.WEB_OPTIMIZER_MODE) {
+      this.fetchCategories();
+    }
     console.log("fetchCategories endpoint:", this.endpoints.fetchCategories);
     console.log("📦 MeeshoAPI v7.0 initialized");
   },
@@ -732,14 +735,39 @@ const MeeshoAPI = {
   },
 
   fetchCategories: async function (forceLive) {
-    if (this.cache.categories && !forceLive) return this.cache.categories;
+    if (this.cache.categories?.length && !forceLive) {
+      if (
+        !window.WEB_OPTIMIZER_MODE ||
+        this.cache.categories.length >= (MeeshoCategories?.FULL_CATEGORY_MIN || 3000)
+      ) {
+        return this.cache.categories;
+      }
+    }
     this._lastCategoryFetchWasFallback = false;
     this._lastCategoryFetchWasEmbedded = false;
 
-    const embedded = this.getEmbeddedCategories();
+    const minFull = MeeshoCategories?.FULL_CATEGORY_MIN || 3000;
 
-    // Prefer full static tree (extension + web) unless user explicitly refreshes live
-    if (embedded?.length && !forceLive) {
+    // Extension: bundled JSON is the reliable full tree (3777 leaf categories).
+    if (!window.WEB_OPTIMIZER_MODE && !forceLive) {
+      if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.ensureLoaded) {
+        try {
+          const fromLite = await MeeshoCategories.ensureLoaded();
+          if (fromLite?.length) {
+            this.cache.categories = fromLite;
+            this._lastCategoryFetchWasEmbedded = true;
+            return fromLite;
+          }
+        } catch (e) {
+          console.warn("Extension ensureLoaded failed:", e.message);
+        }
+      }
+      const fromJson = await this.loadEmbeddedCategoriesFromJson();
+      if (fromJson?.length) return fromJson;
+    }
+
+    const embedded = this.getEmbeddedCategories();
+    if (embedded?.length >= minFull && !forceLive) {
       this.cache.categories = embedded;
       this._lastCategoryFetchWasEmbedded = true;
       console.log("✅ Using embedded categories:", embedded.length);
@@ -752,7 +780,8 @@ const MeeshoAPI = {
       return imported;
     }
 
-    if (!window.WEB_OPTIMIZER_MODE || forceLive) {
+    // Live Meesho API — only when user clicks Refresh (never default for extension).
+    if (forceLive) {
       try {
         const resp = await fetch(
           this.apiUrl(
@@ -805,12 +834,22 @@ const MeeshoAPI = {
     if (window.WEB_OPTIMIZER_MODE) {
       const fromJson = await this.loadEmbeddedCategoriesFromJson();
       if (fromJson?.length) return fromJson;
-    } else if (!embedded?.length) {
+    } else {
       const fromJson = await this.loadEmbeddedCategoriesFromJson();
       if (fromJson?.length) return fromJson;
     }
 
     return null;
+  },
+
+  ensureFullCategories: async function () {
+    const minFull = MeeshoCategories?.FULL_CATEGORY_MIN || 3000;
+    if (this.cache.categories?.length >= minFull) return this.cache.categories;
+
+    const list = await this.fetchCategories(false);
+    if (list?.length) return list;
+
+    return this.cache.categories || [];
   },
 
   getEmbeddedCategories: function () {
