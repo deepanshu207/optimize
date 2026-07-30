@@ -81,6 +81,16 @@ class MeeshoShippingOptimizer {
     return "/js/liveAnalysisBridge.mjs?v=96";
   }
 
+  getLiveVariantReportModuleUrl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/js/liveVariantReport.mjs?v=1";
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=1");
+    }
+    return "/js/liveVariantReport.mjs?v=1";
+  }
+
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
       return "/js/staticFrameCompose.mjs?v=127";
@@ -135,6 +145,14 @@ class MeeshoShippingOptimizer {
       () => this.getLiveAnalysisModuleUrl(),
       () => !!window.LiveAnalysis?.runLiveAnalysis,
       "__liveAnalysisModulePromise",
+    );
+  }
+
+  async preloadLiveVariantReportModule() {
+    return this.importOptimizerModule(
+      () => this.getLiveVariantReportModuleUrl(),
+      () => !!window.LiveVariantReport?.analyzeLiveVariants,
+      "__liveVariantReportModulePromise",
     );
   }
 
@@ -3280,6 +3298,78 @@ Please share payment details and license key.`;
       if (catalog?.customerShipping > 0) return catalog.customerShipping;
     }
     return 0;
+  }
+
+  buildLiveReportContext() {
+    const categorySelect = document.getElementById("category-select");
+    const peek = this.peekCategoryForLiveApi(categorySelect);
+    const cat = peek?.cat || this.findCategoryById(peek?.id);
+    const display = cat
+      ? this.formatCategoryUi(cat, { source: peek?.source })
+      : peek?.id
+      ? this.formatCategoryIdUi(peek.id, { source: peek?.source })
+      : { title: "", path: "" };
+    const productLabel =
+      document.getElementById("custom-text")?.value?.trim() ||
+      document.querySelector("[data-product-name]")?.textContent?.trim() ||
+      "";
+
+    return {
+      generatedAt: new Date().toISOString(),
+      baselineShipping: this.getBaselineShipping(),
+      categoryId: peek?.id || "",
+      categoryName: display.title || cat?.name || "",
+      categoryPath: display.path || cat?.path || "",
+      categorySource: peek?.source || "",
+      manualMode: this.isManualShippingMode(),
+      productLabel,
+      primaryResults: this.currentResults,
+      framedExtras: this.framedExtraResults,
+      liveAnalysis: this.liveAnalysis || null,
+    };
+  }
+
+  async createLiveVariantReport() {
+    const priced = this.currentResults.filter((r) => r.shippingCost > 0);
+    if (!priced.length) {
+      OptimizerUtils.showNotification(
+        "Add live shipping prices first, then create report",
+        "error",
+      );
+      return null;
+    }
+
+    const ready = await this.preloadLiveVariantReportModule();
+    if (!ready || !window.LiveVariantReport?.createAndDownloadReport) {
+      OptimizerUtils.showNotification("Report module failed to load", "error");
+      return null;
+    }
+
+    try {
+      const context = this.buildLiveReportContext();
+      const analysis = window.LiveVariantReport.createAndDownloadReport(
+        [...this.currentResults, ...this.framedExtraResults],
+        context,
+      );
+      const rec = analysis.recommendation;
+      const pickPrices = (rec.picks || [])
+        .map((p) => `₹${p.shippingCost}`)
+        .join(" + ");
+      OptimizerUtils.showNotification(
+        rec.picks?.length
+          ? `Report saved — recommend ${pickPrices} (${rec.strategy})`
+          : "Report saved",
+        "success",
+      );
+      return analysis;
+    } catch (e) {
+      console.error("Create report failed:", e);
+      OptimizerUtils.showNotification(
+        "Report failed: " + (e.message || "unknown error"),
+        "error",
+      );
+      return null;
+    }
   }
 
   getResultsViewOptions() {
@@ -6650,6 +6740,13 @@ Please share payment details and license key.`;
       } else {
         applyBestBtn.onclick = () => this.applyImage(best);
       }
+    }
+
+    const createReportBtn = document.getElementById("create-report-btn");
+    if (createReportBtn) {
+      createReportBtn.onclick = () => {
+        void this.createLiveVariantReport();
+      };
     }
 
     const restartBtn = document.getElementById("restart-btn");

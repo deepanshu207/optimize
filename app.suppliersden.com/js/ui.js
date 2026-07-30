@@ -1192,7 +1192,16 @@ const OptimizerUI = {
     const bestStaticEst =
       bestGownEst || bestTallEst || bestPromoEst || bestShowcaseEst;
 
+    const livePricedCount = hasLive
+      ? results.filter((r) => r.shippingCost > 0).length
+      : 0;
+    const reportBtn =
+      hasLive && livePricedCount > 0
+        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report (CSV + TXT)</button>`
+        : "";
+
     html += `
+            ${reportBtn}
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
                   bestLive
