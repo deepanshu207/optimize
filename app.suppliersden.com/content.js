@@ -1062,6 +1062,31 @@ Please share payment details and license key.`;
     }
   }
 
+  async ensureFullCategories() {
+    const minFull =
+      (typeof MeeshoCategories !== "undefined" && MeeshoCategories.FULL_CATEGORY_MIN) ||
+      3000;
+
+    try {
+      if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.ensureFullCategories) {
+        const list = await MeeshoAPI.ensureFullCategories();
+        if (list?.length >= minFull) return list;
+      }
+    } catch (e) {
+      console.warn("ensureFullCategories failed:", e);
+    }
+
+    const embedded = this.safeEnsureEmbeddedCategories();
+    if (embedded?.length >= minFull) return embedded;
+
+    if (typeof MeeshoAPI !== "undefined") {
+      const list = await MeeshoAPI.fetchCategories(false);
+      if (list?.length) return list;
+    }
+
+    return embedded || [];
+  }
+
   safeEnsureEmbeddedCategories() {
     try {
       if (typeof MeeshoAPI === "undefined") return null;
@@ -1678,9 +1703,14 @@ Please share payment details and license key.`;
 
     this.allCategories = categories;
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    categorySearch.placeholder = embedded
-      ? `🔍 Search by name or ID (${categories.length} categories)…`
-      : "🔍 Search by name or ID…";
+    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
+    const countHint = document.getElementById("category-count-hint");
+    if (countHint) {
+      countHint.textContent =
+        categories.length >= 3000
+          ? `${categories.length} leaf categories loaded — type to search all`
+          : `${categories.length} categories loaded`;
+    }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
@@ -1696,7 +1726,7 @@ Please share payment details and license key.`;
       if (!raw) {
         this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
       } else {
-        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 100));
+        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
       }
       categoryDropdown.style.display = "block";
     };
@@ -1745,7 +1775,8 @@ Please share payment details and license key.`;
 
     if (!categories?.length) {
       dropdown.innerHTML =
-        '<div style="padding:12px;color:#2c2c2f;font-size:12px;">No matching categories</div>';
+        '<div class="category-empty">No matching categories — try name or ID</div>';
+      dropdown.style.display = "block";
       return;
     }
 
@@ -1755,22 +1786,25 @@ Please share payment details and license key.`;
       const safeName = String(cat.name || "").replace(/"/g, "&quot;");
       const safePath = String(path).replace(/"/g, "&quot;");
       html += `
-                <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}" 
-                     style="padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;transition:background 0.2s;">
-                    <div style="display:flex;justify-content:space-between;gap:8px;color:#2c2c2f;">
+                <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}">
+                    <div class="cat-item-name">
                       <span>${cat.name}</span>
-                      <span style="font-size:10px;color:#6b7280;white-space:nowrap;">ID ${cat.id}</span>
+                      <span class="cat-item-id">ID ${cat.id}</span>
                     </div>
-                    <div style="font-size:10px;color:#131415;margin-top:2px;">${path || "Leaf category (sscat_id)"}</div>
+                    <div class="cat-item-path">${path || "Leaf category (sscat_id)"}</div>
                 </div>
             `;
     });
     dropdown.innerHTML = html;
+    dropdown.style.display = "block";
 
     dropdown.querySelectorAll(".cat-item").forEach((item) => {
-      item.onmouseenter = () =>
-        (item.style.background = "rgba(102,126,234,0.2)");
-      item.onmouseleave = () => (item.style.background = "transparent");
+      item.onmouseenter = () => {
+        item.style.background = "rgba(102,126,234,0.12)";
+      };
+      item.onmouseleave = () => {
+        item.style.background = "transparent";
+      };
       item.onclick = () => {
         const id = parseInt(item.dataset.id, 10);
         const cat =
@@ -1831,13 +1865,8 @@ Please share payment details and license key.`;
 
     categorySearch.placeholder = "Loading categories...";
 
-    if (typeof MeeshoAPI !== "undefined") {
-      const instant = this.safeEnsureEmbeddedCategories();
-      if (instant?.length && this.bindCategoryUI(instant)) return;
-    }
-
     try {
-      const categories = await MeeshoAPI.fetchCategories();
+      const categories = await this.ensureFullCategories();
 
       if (categories?.length && this.bindCategoryUI(categories)) {
         return;

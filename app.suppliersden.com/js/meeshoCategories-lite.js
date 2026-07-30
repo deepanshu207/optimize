@@ -1,90 +1,48 @@
-#!/usr/bin/env node
-/**
- * Build js/meeshoCategories.js (web) + js/meeshoCategories-lite.js (extension)
- * from data/meesho-category-tree.json
- */
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Extension lite loader — full 3777 categories from bundled JSON
+// Regenerate: node scripts/build-meesho-categories.mjs
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(__dirname, "..", "app.suppliersden.com");
-const jsonPath = path.join(root, "data", "meesho-category-tree.json");
-const outFull = path.join(root, "js", "meeshoCategories.js");
-const outLite = path.join(root, "js", "meeshoCategories-lite.js");
+const MeeshoCategories = {
+  SOURCE: "extension-json-v1",
+  DEFAULT_CATEGORY_ID: 10004,
+  DEFAULT_ROOT: "Women Fashion",
+  COUNT: 3777,
+  WOMEN_FASHION_COUNT: 164,
+  FULL_CATEGORY_MIN: 3000,
+  LIST: [],
+  _list: null,
+  _loadPromise: null,
 
-const raw = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+  categoryJsonUrl() {
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("data/meesho-category-tree.json");
+    }
+    return null;
+  },
 
-function indexById(rows = []) {
-  const map = new Map();
-  for (const row of rows) {
-    if (row?.id != null) map.set(String(row.id), row);
-  }
-  return map;
-}
+  async ensureLoaded() {
+    if (this._list?.length >= this.FULL_CATEGORY_MIN) return this._list;
+    if (this._loadPromise) return this._loadPromise;
 
-function buildHierarchyMaps(tree) {
-  const items = tree?.items || [];
-  const superCat = indexById(
-    items.find((i) => i.type === "super-category")?.data || [],
-  );
-  const category = indexById(
-    items.find((i) => i.type === "category")?.data || [],
-  );
-  const subCategory = indexById(
-    items.find((i) => i.type === "sub-category")?.data || [],
-  );
-  return { superCat, category, subCategory };
-}
+    this._loadPromise = (async () => {
+      const url = this.categoryJsonUrl();
+      if (!url) throw new Error("Extension category JSON URL unavailable");
+      const list = await this.loadTreeFromUrl(url);
+      if (!list?.length) throw new Error("Category tree parsed empty");
+      console.log("✅ Extension loaded categories from JSON:", list.length);
+      return list;
+    })();
 
-function parseTree(tree) {
-  if (!tree) return [];
-  if (Array.isArray(tree)) {
-    return tree
-      .map((c) => ({
-        id: parseInt(c.id, 10),
-        name: c.name,
-        parentName: c.parentName || c.parent_name || "",
-        sectionName: c.sectionName || "",
-        rootName: c.rootName || "",
-        path: c.path || c.parentName || c.parent_name || "",
-      }))
-      .filter((c) => c.id && c.name);
-  }
+    try {
+      return await this._loadPromise;
+    } catch (e) {
+      console.error("Extension category JSON load failed:", e);
+      throw e;
+    } finally {
+      this._loadPromise = null;
+    }
+  },
 
-  const { superCat, category, subCategory } = buildHierarchyMaps(tree);
-  const items = tree.items || [];
-  const subSub = items.find((i) => i.type === "sub-sub-category");
-  const rows = subSub?.data || tree.data || [];
 
-  return rows
-    .map((c) => {
-      const sub = subCategory.get(String(c.parent_id));
-      const cat = sub ? category.get(String(sub.parent_id)) : null;
-      const root = cat ? superCat.get(String(cat.parent_id)) : null;
-      const parentName = c.parent_name || c.parentName || sub?.name || "";
-      const sectionName = cat?.name || "";
-      const rootName = root?.name || cat?.parent_name || "";
-      const parts = [rootName, sectionName, parentName].filter(Boolean);
-      const path = parts.length ? parts.join(" › ") : parentName;
-      return {
-        id: parseInt(c.id, 10),
-        name: c.name,
-        parentName,
-        sectionName,
-        rootName,
-        path,
-      };
-    })
-    .filter((c) => c.id && c.name);
-}
-
-const categories = parseTree(raw);
-const womenFashionCount = categories.filter(
-  (c) => c.rootName === "Women Fashion",
-).length;
-
-const SHARED_METHODS = `
   parseTree(raw) {
     if (!raw) return [];
     if (Array.isArray(raw)) {
@@ -166,7 +124,7 @@ const SHARED_METHODS = `
       .toLowerCase()
       .replace(/&/g, " and ")
       .replace(/[^a-z0-9]+/g, " ")
-      .replace(/\\s+/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
   },
 
@@ -175,7 +133,7 @@ const SHARED_METHODS = `
     if (!raw) return [];
 
     const list = this.getList();
-    const idOnly = raw.match(/^\\d{3,6}$/);
+    const idOnly = raw.match(/^\d{3,6}$/);
     if (idOnly) {
       const exact = this.findById(idOnly[0]);
       return exact ? [exact] : [];
@@ -219,11 +177,11 @@ const SHARED_METHODS = `
 
   formatDisplay(cat, options = {}) {
     if (!cat?.id) return { title: "", detail: "", apiId: null };
-    const title = \`\${cat.name} · ID \${cat.id}\`;
+    const title = `${cat.name} · ID ${cat.id}`;
     const path = cat.path || cat.parentName || "";
     const parts = [];
     if (path) parts.push(path);
-    parts.push(\`sscat_id \${cat.id} for live pricing\`);
+    parts.push(`sscat_id ${cat.id} for live pricing`);
     if (options.source === "page") parts.push("from Meesho page");
     else if (options.source === "default") parts.push("default");
     else if (options.source === "user") parts.push("your selection");
@@ -235,8 +193,8 @@ const SHARED_METHODS = `
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return { title: "", detail: "", apiId: null };
     }
-    const title = \`Category ID \${parsed}\`;
-    const parts = [\`sscat_id \${parsed} for live pricing\`];
+    const title = `Category ID ${parsed}`;
+    const parts = [`sscat_id ${parsed} for live pricing`];
     if (options.source === "page") parts.push("from Meesho page");
     return { title, detail: parts.join(" · "), apiId: parsed, path: "" };
   },
@@ -249,79 +207,7 @@ const SHARED_METHODS = `
     window.MEESHO_EMBEDDED_CATEGORIES = this._list;
     return this._list;
   },
-`;
 
-const fullJs = `// Auto-generated from data/meesho-category-tree.json — do not edit by hand
-// Regenerate: node scripts/build-meesho-categories.mjs
-
-const MeeshoCategories = {
-  SOURCE: "embedded-v2",
-  DEFAULT_CATEGORY_ID: 10004,
-  DEFAULT_ROOT: "Women Fashion",
-  COUNT: ${categories.length},
-  WOMEN_FASHION_COUNT: ${womenFashionCount},
-  FULL_CATEGORY_MIN: 3000,
-  LIST: ${JSON.stringify(categories)},
-  _list: null,
-${SHARED_METHODS}
 };
 
 window.MeeshoCategories = MeeshoCategories;
-window.MEESHO_EMBEDDED_CATEGORIES = MeeshoCategories.getList();
-`;
-
-const liteJs = `// Extension lite loader — full ${categories.length} categories from bundled JSON
-// Regenerate: node scripts/build-meesho-categories.mjs
-
-const MeeshoCategories = {
-  SOURCE: "extension-json-v1",
-  DEFAULT_CATEGORY_ID: 10004,
-  DEFAULT_ROOT: "Women Fashion",
-  COUNT: ${categories.length},
-  WOMEN_FASHION_COUNT: ${womenFashionCount},
-  FULL_CATEGORY_MIN: 3000,
-  LIST: [],
-  _list: null,
-  _loadPromise: null,
-
-  categoryJsonUrl() {
-    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("data/meesho-category-tree.json");
-    }
-    return null;
-  },
-
-  async ensureLoaded() {
-    if (this._list?.length >= this.FULL_CATEGORY_MIN) return this._list;
-    if (this._loadPromise) return this._loadPromise;
-
-    this._loadPromise = (async () => {
-      const url = this.categoryJsonUrl();
-      if (!url) throw new Error("Extension category JSON URL unavailable");
-      const list = await this.loadTreeFromUrl(url);
-      if (!list?.length) throw new Error("Category tree parsed empty");
-      console.log("✅ Extension loaded categories from JSON:", list.length);
-      return list;
-    })();
-
-    try {
-      return await this._loadPromise;
-    } catch (e) {
-      console.error("Extension category JSON load failed:", e);
-      throw e;
-    } finally {
-      this._loadPromise = null;
-    }
-  },
-
-${SHARED_METHODS}
-};
-
-window.MeeshoCategories = MeeshoCategories;
-`;
-
-fs.writeFileSync(outFull, fullJs);
-fs.writeFileSync(outLite, liteJs);
-console.log(
-  `Wrote ${outFull} and ${outLite} (${categories.length} categories, ${womenFashionCount} Women Fashion)`,
-);
