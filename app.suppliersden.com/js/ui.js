@@ -1068,6 +1068,11 @@ const OptimizerUI = {
           ? ` · ${results.filter((r) => r.noPid).length} kept without PID`
           : ""
       }</div>
+                ${
+                  options.livePricingCategory?.id
+                    ? `<div style="font-size:10px;color:#2563eb;margin-top:6px;padding:6px 8px;background:rgba(37,99,235,0.08);border-radius:6px;">Live prices checked with <strong>sscat_id ${options.livePricingCategory.id}</strong> · ${options.livePricingCategory.name || "category"}<br><span style="color:#6b7280;">Upload on Meesho must use the same leaf category or shipping may differ (e.g. ₹61 here vs ₹79 on listing).</span></div>`
+                    : ""
+                }
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
         `;
