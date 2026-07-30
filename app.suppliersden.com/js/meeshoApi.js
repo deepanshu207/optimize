@@ -89,6 +89,45 @@ const MeeshoAPI = {
     categories: null,
   },
 
+  /** Frozen sscat for an in-flight live pricing run (prevents page/default drift). */
+  _pricingRun: null,
+
+  beginPricingRun: function (meta = {}) {
+    const sscatId = this.parseCategoryId(meta.sscatId);
+    if (!sscatId) return null;
+    this._pricingRun = {
+      sscatId,
+      categoryName: meta.categoryName || "",
+      categorySource: meta.categorySource || "",
+      locked: true,
+    };
+    this.cache.categoryId = sscatId;
+    console.log(
+      `📁 Live pricing locked to sscat_id ${sscatId}${
+        meta.categoryName ? ` (${meta.categoryName})` : ""
+      }`,
+    );
+    return this._pricingRun;
+  },
+
+  endPricingRun: function () {
+    this._pricingRun = null;
+  },
+
+  getPricingSscatId: function (fallback) {
+    if (this._pricingRun?.sscatId) return this._pricingRun.sscatId;
+    const cached = this.parseCategoryId(this.cache.categoryId);
+    if (cached) return cached;
+    return fallback ?? 18044;
+  },
+
+  getPricingRunMeta: function () {
+    if (this._pricingRun) return { ...this._pricingRun };
+    const id = this.parseCategoryId(this.cache.categoryId);
+    if (!id) return null;
+    return { sscatId: id, categorySource: "cache" };
+  },
+
   syncFromSession: function () {
     if (!window.WEB_OPTIMIZER_MODE) return;
     let s = {};
@@ -662,7 +701,7 @@ const MeeshoAPI = {
       this.cache.price = formPrice;
     }
     const pageCategoryId = this.detectCategoryId();
-    if (pageCategoryId && !this.cache.categoryId) {
+    if (pageCategoryId && !this.cache.categoryId && !this._pricingRun?.locked) {
       this.cache.categoryId = pageCategoryId;
     }
     this.detectCatalogImageUrl();
@@ -1201,7 +1240,7 @@ const MeeshoAPI = {
 
   getShippingCharges: async function (imageUrl, options = {}) {
     this.syncCatalogPricing();
-    const sscatId = options.sscatId || this.cache.categoryId || 18044;
+    const sscatId = this.parseCategoryId(options.sscatId) || this.getPricingSscatId(18044);
     const supplierId = this.cache.supplierId;
     const primaryPrice =
       options.price ||
@@ -1299,7 +1338,9 @@ const MeeshoAPI = {
       const url = row.uploadedUrl || row.pricingImageUrl;
       if (!url || String(url).startsWith("data:")) continue;
       if (onProgress) onProgress(i + 1, results.length, row.name);
-      const priceData = await this.getShippingCharges(url);
+      const priceData = await this.getShippingCharges(url, {
+        sscatId: this.getPricingSscatId(),
+      });
       if (priceData?.shippingCharges == null) continue;
       row.shippingCost = priceData.shippingCharges;
       row.duplicatePid = priceData.duplicatePid || row.duplicatePid;
@@ -1323,10 +1364,21 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
+    pricingOptions = {},
   ) {
     console.log(
       `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
+    const pricingRun =
+      pricingOptions.sscatId &&
+      this.beginPricingRun({
+        sscatId: pricingOptions.sscatId,
+        categoryName: pricingOptions.categoryName,
+        categorySource: pricingOptions.categorySource,
+      });
+    const pricingSscat = () => this.getPricingSscatId(18044);
+
+    try {
     this.syncCatalogPricing();
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
@@ -1386,7 +1438,9 @@ const MeeshoAPI = {
         }
         uploadFailures = 0;
 
-        const priceData = await this.getShippingCharges(imageUrl);
+        const priceData = await this.getShippingCharges(imageUrl, {
+          sscatId: pricingSscat(),
+        });
         if (!priceData || priceData.shippingCharges == null) {
           const localResult = this.buildLocalSearchResult(variation, attempt, {
             pricingImageUrl: imageUrl,
@@ -1415,6 +1469,7 @@ const MeeshoAPI = {
           liveTotalPrice: priceData.totalPrice,
           meeshoPriceUsed: priceData.priceUsed,
           noPid: !pid,
+          pricingCategoryId: pricingSscat(),
         };
         results.push(result);
 
@@ -1468,7 +1523,13 @@ const MeeshoAPI = {
       attempts: attempt,
       noPidCount,
       verifiedCount: results.filter((r) => r.isVerified).length,
+      pricingCategoryId: pricingSscat(),
+      pricingCategoryName: pricingOptions.categoryName || "",
+      pricingCategorySource: pricingOptions.categorySource || "",
     };
+    } finally {
+      if (pricingRun) this.endPricingRun();
+    }
   },
 
   /**
@@ -1612,10 +1673,21 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
+    pricingOptions = {},
   ) {
     console.log(
       `🧪 Adaptive Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
+    const pricingRun =
+      pricingOptions.sscatId &&
+      this.beginPricingRun({
+        sscatId: pricingOptions.sscatId,
+        categoryName: pricingOptions.categoryName,
+        categorySource: pricingOptions.categorySource,
+      });
+    const pricingSscat = () => this.getPricingSscatId(18044);
+
+    try {
     this.syncCatalogPricing();
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
@@ -1752,7 +1824,9 @@ const MeeshoAPI = {
         }
         uploadFailures = 0;
 
-        const priceData = await this.getShippingCharges(imageUrl);
+        const priceData = await this.getShippingCharges(imageUrl, {
+          sscatId: pricingSscat(),
+        });
         if (!priceData || priceData.shippingCharges == null) {
           const localResult = this.buildLocalSearchResult(variation, attempt, {
             pricingImageUrl: imageUrl,
@@ -1790,6 +1864,7 @@ const MeeshoAPI = {
           noPid: !pid,
           variantStyle: variation.variantStyle || "standard",
           meta: variation.meta || null,
+          pricingCategoryId: pricingSscat(),
         };
         results.push(result);
         pricedCount++;
@@ -1854,7 +1929,13 @@ const MeeshoAPI = {
       skipHigherCount,
       recoveryTriggered,
       verifiedCount: results.filter((r) => r.isVerified).length,
+      pricingCategoryId: pricingSscat(),
+      pricingCategoryName: pricingOptions.categoryName || "",
+      pricingCategorySource: pricingOptions.categorySource || "",
     };
+    } finally {
+      if (pricingRun) this.endPricingRun();
+    }
   },
 
   // Generate variation with random border 20-80px and badges 50-200px
