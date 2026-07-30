@@ -128,14 +128,30 @@ const MeeshoCategories = {
       .trim();
   },
 
+  /** Extract numeric sscat_id from plain ID, prefixes, or "Name (ID)" display text. */
+  parseQueryId(raw) {
+    const text = String(raw || "").trim();
+    if (!text) return null;
+    if (/^\d{3,6}$/.test(text)) return parseInt(text, 10);
+    const prefix = text.match(
+      /^(?:#|id\s*[:=]?\s*|sscat(?:_id)?\s*[:=]?\s*)(\d{3,6})$/i,
+    );
+    if (prefix) return parseInt(prefix[1], 10);
+    const suffixParen = text.match(/\((\d{3,6})\)\s*$/);
+    if (suffixParen) return parseInt(suffixParen[1], 10);
+    const suffixDot = text.match(/·\s*id\s*(\d{3,6})\s*$/i);
+    if (suffixDot) return parseInt(suffixDot[1], 10);
+    return null;
+  },
+
   search(query, limit = 100) {
     const raw = String(query || "").trim();
     if (!raw) return [];
 
     const list = this.getList();
-    const idOnly = raw.match(/^\d{3,6}$/);
-    if (idOnly) {
-      const exact = this.findById(idOnly[0]);
+    const parsedId = this.parseQueryId(raw);
+    if (parsedId) {
+      const exact = this.findById(parsedId);
       return exact ? [exact] : [];
     }
 
