@@ -1197,7 +1197,7 @@ const OptimizerUI = {
       : 0;
     const reportBtn =
       hasLive && livePricedCount > 0
-        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report (CSV + TXT)</button>`
+        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
         : "";
 
     html += `

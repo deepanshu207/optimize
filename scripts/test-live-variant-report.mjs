@@ -24,10 +24,18 @@ function v(price, extra = {}) {
     name: extra.name || `Var ${price}`,
     shippingCost: price,
     isVerified: extra.verified ?? true,
-    duplicatePid: extra.dup ?? false,
+    duplicatePid: extra.dup ? extra.pid || 922043735 : extra.pid || null,
     noPid: extra.noPid ?? false,
     variantStyle: extra.style || "standard",
-    meta: { path: extra.path || "studio", kb: extra.kb || 48 },
+    meta: {
+      path: extra.path || "studio",
+      kb: extra.kb || 48,
+      canvasW: extra.canvasW || 1200,
+      canvasH: extra.canvasH || 1200,
+      borderPx: extra.borderPx ?? 40,
+      badgeCount: extra.badgeCount ?? 3,
+      jpegQuality: extra.jpegQuality ?? 0.82,
+    },
   };
 }
 
@@ -67,10 +75,10 @@ assert(
 
 // Tie-break: prefer verified non-dup at same price
 const ex5 = pickRecommendedVariants([
-  v(50, { id: "a", verified: false, dup: true }),
-  v(50, { id: "b", verified: true, dup: false }),
+  v(50, { id: "a", verified: false, dup: false }),
+  v(50, { id: "b", verified: true, dup: true, pid: 111 }),
 ]);
-assert(ex5.picks[0].variantId === "b", "tie-break prefers verified non-dup PID");
+assert(ex5.picks[0].variantId === "b", "tie-break prefers verified with PID");
 
 // No priced variants
 const ex6 = pickRecommendedVariants([{ variantId: "x", shippingCost: 0 }]);
