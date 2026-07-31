@@ -58,6 +58,8 @@ class MeeshoShippingOptimizer {
     this._catLitePool = [];
     this._catLiteInteractionAt = 0;
     this._staticCatWired = false;
+    this._catAzWired = false;
+    this._clothesCategories = [];
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -979,6 +981,7 @@ class MeeshoShippingOptimizer {
     this._catLiteWired = false;
     this._catLiteInteractionAt = 0;
     this._staticCatWired = false;
+    this._catAzWired = false;
 
     this.setupMainEvents();
 
@@ -1372,7 +1375,7 @@ Please share payment details and license key.`;
       this.wireCatLiteSearch();
       this.wireCategorySearchHandlers();
     } else {
-      this.wireStaticCategoryPicker();
+      this.wireCategoryAzDropdown();
     }
 
     // Live vs Test Lab tabs (web + extension modal)
@@ -1513,6 +1516,11 @@ Please share payment details and license key.`;
 
     const staticFilter = document.getElementById("cat-static-filter");
     if (staticFilter && document.activeElement === staticFilter && !options.force) {
+      return false;
+    }
+
+    const azSelect = document.getElementById("cat-az-select");
+    if (azSelect && document.activeElement === azSelect && !options.force) {
       return false;
     }
 
@@ -1869,7 +1877,7 @@ Please share payment details and license key.`;
 
   isInsideCategorySearchUI(target) {
     return !!target?.closest?.(
-      ".cat-lite-box, .category-search-wrap, .category-quick-wrap, .category-quick-section, #category-dropdown, #category-quick-dropdown, #category-clear-btn, #category-quick-clear-btn, #cat-lite-clear",
+      ".cat-az-box, .cat-lite-box, .category-search-wrap, .category-quick-wrap, .category-quick-section, #category-dropdown, #category-quick-dropdown, #category-clear-btn, #category-quick-clear-btn, #cat-lite-clear, #cat-az-clear, #cat-az-select",
     );
   }
 
@@ -1891,27 +1899,151 @@ Please share payment details and license key.`;
     }
   }
 
-  /** Mobile/Kiwi: unlock text fields inside fixed extension modal. */
-  wireMobileTextInput(input, focusBtnId) {
-    if (!input) return;
-    input.readOnly = false;
-    input.disabled = false;
-    input.setAttribute("readonly", "readonly");
-    const unlock = () => input.removeAttribute("readonly");
-    input.addEventListener("touchstart", unlock, { passive: true });
-    input.addEventListener("focus", unlock);
-    const focusBtn = focusBtnId ? document.getElementById(focusBtnId) : null;
-    if (focusBtn) {
-      focusBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        unlock();
-        try {
-          input.focus({ preventScroll: true });
-        } catch {
-          input.focus();
-        }
+  isClothesCategory(cat) {
+    if (!cat?.name) return false;
+    const root = cat.rootName || String(cat.path || "").split("›")[0]?.trim() || "";
+    if (root === "Women Fashion" || root === "Men Fashion") return true;
+    if (root === "Bags, Luggage & Travel Accessories") return true;
+    const hay = [cat.name, cat.parentName, cat.sectionName, cat.path, root]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const apparelRx =
+      /wear|dress|shirt|kurta|jean|frock|top|bottom|ethnic|western|cloth|apparel|uniform|night|sock|inner|lingerie|sweater|jacket|coat|hoodie|short|skirt|legging|saree|kurti|lehenga|blouse|gown|dungaree|romper|onesie|vest|blazer|tracksuit|sportswear|gym|swim|maternity|tshirt|jegging|palazzo|salwar|dupatta|shawl|cardigan|trouser|pant|suit|camisole|jumpsuit|overalls|raincoat|thermal|brief|boxer|bra|panty|nightwear|sleepwear|loungewear|activewear|footwear|sandal|shoe|slipper|boot|sneaker|belt|handbag|backpack|clutch|tote|scarf|cap|hat|glove|stole|tie|hair band|hair clip|jewel|watch|sunglass|wallet|bag|luggage/i;
+    if (root === "Kids & Toys" || root === "Kids") return apparelRx.test(hay);
+    if (root === "Sports & Fitness") return apparelRx.test(hay);
+    return false;
+  }
+
+  filterClothesCategories(categories) {
+    const list = categories || this.allCategories || [];
+    return list
+      .filter((c) => this.isClothesCategory(c))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getClothesCategoryPool() {
+    if (this._clothesCategories?.length) return this._clothesCategories;
+    const filtered = this.filterClothesCategories(this.allCategories);
+    if (filtered.length) return filtered;
+    return this.filterClothesCategories(this.getCatLiteFallbackPool());
+  }
+
+  updateCategoryAzHint() {
+    const hint = document.getElementById("category-az-hint");
+    if (!hint) return;
+    const pool = this.getClothesCategoryPool();
+    const total = this.allCategories?.length || 3777;
+    hint.textContent = `${pool.length} clothes & fashion categories (from ${total} total) — tap A–Z, then pick from dropdown`;
+  }
+
+  /** Extension: A–Z letters + native dropdown — no keyboard typing. */
+  wireCategoryAzDropdown() {
+    const lettersRoot = document.getElementById("cat-az-letters");
+    const select = document.getElementById("cat-az-select");
+    if (!lettersRoot || !select) return;
+
+    if (!this._catAzWired) {
+      this._catAzWired = true;
+
+      lettersRoot.addEventListener("click", (e) => {
+        const btn = e.target.closest(".cat-az-letter");
+        if (!btn || btn.disabled) return;
+        const letter = btn.dataset.letter;
+        lettersRoot.querySelectorAll(".cat-az-letter").forEach((b) => {
+          b.classList.remove("active");
+        });
+        btn.classList.add("active");
+        const pool = this.getClothesCategoryPool();
+        const items = pool
+          .filter((c) => c.name?.toUpperCase().startsWith(letter))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        select.innerHTML =
+          `<option value="">— Tap letter above, then pick —</option>` +
+          items
+            .map(
+              (c) =>
+                `<option value="${c.id}">${this.escapeHtmlLite(c.name)} (ID ${c.id})</option>`,
+            )
+            .join("");
       });
+
+      select.addEventListener("change", () => {
+        const id = parseInt(select.value, 10);
+        if (!id) return;
+        const pool = this.getClothesCategoryPool();
+        const cat =
+          pool.find((c) => c.id === id) ||
+          this.findCategoryById(id) || { id, name: select.options[select.selectedIndex]?.text || `ID ${id}` };
+        this.applyCategorySelection(cat, { source: "user" });
+      });
+
+      const clearBtn = document.getElementById("cat-az-clear");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          select.value = "";
+          lettersRoot.querySelectorAll(".cat-az-letter").forEach((b) => {
+            b.classList.remove("active");
+          });
+          this._categoryUserPicked = false;
+          this._categorySearchCommittedValue = "";
+          const categorySelect = document.getElementById("category-select");
+          if (categorySelect) categorySelect.value = "";
+          const selectedDiv = document.getElementById("selected-category");
+          if (selectedDiv) selectedDiv.style.display = "none";
+          const selDetail = document.getElementById("selected-category-detail");
+          if (selDetail) selDetail.textContent = "";
+          const categorySearch = document.getElementById("category-search");
+          if (categorySearch) categorySearch.value = "";
+          if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+          this.refreshCategoryApiPreview();
+          this.applyPageCategoryIfAvailable();
+        });
+      }
+    }
+
+    this.refreshCategoryAzDropdown();
+  }
+
+  refreshCategoryAzDropdown(preferredLetter = "K") {
+    const lettersRoot = document.getElementById("cat-az-letters");
+    const select = document.getElementById("cat-az-select");
+    if (!lettersRoot || !select) return;
+
+    const pool = this.getClothesCategoryPool();
+    this.updateCategoryAzHint();
+
+    const available = new Set(
+      pool
+        .map((c) => (c.name?.[0] || "").toUpperCase())
+        .filter((ch) => /[A-Z]/.test(ch)),
+    );
+
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    lettersRoot.innerHTML = letters
+      .map((l) => {
+        const has = available.has(l);
+        return `<button type="button" class="cat-az-letter" data-letter="${l}" ${has ? "" : "disabled"}>${l}</button>`;
+      })
+      .join("");
+
+    const pickLetter =
+      available.has(preferredLetter)
+        ? preferredLetter
+        : [...available].sort()[0];
+    if (pickLetter) {
+      const btn = lettersRoot.querySelector(`[data-letter="${pickLetter}"]`);
+      if (btn && !btn.disabled) btn.click();
+    } else {
+      select.innerHTML = '<option value="">No clothes categories loaded</option>';
+    }
+
+    const selectedId = parseInt(
+      document.getElementById("category-select")?.value,
+      10,
+    );
+    if (Number.isFinite(selectedId) && selectedId > 0) {
+      select.value = String(selectedId);
     }
   }
 
@@ -1919,130 +2051,18 @@ Please share payment details and license key.`;
     return this.getCatLiteFallbackPool();
   }
 
-  paintStaticCategoryChips(activeId) {
-    const root = document.getElementById("cat-static-chips");
-    if (!root) return;
-    root.querySelectorAll(".cat-static-chip").forEach((btn) => {
-      const id = parseInt(btn.dataset.id, 10);
-      btn.classList.toggle("active", Number.isFinite(activeId) && id === activeId);
-    });
-  }
-
-  /** Extension: static 10 categories — tap chips (no API). Optional filter input. */
-  wireStaticCategoryPicker() {
-    if (this._staticCatWired) return;
-    const chipsRoot = document.getElementById("cat-static-chips");
-    if (!chipsRoot) return;
-
-    this._staticCatWired = true;
-    const pool = () => this.getStaticCategoryList();
-
-    chipsRoot.querySelectorAll(".cat-static-chip").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id, 10);
-        const name = btn.dataset.name || btn.textContent.trim();
-        const cat =
-          pool().find((c) => c.id === id) || { id, name: name.split(/\s+/)[0] };
-        this.applyCategorySelection(cat, { source: "user" });
-        const filter = document.getElementById("cat-static-filter");
-        if (filter) filter.value = `${cat.name} (${cat.id})`;
-        this.paintStaticCategoryChips(id);
-      });
-    });
-
-    const filter = document.getElementById("cat-static-filter");
-    if (filter) {
-      this.prepareSearchInput(filter);
-      this.wireMobileTextInput(filter, "cat-static-focus-btn");
-      filter.addEventListener("input", () => {
-        const q = filter.value.trim().toLowerCase();
-        chipsRoot.querySelectorAll(".cat-static-chip").forEach((btn) => {
-          if (!q) {
-            btn.style.display = "";
-            return;
-          }
-          const hay = `${btn.dataset.name} ${btn.dataset.id}`.toLowerCase();
-          btn.style.display = hay.includes(q) ? "" : "none";
-        });
-      });
-      filter.addEventListener("change", () => {
-        const raw = filter.value.trim();
-        if (!raw) return;
-        const idFromParen = raw.match(/\((\d{3,6})\)\s*$/);
-        const id = idFromParen
-          ? parseInt(idFromParen[1], 10)
-          : /^\d{3,6}$/.test(raw)
-            ? parseInt(raw, 10)
-            : NaN;
-        if (!Number.isFinite(id)) return;
-        const cat =
-          pool().find((c) => c.id === id) || this.findCategoryById(id) || {
-            id,
-            name: raw.replace(/\s*\(\d+\)\s*$/, "").trim() || `ID ${id}`,
-          };
-        this.applyCategorySelection(cat, { source: "user" });
-        this.paintStaticCategoryChips(cat.id);
-      });
-    }
-
-    document.querySelectorAll(".cat-letter-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const letter = (btn.dataset.letter || "").toLowerCase();
-        if (filter) filter.value = letter ? letter : "";
-        chipsRoot.querySelectorAll(".cat-static-chip").forEach((chip) => {
-          if (!letter) {
-            chip.style.display = "";
-            return;
-          }
-          const name = (chip.dataset.name || "").toLowerCase();
-          chip.style.display = name.startsWith(letter) ? "" : "none";
-        });
-        document.querySelectorAll(".cat-letter-btn").forEach((b) => {
-          b.classList.toggle("active", b === btn);
-        });
-      });
-    });
-
-    const clearBtn = document.getElementById("cat-static-clear");
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => {
-        if (filter) filter.value = "";
-        chipsRoot.querySelectorAll(".cat-static-chip").forEach((btn) => {
-          btn.style.display = "";
-        });
-        document.querySelectorAll(".cat-letter-btn").forEach((b) => {
-          b.classList.toggle("active", !b.dataset.letter);
-        });
-        this.paintStaticCategoryChips(null);
-        this._categoryUserPicked = false;
-        this._categorySearchCommittedValue = "";
-        const select = document.getElementById("category-select");
-        if (select) select.value = "";
-        const selectedDiv = document.getElementById("selected-category");
-        if (selectedDiv) selectedDiv.style.display = "none";
-        const selDetail = document.getElementById("selected-category-detail");
-        if (selDetail) selDetail.textContent = "";
-        const categorySearch = document.getElementById("category-search");
-        if (categorySearch) categorySearch.value = "";
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.refreshCategoryApiPreview();
-        this.applyPageCategoryIfAvailable();
-      });
-    }
-  }
-
   getCatLiteFallbackPool() {
     return [
-      { id: 10004, name: "Kurtis", path: "Women Fashion › Ethnic Wear" },
-      { id: 10011, name: "Jeans", path: "Women Fashion › Western Wear" },
-      { id: 10012, name: "Jeggings", path: "Women Fashion › Western Wear" },
-      { id: 10003, name: "Sarees", path: "Women Fashion › Ethnic Wear" },
-      { id: 10000, name: "Tshirts", path: "Men Fashion › Mens Clothing" },
-      { id: 10001, name: "Shirts", path: "Men Fashion › Mens Clothing" },
-      { id: 10005, name: "Suits", path: "Women Fashion › Ethnic Wear" },
-      { id: 10006, name: "Leggings", path: "Women Fashion › Western Wear" },
-      { id: 10007, name: "Dresses", path: "Women Fashion › Western Wear" },
-      { id: 10008, name: "Tops", path: "Women Fashion › Western Wear" },
+      { id: 10004, name: "Kurtis", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
+      { id: 10011, name: "Jeans", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
+      { id: 10012, name: "Jeggings", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
+      { id: 10003, name: "Sarees", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
+      { id: 10000, name: "Tshirts", rootName: "Men Fashion", path: "Men Fashion › Mens Clothing" },
+      { id: 10001, name: "Shirts", rootName: "Men Fashion", path: "Men Fashion › Mens Clothing" },
+      { id: 10005, name: "Suits", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
+      { id: 10006, name: "Leggings", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
+      { id: 10007, name: "Dresses", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
+      { id: 10008, name: "Tops", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
     ];
   }
 
@@ -2628,6 +2648,7 @@ Please share payment details and license key.`;
     if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
     this.allCategories = categories;
+    this._clothesCategories = this.filterClothesCategories(categories);
     this._catLitePool = this.getDefaultCategorySlice(10);
     if (!this._catLitePool?.length) {
       this._catLitePool = this.getCatLiteFallbackPool();
@@ -2659,7 +2680,7 @@ Please share payment details and license key.`;
       this.wireCategorySearchHandlers();
       this.wireCategoryQuickSearchHandlers();
     } else {
-      this.wireStaticCategoryPicker();
+      this.wireCategoryAzDropdown();
     }
 
     console.log("✅ Loaded", categories.length, "categories");
@@ -2809,11 +2830,17 @@ Please share payment details and license key.`;
     if (liteInput) {
       liteInput.value = `${cat.name} (${cat.id})`;
     }
-    const staticFilter = document.getElementById("cat-static-filter");
-    if (staticFilter) {
-      staticFilter.value = `${cat.name} (${cat.id})`;
+    const azSelect = document.getElementById("cat-az-select");
+    if (azSelect) {
+      let opt = azSelect.querySelector(`option[value="${cat.id}"]`);
+      if (!opt) {
+        opt = document.createElement("option");
+        opt.value = String(cat.id);
+        opt.textContent = `${cat.name} (ID ${cat.id})`;
+        azSelect.appendChild(opt);
+      }
+      azSelect.value = String(cat.id);
     }
-    this.paintStaticCategoryChips(cat.id);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
@@ -2854,9 +2881,8 @@ Please share payment details and license key.`;
     }
     const liteInput = document.getElementById("cat-lite-input");
     if (liteInput) liteInput.value = `ID ${parsed}`;
-    const staticFilter = document.getElementById("cat-static-filter");
-    if (staticFilter) staticFilter.value = `ID ${parsed}`;
-    this.paintStaticCategoryChips(parsed);
+    const azSelect = document.getElementById("cat-az-select");
+    if (azSelect) azSelect.value = String(parsed);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
