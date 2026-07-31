@@ -86,22 +86,12 @@ class MeeshoShippingOptimizer {
 
   getLiveVariantReportModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveVariantReport.mjs?v=3";
+      return "/js/liveVariantReport.mjs?v=2";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=3");
+      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=2");
     }
-    return "/js/liveVariantReport.mjs?v=3";
-  }
-
-  getLocalPriceModelModuleUrl() {
-    if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/localPriceModel.mjs?v=1";
-    }
-    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/localPriceModel.mjs?v=1");
-    }
-    return "/js/localPriceModel.mjs?v=1";
+    return "/js/liveVariantReport.mjs?v=2";
   }
 
   getStaticComposeModuleUrl() {
@@ -167,133 +157,6 @@ class MeeshoShippingOptimizer {
       () => !!window.LiveVariantReport?.analyzeLiveVariants,
       "__liveVariantReportModulePromise",
     );
-  }
-
-  async preloadLocalPriceModelModule() {
-    const loaded = await this.importOptimizerModule(
-      () => this.getLocalPriceModelModuleUrl(),
-      () => !!window.LocalPriceModel?.applyLocalPriceEstimates,
-      "__localPriceModelModulePromise",
-    );
-    if (loaded) return true;
-    return this.installInlineLocalPriceModelFallback();
-  }
-
-  async installInlineLocalPriceModelFallback() {
-    if (window.LocalPriceModel?.applyLocalPriceEstimates) return true;
-    await this.preloadLiveVariantReportModule();
-    const report = window.LiveVariantReport;
-    if (!report?.parseReportCsv || !report?.pickRecommendedVariants) return false;
-
-    const key = "meesho_local_price_reports_v1";
-    const n = (v, fallback = 0) => {
-      const num = Number(v);
-      return Number.isFinite(num) ? num : fallback;
-    };
-    const feature = (row = {}, context = {}) => {
-      const meta = row.meta || {};
-      return {
-        categoryId: String(context.categoryId || row.categoryId || ""),
-        path: meta.path || row.path || row.variantStyle || "",
-        kb: n(meta.kb || meta.actualKb || meta.targetKb || row.kb, 0),
-      };
-    };
-    const loadStoredSamples = () => {
-      try {
-        const rows = JSON.parse(localStorage.getItem(key) || "[]");
-        return Array.isArray(rows) ? rows : [];
-      } catch (e) {
-        return [];
-      }
-    };
-    const saveStoredSamples = (samples) => {
-      const rows = (samples || []).filter((s) => n(s.shippingCost) > 0).slice(-2500);
-      try {
-        localStorage.setItem(key, JSON.stringify(rows));
-      } catch (e) {}
-      return rows;
-    };
-    const addStoredSamples = (samples) => saveStoredSamples([...loadStoredSamples(), ...(samples || [])]);
-    const samplesFromReportCsv = (text) => {
-      const parsed = report.parseReportCsv(text);
-      const meta = parsed.meta || {};
-      return (parsed.variants || [])
-        .filter((row) => n(row.shippingCost) > 0)
-        .map((row) => ({
-          shippingCost: n(row.shippingCost),
-          categoryId: String(meta.category_id || meta.categoryId || ""),
-          features: feature(row, { categoryId: meta.category_id || meta.categoryId || "" }),
-          source: "report_csv_fallback",
-        }));
-    };
-    const samplesFromAnalysis = (analysis) => {
-      const ctx = analysis?.context || {};
-      return (analysis?.variantRows || [])
-        .filter((row) => n(row.shippingCost) > 0)
-        .map((row) => ({
-          shippingCost: n(row.shippingCost),
-          categoryId: String(ctx.categoryId || ""),
-          features: feature(row, { categoryId: ctx.categoryId || "" }),
-          source: "analysis_fallback",
-        }));
-    };
-    const fallbackPrice = (row) => {
-      const meta = row.meta || {};
-      const existing = n(row.estShipping || meta.estInr, 0);
-      if (existing > 0) return existing;
-      const kb = n(meta.kb || meta.actualKb || meta.targetKb, 48);
-      if (kb <= 18) return 50;
-      if (kb <= 28) return 60;
-      if (kb <= 42) return 70;
-      if (kb <= 60) return 80;
-      if (kb <= 90) return 100;
-      return 120;
-    };
-    const applyLocalPriceEstimates = (variants, samples = [], context = {}) => {
-      const rows = (variants || []).map((row, index) => {
-        const f = feature(row, context);
-        const ranked = (samples || [])
-          .filter((s) => n(s.shippingCost) > 0)
-          .map((s) => {
-            const sf = s.features || {};
-            let score = 1;
-            if (context.categoryId && s.categoryId && String(context.categoryId) === String(s.categoryId)) score += 20;
-            if (sf.path && f.path && String(sf.path).toLowerCase() === String(f.path).toLowerCase()) score += 10;
-            if (sf.kb && f.kb) score += Math.max(0, 20 - Math.abs(sf.kb - f.kb) * 0.5);
-            return { s, score };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
-        const price = ranked.length
-          ? Math.round(ranked.reduce((sum, r) => sum + n(r.s.shippingCost) * r.score, 0) / ranked.reduce((sum, r) => sum + r.score, 0))
-          : fallbackPrice(row);
-        return {
-          ...row,
-          variantId: row.variantId || `local-${index + 1}`,
-          shippingCost: price,
-          estShipping: price,
-          isVerified: false,
-          liveVerified: false,
-          localOnly: true,
-          localPrice: true,
-          localPriceSource: ranked.length ? "inline_report_model" : "inline_kb_fallback",
-          _frozenPricing: { shippingCost: price, estShipping: price, metaEstInr: price },
-          meta: { ...(row.meta || {}), estInr: price },
-        };
-      }).sort((a, b) => (a.shippingCost || 999) - (b.shippingCost || 999));
-      return { results: rows, samplesUsed: samples.length, recommendation: report.pickRecommendedVariants(rows) };
-    };
-
-    window.LocalPriceModel = {
-      STORAGE_KEY: key,
-      samplesFromReportCsv,
-      samplesFromAnalysis,
-      loadStoredSamples,
-      saveStoredSamples,
-      addStoredSamples,
-      applyLocalPriceEstimates,
-    };
-    return true;
   }
 
   isStaticPromoRow(row) {
@@ -1067,9 +930,6 @@ class MeeshoShippingOptimizer {
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
-    this._categoryUiBound = false;
-    this._categoryOutsideBound = false;
-
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
     const isNarrow = window.matchMedia("(max-width: 640px)").matches;
@@ -1084,28 +944,19 @@ class MeeshoShippingOptimizer {
             display: flex;
             justify-content: ${isNarrow ? "stretch" : "center"};
             align-items: ${isNarrow ? "stretch" : "center"};
+            backdrop-filter: blur(5px);
         `;
 
     const content = document.createElement("div");
     content.style.cssText = isNarrow
-      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;"
+      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
       : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
     content.innerHTML = OptimizerUI.createModalHTML();
 
     this.modal.appendChild(content);
     document.body.appendChild(this.modal);
 
-    content.addEventListener("click", (e) => e.stopPropagation());
-    content.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
-
     this.setupMainEvents();
-
-    const verBadge = document.getElementById("ext-version-badge");
-    if (verBadge && typeof chrome !== "undefined" && chrome.runtime?.getManifest) {
-      try {
-        verBadge.textContent = `v${chrome.runtime.getManifest().version}`;
-      } catch (e) {}
-    }
 
     this.modal.onclick = (e) => {
       if (e.target === this.modal) this.closeModal();
@@ -1127,9 +978,6 @@ class MeeshoShippingOptimizer {
       return;
     }
     if (this.modal) {
-      this.hideCategoryDropdown();
-      const portal = document.getElementById("category-dropdown-portal");
-      if (portal) portal.remove();
       this.modal.remove();
       this.modal = null;
     }
@@ -1309,9 +1157,6 @@ Please share payment details and license key.`;
     const fileInput = document.getElementById("image-input");
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
-    const localPriceBtn = document.getElementById("local-price-btn");
-    const importReportBtn = document.getElementById("import-report-btn");
-    const localReportInput = document.getElementById("local-report-input");
     const tabbedGenerateMode = this.isTabbedOptimizerUI() && generateBtn;
 
     const showFilePreview = (file) => {
@@ -1366,7 +1211,6 @@ Please share payment details and license key.`;
       const gownStaticBtn = document.getElementById("generate-gown-static-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
-        if (localPriceBtn) localPriceBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (showcaseBtn) showcaseBtn.disabled = false;
         if (promoBtn) promoBtn.disabled = false;
@@ -1426,33 +1270,6 @@ Please share payment details and license key.`;
 
       generateBtn.disabled = !getUploadFile();
       generateBtn.onclick = runGenerate;
-      if (localPriceBtn) {
-        localPriceBtn.disabled = !getUploadFile();
-        localPriceBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const file = getUploadFile();
-          if (!file) {
-            OptimizerUtils.showNotification("Choose an image first", "error");
-            return;
-          }
-          void this.generateLocalPriceResults(file);
-        };
-      }
-      if (importReportBtn && localReportInput) {
-        importReportBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          localReportInput.click();
-        };
-        localReportInput.onchange = (e) => {
-          void this.importLocalPriceReports(e.target.files);
-          localReportInput.value = "";
-        };
-        void this.preloadLocalPriceModelModule().then(() => {
-          this.updateLocalPriceStatus();
-        });
-      }
       const testGenBtn = document.getElementById("test-generate-btn");
       if (testGenBtn) {
         testGenBtn.disabled = !getUploadFile();
@@ -1549,54 +1366,24 @@ Please share payment details and license key.`;
 
   categoryMatchesQuery(cat, query) {
     if (!query) return true;
-    const hay = this.categorySearchText(cat);
-    const q = this.normalizeCategorySearchText(query);
-    return q.split(" ").filter(Boolean).every((token) => hay.includes(token));
-  }
-
-  normalizeCategorySearchText(text) {
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText) {
-      return MeeshoCategories.normalizeSearchText(text);
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.search) {
+      const hits = MeeshoCategories.search(query, 200);
+      return hits.some((c) => c.id === cat.id);
     }
-    return String(text || "")
+    const hay = [
+      cat.id,
+      cat.name,
+      cat.parentName,
+      cat.sectionName,
+      cat.rootName,
+      cat.path,
+    ]
+      .filter(Boolean)
+      .join(" ")
       .toLowerCase()
-      .replace(/&/g, " and ")
-      .replace(/[^a-z0-9]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  categorySearchText(cat) {
-    return this.normalizeCategorySearchText(
-      [cat?.id, cat?.name, cat?.parentName, cat?.sectionName, cat?.rootName, cat?.path]
-        .filter(Boolean)
-        .join(" "),
-    );
-  }
-
-  ensureCategorySearchIndex(categories = this.allCategories || []) {
-    if (
-      this._categorySearchIndex &&
-      this._categorySearchIndexSource === categories &&
-      this._categorySearchIndex.length === categories.length
-    ) {
-      return this._categorySearchIndex;
-    }
-
-    const byId = new Map();
-    const index = (categories || []).map((cat) => {
-      byId.set(Number(cat.id), cat);
-      return {
-        cat,
-        idText: String(cat.id || ""),
-        nameText: this.normalizeCategorySearchText(cat.name),
-        hay: this.categorySearchText(cat),
-      };
-    });
-    this._categoryById = byId;
-    this._categorySearchIndex = index;
-    this._categorySearchIndexSource = categories;
-    return index;
+      .replace(/&/g, " and ");
+    const q = String(query).toLowerCase().replace(/&/g, " and ");
+    return hay.includes(q);
   }
 
   parseCategorySearchQuery(raw) {
@@ -1671,7 +1458,8 @@ Please share payment details and license key.`;
     const result = this.resolveCategoryFromSearchInput(raw);
     if (result.status === "resolved" && result.cat) {
       this.applyCategorySelection(result.cat, { source: "user" });
-      this.hideCategoryDropdown();
+      const categoryDropdown = document.getElementById("category-dropdown");
+      if (categoryDropdown) categoryDropdown.style.display = "none";
       return result;
     }
     return result;
@@ -1688,32 +1476,14 @@ Please share payment details and license key.`;
       return cat ? [cat] : [];
     }
 
-    const query = this.normalizeCategorySearchText(parsed.text);
-    if (!query) return [];
-
-    const tokens = query.split(" ").filter(Boolean);
-    const buckets = [[], [], [], [], []];
-    const maxScanHits = Math.max(limit * 5, 40);
-    let collected = 0;
-    for (const row of this.ensureCategorySearchIndex()) {
-      if (!tokens.every((token) => row.hay.includes(token))) continue;
-      if (row.nameText === query || row.idText === parsed.text) {
-        buckets[0].push(row.cat);
-      } else if (row.nameText.startsWith(query)) {
-        buckets[1].push(row.cat);
-      } else if (row.nameText.includes(query)) {
-        buckets[2].push(row.cat);
-      } else if (row.hay.includes(query)) {
-        buckets[3].push(row.cat);
-      } else {
-        buckets[4].push(row.cat);
-      }
-      collected++;
-      if (collected >= maxScanHits && buckets[0].length + buckets[1].length >= limit) {
-        break;
-      }
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.search) {
+      return MeeshoCategories.search(parsed.text, limit);
     }
-    return buckets.flat().slice(0, limit);
+
+    const query = parsed.text.toLowerCase();
+    return (this.allCategories || [])
+      .filter((cat) => this.categoryMatchesQuery(cat, query))
+      .slice(0, limit);
   }
 
   resolveCategorySelectionForGenerate(categorySelect) {
@@ -1806,25 +1576,10 @@ Please share payment details and license key.`;
     const categoryDropdown = document.getElementById("category-dropdown");
     if (!categorySearch || !categoryDropdown) return;
     if (this.allCategories?.length) {
-      if (this._categoryUiBound) return;
       this.bindCategoryUI(this.allCategories);
       return;
     }
     void this.loadCategoryDropdown();
-  }
-
-  markCategoryEditingActive(ms = 4000) {
-    this._categoryUserEditing = true;
-    this._categoryEditingPauseUntil = Date.now() + ms;
-  }
-
-  isCategoryEditingActive() {
-    const search = document.getElementById("category-search");
-    return (
-      !!this._categoryUserEditing ||
-      document.activeElement === search ||
-      Date.now() < (this._categoryEditingPauseUntil || 0)
-    );
   }
 
   showPostResultsControls() {
@@ -1895,7 +1650,6 @@ Please share payment details and license key.`;
     let attempts = 0;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
-      if (this.isCategoryEditingActive()) return;
 
       attempts++;
       const gotCategory =
@@ -1912,7 +1666,6 @@ Please share payment details and license key.`;
 
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
-    if (this.isCategoryEditingActive()) return;
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.syncCatalogPricing?.();
       MeeshoAPI.detectCatalogImageUrl?.();
@@ -1939,7 +1692,6 @@ Please share payment details and license key.`;
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
-    const localPriceBtn = document.getElementById("local-price-btn");
     const bootMsg = document.getElementById("boot-msg");
 
     const showPreview = (dataUrl) => {
@@ -1966,7 +1718,6 @@ Please share payment details and license key.`;
     const enable = () => {
       if (generateBtn) generateBtn.disabled = false;
       if (testGenBtn) testGenBtn.disabled = false;
-      if (localPriceBtn) localPriceBtn.disabled = false;
       ["generate-showcase-btn", "generate-promo-lifestyle-btn", "generate-tall-static-btn", "generate-gown-static-btn"].forEach(
         (id) => {
           const btn = document.getElementById(id);
@@ -1986,7 +1737,6 @@ Please share payment details and license key.`;
   }
 
   async importPageImageIfNeeded() {
-    if (this.isCategoryEditingActive()) return false;
     if (this._uploadUserPicked || this._uploadUserCleared) return false;
     if (this._pendingFile || document.getElementById("image-input")?.files?.[0]) {
       return false;
@@ -1994,9 +1744,6 @@ Please share payment details and license key.`;
     if (typeof MeeshoAPI === "undefined" || !MeeshoAPI.detectCatalogImageUrl) {
       return false;
     }
-    const now = Date.now();
-    if (now - (this._pageImageImportCheckedAt || 0) < 3000) return false;
-    this._pageImageImportCheckedAt = now;
 
     const url = MeeshoAPI.detectCatalogImageUrl();
     if (!url) return false;
@@ -2022,7 +1769,6 @@ Please share payment details and license key.`;
   findCategoryById(id) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    if (this._categoryById?.has(parsed)) return this._categoryById.get(parsed);
     const fromAll = this.allCategories?.find((c) => c.id === parsed);
     if (fromAll) return fromAll;
     if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
@@ -2129,11 +1875,11 @@ Please share payment details and license key.`;
       };
     }
 
-    if (typeof MeeshoAPI !== "undefined" && !userPick && !this.isCategoryEditingActive()) {
+    if (typeof MeeshoAPI !== "undefined" && !userPick) {
       MeeshoAPI.syncCatalogPricing?.();
     }
 
-    if (typeof MeeshoAPI !== "undefined" && !this.isCategoryEditingActive()) {
+    if (typeof MeeshoAPI !== "undefined") {
       const pageId = MeeshoAPI.detectCategoryId?.();
       if (pageId > 0) {
         return {
@@ -2180,63 +1926,7 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
-  getCategoryDropdownEl() {
-    if (window.WEB_OPTIMIZER_MODE) {
-      return document.getElementById("category-dropdown");
-    }
-    const inline = document.getElementById("category-results-inline");
-    if (inline) return inline;
-    return document.getElementById("category-dropdown");
-  }
-
-  positionCategoryDropdownPortal() {
-    if (window.WEB_OPTIMIZER_MODE) return;
-    const panel = document.getElementById("category-results-inline");
-    if (!panel || panel.style.display === "none") return;
-    try {
-      panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    } catch (e) {}
-  }
-
-  hideCategoryDropdown() {
-    ["category-dropdown", "category-results-inline", "category-dropdown-portal"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.style.display = "none";
-      el.innerHTML = "";
-    });
-    const wrap = document.getElementById("category-search-wrap");
-    if (wrap) wrap.classList.remove("category-search-active");
-    const status = document.getElementById("category-search-status");
-    if (status) {
-      status.style.display = "none";
-      status.textContent = "";
-    }
-  }
-
-  updateCategorySearchStatus(query, count) {
-    const status = document.getElementById("category-search-status");
-    if (!status || window.WEB_OPTIMIZER_MODE) return;
-    const q = String(query || "").trim();
-    if (!q) {
-      if (count > 0) {
-        status.style.display = "block";
-        status.textContent = `Tap a category below or type to search ${this.allCategories?.length || ""} categories`;
-        return;
-      }
-      status.style.display = "none";
-      status.textContent = "";
-      return;
-    }
-    status.style.display = "block";
-    if (count > 0) {
-      status.textContent = `${count} match${count === 1 ? "" : "es"} for "${q}" — tap a result in the green box`;
-    } else {
-      status.textContent = `No match for "${q}" — try numeric ID like 10123`;
-    }
-  }
-
-  // Load categories into dropdown (same search + ID flow for web and extension)
+  // Load categories into dropdown
   bindCategoryUI(categories) {
     const categorySearch = document.getElementById("category-search");
     const categoryDropdown = document.getElementById("category-dropdown");
@@ -2253,7 +1943,6 @@ Please share payment details and license key.`;
     categorySearch.setAttribute("enterkeyhint", "search");
 
     this.allCategories = categories;
-    this.ensureCategorySearchIndex(categories);
     if (typeof MeeshoCategories !== "undefined") {
       MeeshoCategories._list = categories;
       if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
@@ -2271,36 +1960,22 @@ Please share payment details and license key.`;
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
-
-    if (this._categoryUiBound) {
-      return true;
-    }
-    this._categoryUiBound = true;
-
-    categorySearch.readOnly = false;
-    categorySearch.disabled = false;
+    const isExtensionCategoryUi = !window.WEB_OPTIMIZER_MODE;
 
     const renderSearchDropdown = (raw, immediate = false) => {
       const query = String(raw || "").trim();
       const run = () => {
         this._categorySearchFrame = null;
         if (!query) {
-          if (!window.WEB_OPTIMIZER_MODE) {
-            const defaults = this.getDefaultCategorySlice(40);
-            this.renderCategoryDropdown(defaults, {
-              query: "",
-              showSearchHint: true,
-              idle: true,
-            });
-            this.updateCategorySearchStatus("", defaults.length);
-          } else {
-            this.hideCategoryDropdown();
-          }
+          categoryDropdown.style.display = "none";
+          categoryDropdown.innerHTML = "";
           return;
         }
-        const hits = this.filterCategoriesForSearch(query, 60);
-        this.renderCategoryDropdown(hits, { query, showSearchHint: false });
-        this.updateCategorySearchStatus(query, hits.length);
+        this.renderCategoryDropdown(
+          this.filterCategoriesForSearch(query, 60),
+          { query, showSearchHint: false },
+        );
+        categoryDropdown.style.display = "block";
       };
 
       if (this._categorySearchFrame && typeof cancelAnimationFrame === "function") {
@@ -2317,86 +1992,39 @@ Please share payment details and license key.`;
     };
 
     categorySearch.onfocus = () => {
-      this.markCategoryEditingActive(8000);
-      const wrap = document.getElementById("category-search-wrap");
-      if (wrap) wrap.classList.add("category-search-active");
+      this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-      try {
-        categorySearch.scrollIntoView({ block: "center", behavior: "smooth" });
-      } catch (e) {}
       setTimeout(() => {
         try {
           if (raw && this._categorySelectionSource) categorySearch.select();
         } catch (e) {}
       }, 0);
-      renderSearchDropdown(raw, true);
-    };
-
-    categorySearch.onblur = () => {
-      setTimeout(() => {
-        const active = document.activeElement;
-        if (
-          active === categorySearch ||
-          active?.closest?.("#category-dropdown") ||
-          active?.closest?.("#category-results-inline") ||
-          active?.closest?.("#category-dropdown-portal")
-        ) {
-          return;
-        }
-        const wrap = document.getElementById("category-search-wrap");
-        if (wrap) wrap.classList.remove("category-search-active");
-        const raw = categorySearch.value.trim();
-        if (!raw) {
-          this.hideCategoryDropdown();
-          return;
-        }
-        const selected = parseInt(categorySelect?.value, 10);
-        const parsed = this.parseCategorySearchQuery(raw);
-        if (parsed.mode !== "id" || selected === parsed.id) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat?.id) {
-          this.applyCategoryFromSearchInput(raw);
-        }
-      }, 200);
+      if (raw) {
+        renderSearchDropdown(raw, true);
+      } else {
+        categoryDropdown.style.display = "none";
+        categoryDropdown.innerHTML = "";
+      }
     };
 
     const focusCategorySearch = () => {
-      this.markCategoryEditingActive(8000);
+      this._categoryUserEditing = true;
       categorySearch.readOnly = false;
       categorySearch.disabled = false;
-      categorySearch.focus({ preventScroll: false });
       try {
-        categorySearch.setSelectionRange(
-          categorySearch.value.length,
-          categorySearch.value.length,
-        );
-      } catch (e) {}
+        categorySearch.focus({ preventScroll: true });
+      } catch (e) {
+        categorySearch.focus();
+      }
     };
     categorySearch.onclick = focusCategorySearch;
-
-    const searchWrap = document.getElementById("category-search-wrap");
-    if (searchWrap && !window.WEB_OPTIMIZER_MODE) {
-      searchWrap.addEventListener(
-        "touchend",
-        (e) => {
-          if (e.target?.closest?.("#category-clear")) return;
-          e.preventDefault();
-          focusCategorySearch();
-        },
-        { passive: false },
-      );
-    }
-    categorySearch.addEventListener(
-      "touchstart",
-      () => {
-        this.markCategoryEditingActive(8000);
-      },
-      { passive: true },
-    );
+    categorySearch.ontouchstart = focusCategorySearch;
+    categorySearch.ontouchend = focusCategorySearch;
+    categorySearch.onpointerup = focusCategorySearch;
 
     categorySearch.oninput = () => {
-      this.markCategoryEditingActive(8000);
+      this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       if (categorySelect?.value || this._categorySelectionSource) {
@@ -2411,7 +2039,7 @@ Please share payment details and license key.`;
 
     categorySearch.onkeydown = (e) => {
       if (e.key === "Escape") {
-        this.hideCategoryDropdown();
+        categoryDropdown.style.display = "none";
         categorySearch.blur();
         return;
       }
@@ -2429,7 +2057,7 @@ Please share payment details and license key.`;
       }
       if (result.status === "ambiguous" && result.hits?.length) {
         this.applyCategorySelection(result.hits[0], { source: "user" });
-        this.hideCategoryDropdown();
+        categoryDropdown.style.display = "none";
         OptimizerUtils.showNotification(
           `Selected top match: ${result.hits[0].name} (ID ${result.hits[0].id})`,
           "info",
@@ -2444,12 +2072,35 @@ Please share payment details and license key.`;
       );
     };
 
+    categorySearch.onblur = isExtensionCategoryUi
+      ? null
+      : () => {
+          setTimeout(() => {
+            const active = document.activeElement;
+            if (
+              active === categorySearch ||
+              active?.closest?.("#category-dropdown")
+            ) {
+              return;
+            }
+            const raw = categorySearch.value.trim();
+            if (!raw) return;
+            const selected = parseInt(categorySelect?.value, 10);
+            const parsed = this.parseCategorySearchQuery(raw);
+            if (parsed.mode !== "id" || selected === parsed.id) return;
+            const result = this.resolveCategoryFromSearchInput(raw, 12);
+            if (result.status === "resolved" && result.cat?.id) {
+              this.applyCategoryFromSearchInput(raw);
+            }
+          }, 200);
+        };
+
     if (categoryClear) {
       const clearForTyping = (e) => {
         if (e && typeof e.stopPropagation === "function") {
           e.stopPropagation();
         }
-        this.markCategoryEditingActive();
+        this._categoryUserEditing = true;
         categorySearch.value = "";
         categoryClear.style.display = "none";
         if (categorySelect) categorySelect.value = "";
@@ -2459,18 +2110,21 @@ Please share payment details and license key.`;
         this._categoryUserPicked = false;
         this._categorySelectionSource = null;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.hideCategoryDropdown();
-        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+        categoryDropdown.style.display = "none";
+        categoryDropdown.innerHTML = "";
+        this.refreshCategoryApiPreview();
         focusCategorySearch();
+        setTimeout(() => {
+          focusCategorySearch();
+        }, 0);
       };
-      categoryClear.onmousedown = (e) => {
-        e.preventDefault();
-        clearForTyping(e);
-      };
+      categoryClear.onmousedown = clearForTyping;
+      categoryClear.ontouchend = clearForTyping;
+      categoryClear.onpointerup = clearForTyping;
       categoryClear.onclick = clearForTyping;
     }
 
-    if (!this._categoryOutsideBound) {
+    if (!isExtensionCategoryUi && !this._categoryOutsideBound) {
       this._categoryOutsideBound = true;
       this._handleCategoryOutsideTap = (e) => {
         const target = e.target;
@@ -2481,8 +2135,6 @@ Please share payment details and license key.`;
           (node) =>
             node?.id === "category-search" ||
             node?.id === "category-dropdown" ||
-            node?.id === "category-results-inline" ||
-            node?.id === "category-dropdown-portal" ||
             node?.id === "category-clear" ||
             node?.classList?.contains?.("cat-item"),
         );
@@ -2490,13 +2142,11 @@ Please share payment details and license key.`;
           isInsideCategoryUi ||
           target?.closest?.("#category-search") ||
           target?.closest?.("#category-dropdown") ||
-          target?.closest?.("#category-results-inline") ||
-          target?.closest?.("#category-dropdown-portal") ||
           target?.closest?.("#category-clear")
         ) {
           return;
         }
-        this.hideCategoryDropdown();
+        currentDropdown.style.display = "none";
       };
       document.addEventListener("pointerdown", this._handleCategoryOutsideTap, true);
       document.addEventListener("click", this._handleCategoryOutsideTap, true);
@@ -2522,14 +2172,8 @@ Please share payment details and license key.`;
   }
 
   renderCategoryDropdown(categories, options = {}) {
-    const dropdown = this.getCategoryDropdownEl();
-    if (!dropdown) return 0;
-
-    const inlineDropdown = document.getElementById("category-dropdown");
-    if (!window.WEB_OPTIMIZER_MODE && inlineDropdown) {
-      inlineDropdown.style.display = "none";
-      inlineDropdown.innerHTML = "";
-    }
+    const dropdown = document.getElementById("category-dropdown");
+    if (!dropdown) return;
 
     const query = String(options.query || "").trim();
     const helperHtml = options.showSearchHint
@@ -2569,33 +2213,30 @@ Please share payment details and license key.`;
     });
     dropdown.innerHTML = html;
     dropdown.style.display = "block";
-    if (!window.WEB_OPTIMIZER_MODE) {
-      const wrap = document.getElementById("category-search-wrap");
-      if (wrap) wrap.classList.add("category-search-active");
-      this.positionCategoryDropdownPortal();
-    }
 
-    const handleCategoryPick = (event) => {
-      const item = event.target?.closest?.(".cat-item");
-      if (!item || !dropdown.contains(item)) return;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      const id = parseInt(item.dataset.id, 10);
-      const cat =
-        this.findCategoryById(id) || {
-          id,
-          name: item.dataset.name,
-          path: item.dataset.path,
-          parentName: item.dataset.path,
-        };
-      this.applyCategorySelection(cat, { source: "user" });
-      this._categoryUserPicked = true;
-      this.hideCategoryDropdown();
-    };
-
-    dropdown.onclick = handleCategoryPick;
-    dropdown.addEventListener("touchend", handleCategoryPick, { passive: false });
-    return categories.length;
+    dropdown.querySelectorAll(".cat-item").forEach((item) => {
+      item.onmouseenter = () => {
+        item.style.background = "rgba(102,126,234,0.12)";
+      };
+      item.onmouseleave = () => {
+        item.style.background = "transparent";
+      };
+      item.onclick = () => {
+        const id = parseInt(item.dataset.id, 10);
+        const cat =
+          this.allCategories?.find((c) => c.id === id) ||
+          this.findCategoryById(id) || {
+            id,
+            name: item.dataset.name,
+            path: item.dataset.path,
+            parentName: item.dataset.path,
+          };
+        this.applyCategorySelection(cat, { source: "user" });
+        this._categoryUserPicked = true;
+        const categoryDropdown = document.getElementById("category-dropdown");
+        if (categoryDropdown) categoryDropdown.style.display = "none";
+      };
+    });
   }
 
   async loadCategoryDropdown() {
@@ -2688,7 +2329,6 @@ Please share payment details and license key.`;
     }
     this._categorySelectionSource = options.source || "user";
     this._categoryUserEditing = false;
-    this._categoryEditingPauseUntil = 0;
 
     if (categorySelect) categorySelect.value = String(cat.id);
     if (categorySearch) {
@@ -2725,7 +2365,6 @@ Please share payment details and license key.`;
     if (categorySearch) categorySearch.value = `ID ${parsed}`;
     this._categorySelectionSource = options.source || "page";
     this._categoryUserEditing = false;
-    this._categoryEditingPauseUntil = 0;
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
@@ -2791,11 +2430,6 @@ Please share payment details and license key.`;
     const categorySelect = document.getElementById("category-select");
     if (categorySelect?.value) {
       this.refreshCategoryApiPreview();
-      return;
-    }
-
-    if (!window.WEB_OPTIMIZER_MODE) {
-      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
       return;
     }
 
@@ -3107,7 +2741,6 @@ Please share payment details and license key.`;
     const imageInput = document.getElementById("image-input");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
-    const localPriceBtn = document.getElementById("local-price-btn");
     const generateSticky = document.getElementById("generate-sticky");
 
     if (processingArea) {
@@ -3158,7 +2791,6 @@ Please share payment details and license key.`;
         this.getActiveOptimizerTab() === "test" ? "block" : "none";
       testGenBtn.disabled = !hasFile;
     }
-    if (localPriceBtn) localPriceBtn.disabled = !hasFile;
 
     this.setupOptimizerTabs();
     this.syncStaticPromoChrome();
@@ -4124,11 +3756,10 @@ Please share payment details and license key.`;
   }
 
   async createLiveVariantReport() {
-    const reportRows = [...this.currentResults, ...this.framedExtraResults];
-    const priced = reportRows.filter((r) => r.shippingCost > 0 || r.estShipping > 0);
+    const priced = this.currentResults.filter((r) => r.shippingCost > 0);
     if (!priced.length) {
       OptimizerUtils.showNotification(
-        "Add live/local prices first, then create report",
+        "Add live shipping prices first, then create report",
         "error",
       );
       return null;
@@ -4143,10 +3774,9 @@ Please share payment details and license key.`;
     try {
       const context = this.buildLiveReportContext();
       const analysis = window.LiveVariantReport.createAndDownloadReport(
-        reportRows,
+        [...this.currentResults, ...this.framedExtraResults],
         context,
       );
-      await this.saveLocalPriceSamplesFromAnalysis(analysis);
       const rec = analysis.recommendation;
       const pickPrices = (rec.picks || [])
         .map((p) => `₹${p.shippingCost}`)
@@ -4165,178 +3795,6 @@ Please share payment details and license key.`;
         "error",
       );
       return null;
-    }
-  }
-
-  async saveLocalPriceSamplesFromAnalysis(analysis) {
-    const ready = await this.preloadLocalPriceModelModule();
-    if (!ready || !window.LocalPriceModel?.samplesFromAnalysis) return 0;
-    const samples = window.LocalPriceModel.samplesFromAnalysis(analysis);
-    const all = window.LocalPriceModel.addStoredSamples(samples);
-    this.updateLocalPriceStatus(all.length);
-    return samples.length;
-  }
-
-  updateLocalPriceStatus(count) {
-    const el = document.getElementById("local-price-status");
-    if (!el) return;
-    const n =
-      count ??
-      (window.LocalPriceModel?.loadStoredSamples
-        ? window.LocalPriceModel.loadStoredSamples().length
-        : 0);
-    el.textContent = n
-      ? `Local price model: ${n} report row(s) saved. More reports = better estimates.`
-      : "Learns from imported/saved reports. No live API used.";
-  }
-
-  async importLocalPriceReports(files) {
-    const list = Array.from(files || []).filter(Boolean);
-    if (!list.length) return;
-    const ready = await this.preloadLocalPriceModelModule();
-    if (!ready || !window.LocalPriceModel?.samplesFromReportCsv) {
-      OptimizerUtils.showNotification("Local price model failed to load", "error");
-      return;
-    }
-
-    let imported = 0;
-    for (const file of list) {
-      try {
-        const text = await file.text();
-        const samples = window.LocalPriceModel.samplesFromReportCsv(text);
-        if (samples.length) {
-          window.LocalPriceModel.addStoredSamples(samples);
-          imported += samples.length;
-        }
-      } catch (e) {
-        console.warn("Report import failed:", file?.name, e);
-      }
-    }
-    const total = window.LocalPriceModel.loadStoredSamples().length;
-    this.updateLocalPriceStatus(total);
-    OptimizerUtils.showNotification(
-      imported
-        ? `Imported ${imported} report row(s) for local pricing`
-        : "No priced rows found in selected report(s)",
-      imported ? "success" : "error",
-    );
-  }
-
-  async generateLocalPriceResults(file) {
-    if (!file) {
-      OptimizerUtils.showNotification("Choose an image first", "error");
-      return;
-    }
-    if (this.isProcessing) return;
-    const ready = await this.preloadLocalPriceModelModule();
-    if (!ready || !window.LocalPriceModel?.applyLocalPriceEstimates) {
-      OptimizerUtils.showNotification("Local price model failed to load", "error");
-      return;
-    }
-    if (typeof MeeshoAPI === "undefined" || !MeeshoAPI.generateLocalVariations) {
-      OptimizerUtils.showNotification("Local generator unavailable", "error");
-      return;
-    }
-
-    this.isProcessing = true;
-    this.shouldStop = false;
-    this.lastProcessedFile = file;
-    this.currentResults = [];
-    this.framedExtraResults = [];
-    this.liveAnalysis = null;
-
-    const uploadArea = document.getElementById("upload-area");
-    const processingArea = document.getElementById("processing-area");
-    const resultsArea = document.getElementById("results-area");
-    const generateBtn = document.getElementById("generate-btn");
-    const localBtn = document.getElementById("local-price-btn");
-    const sections = document.querySelectorAll(".opt-section");
-
-    if (uploadArea) uploadArea.style.display = "none";
-    if (generateBtn) generateBtn.disabled = true;
-    if (localBtn) localBtn.disabled = true;
-    sections.forEach((s) => (s.style.display = "none"));
-    if (resultsArea) {
-      resultsArea.style.display = "none";
-      resultsArea.innerHTML = "";
-    }
-
-    const maxAttempts =
-      parseInt(document.getElementById("max-attempts")?.value, 10) || 50;
-    const count = Math.min(Math.max(maxAttempts, 10), 60);
-    const startTime = Date.now();
-    const renderProgress = (attempt, max) => {
-      if (!processingArea) return;
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      processingArea.style.display = "block";
-      processingArea.innerHTML = this.getSmartModeHTML(
-        attempt,
-        max,
-        0,
-        null,
-        0,
-        elapsed,
-        { phaseLabel: "Local price model" },
-      );
-      const stopBtn = document.getElementById("stop-btn");
-      if (stopBtn) stopBtn.onclick = () => { this.shouldStop = true; };
-    };
-
-    try {
-      const blob = file instanceof Blob ? file : new Blob([await file.arrayBuffer()]);
-      await this.ensureOriginalImageUrl(file);
-      this.gatherSettings();
-      renderProgress(0, count);
-      const local = await MeeshoAPI.generateLocalVariations(
-        blob,
-        count,
-        (attempt, max) => renderProgress(attempt, max),
-        () => this.shouldStop,
-      );
-      const variants = [
-        ...(local.results || []).map((r, i) => this.mapResultFromApi(r, i)),
-        ...(local.framedExtras || []).map((r, i) => this.mapResultFromApi(r, i + 30000)),
-      ];
-      if (!variants.length) throw new Error("No local variants generated");
-
-      const samples = window.LocalPriceModel.loadStoredSamples();
-      const context = this.buildLiveReportContext();
-      const priced = window.LocalPriceModel.applyLocalPriceEstimates(
-        variants,
-        samples,
-        context,
-      );
-      this.currentResults = priced.results.slice(0, 10);
-      this.framedExtraResults = [];
-      this.showFramedExtras = false;
-      this.liveAnalysis = null;
-
-      if (processingArea) processingArea.style.display = "none";
-      if (resultsArea) {
-        resultsArea.style.display = "block";
-        delete resultsArea.dataset.view;
-        resultsArea.innerHTML = OptimizerUI.getResultsHTML(
-          this.currentResults,
-          this.getResultsViewOptions(),
-        );
-        this.setupResultsEvents();
-      }
-      this.showPostResultsControls();
-      this.updateLocalPriceStatus(samples.length);
-      OptimizerUtils.showNotification(
-        `Local price ready — top ${this.currentResults.length} from ${samples.length} saved row(s)`,
-        "success",
-      );
-    } catch (e) {
-      console.error("Local price generation failed:", e);
-      OptimizerUtils.showNotification("Local price failed: " + (e.message || "unknown"), "error");
-      if (processingArea) processingArea.style.display = "none";
-      if (uploadArea) uploadArea.style.display = "block";
-      sections.forEach((s) => (s.style.display = "block"));
-    } finally {
-      if (generateBtn) generateBtn.disabled = false;
-      if (localBtn) localBtn.disabled = false;
-      this.isProcessing = false;
     }
   }
 

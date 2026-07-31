@@ -692,15 +692,10 @@ export function downloadReportBlob(content, filename, mime) {
   link.href = url;
   link.download = filename;
   link.rel = "noopener";
-  const parent = document.body || document.documentElement;
-  if (parent) parent.appendChild(link);
-  try {
-    link.click();
-  } catch (e) {
-    window.open(url, "_blank", "noopener");
-  }
+  document.body.appendChild(link);
+  link.click();
   setTimeout(() => {
-    if (link.parentNode) link.parentNode.removeChild(link);
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, 250);
 }
