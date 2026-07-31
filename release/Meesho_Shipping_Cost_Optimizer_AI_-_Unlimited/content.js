@@ -2184,41 +2184,29 @@ Please share payment details and license key.`;
     if (window.WEB_OPTIMIZER_MODE) {
       return document.getElementById("category-dropdown");
     }
-    let portal = document.getElementById("category-dropdown-portal");
-    if (!portal) {
-      portal = document.createElement("div");
-      portal.id = "category-dropdown-portal";
-      portal.className = "category-dropdown category-dropdown-portal";
-      portal.setAttribute("role", "listbox");
-      document.body.appendChild(portal);
-    }
-    return portal;
+    const inline = document.getElementById("category-results-inline");
+    if (inline) return inline;
+    return document.getElementById("category-dropdown");
   }
 
   positionCategoryDropdownPortal() {
     if (window.WEB_OPTIMIZER_MODE) return;
-    const input = document.getElementById("category-search");
-    const portal = document.getElementById("category-dropdown-portal");
-    if (!input || !portal || portal.style.display === "none") return;
-    const rect = input.getBoundingClientRect();
-    const pad = 8;
-    const width = Math.min(rect.width, window.innerWidth - pad * 2);
-    const left = Math.max(pad, Math.min(rect.left, window.innerWidth - width - pad));
-    const top = rect.bottom + 4;
-    const maxH = Math.max(140, window.innerHeight - top - pad);
-    portal.style.left = `${left}px`;
-    portal.style.top = `${top}px`;
-    portal.style.width = `${width}px`;
-    portal.style.maxHeight = `${maxH}px`;
+    const panel = document.getElementById("category-results-inline");
+    if (!panel || panel.style.display === "none") return;
+    try {
+      panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } catch (e) {}
   }
 
   hideCategoryDropdown() {
-    ["category-dropdown", "category-dropdown-portal"].forEach((id) => {
+    ["category-dropdown", "category-results-inline", "category-dropdown-portal"].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.style.display = "none";
       el.innerHTML = "";
     });
+    const wrap = document.getElementById("category-search-wrap");
+    if (wrap) wrap.classList.remove("category-search-active");
     const status = document.getElementById("category-search-status");
     if (status) {
       status.style.display = "none";
@@ -2231,13 +2219,18 @@ Please share payment details and license key.`;
     if (!status || window.WEB_OPTIMIZER_MODE) return;
     const q = String(query || "").trim();
     if (!q) {
+      if (count > 0) {
+        status.style.display = "block";
+        status.textContent = `Tap a category below or type to search ${this.allCategories?.length || ""} categories`;
+        return;
+      }
       status.style.display = "none";
       status.textContent = "";
       return;
     }
     status.style.display = "block";
     if (count > 0) {
-      status.textContent = `${count} match${count === 1 ? "" : "es"} for "${q}" — tap a result below`;
+      status.textContent = `${count} match${count === 1 ? "" : "es"} for "${q}" — tap a result in the green box`;
     } else {
       status.textContent = `No match for "${q}" — try numeric ID like 10123`;
     }
@@ -2292,7 +2285,17 @@ Please share payment details and license key.`;
       const run = () => {
         this._categorySearchFrame = null;
         if (!query) {
-          this.hideCategoryDropdown();
+          if (!window.WEB_OPTIMIZER_MODE) {
+            const defaults = this.getDefaultCategorySlice(40);
+            this.renderCategoryDropdown(defaults, {
+              query: "",
+              showSearchHint: true,
+              idle: true,
+            });
+            this.updateCategorySearchStatus("", defaults.length);
+          } else {
+            this.hideCategoryDropdown();
+          }
           return;
         }
         const hits = this.filterCategoriesForSearch(query, 60);
@@ -2314,7 +2317,9 @@ Please share payment details and license key.`;
     };
 
     categorySearch.onfocus = () => {
-      this.markCategoryEditingActive();
+      this.markCategoryEditingActive(8000);
+      const wrap = document.getElementById("category-search-wrap");
+      if (wrap) wrap.classList.add("category-search-active");
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       try {
@@ -2325,31 +2330,73 @@ Please share payment details and license key.`;
           if (raw && this._categorySelectionSource) categorySearch.select();
         } catch (e) {}
       }, 0);
-      if (raw) {
-        renderSearchDropdown(raw, true);
-      } else {
-        this.hideCategoryDropdown();
-      }
+      renderSearchDropdown(raw, true);
+    };
+
+    categorySearch.onblur = () => {
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (
+          active === categorySearch ||
+          active?.closest?.("#category-dropdown") ||
+          active?.closest?.("#category-results-inline") ||
+          active?.closest?.("#category-dropdown-portal")
+        ) {
+          return;
+        }
+        const wrap = document.getElementById("category-search-wrap");
+        if (wrap) wrap.classList.remove("category-search-active");
+        const raw = categorySearch.value.trim();
+        if (!raw) {
+          this.hideCategoryDropdown();
+          return;
+        }
+        const selected = parseInt(categorySelect?.value, 10);
+        const parsed = this.parseCategorySearchQuery(raw);
+        if (parsed.mode !== "id" || selected === parsed.id) return;
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
+        if (result.status === "resolved" && result.cat?.id) {
+          this.applyCategoryFromSearchInput(raw);
+        }
+      }, 200);
     };
 
     const focusCategorySearch = () => {
-      this.markCategoryEditingActive();
+      this.markCategoryEditingActive(8000);
       categorySearch.readOnly = false;
       categorySearch.disabled = false;
-      categorySearch.focus();
+      categorySearch.focus({ preventScroll: false });
+      try {
+        categorySearch.setSelectionRange(
+          categorySearch.value.length,
+          categorySearch.value.length,
+        );
+      } catch (e) {}
     };
     categorySearch.onclick = focusCategorySearch;
+
+    const searchWrap = document.getElementById("category-search-wrap");
+    if (searchWrap && !window.WEB_OPTIMIZER_MODE) {
+      searchWrap.addEventListener(
+        "touchend",
+        (e) => {
+          if (e.target?.closest?.("#category-clear")) return;
+          e.preventDefault();
+          focusCategorySearch();
+        },
+        { passive: false },
+      );
+    }
     categorySearch.addEventListener(
       "touchstart",
       () => {
-        this.markCategoryEditingActive();
-        if (document.activeElement !== categorySearch) categorySearch.focus();
+        this.markCategoryEditingActive(8000);
       },
       { passive: true },
     );
 
     categorySearch.oninput = () => {
-      this.markCategoryEditingActive();
+      this.markCategoryEditingActive(8000);
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       if (categorySelect?.value || this._categorySelectionSource) {
@@ -2397,27 +2444,6 @@ Please share payment details and license key.`;
       );
     };
 
-    categorySearch.onblur = () => {
-      setTimeout(() => {
-        const active = document.activeElement;
-        if (
-          active === categorySearch ||
-          active?.closest?.("#category-dropdown")
-        ) {
-          return;
-        }
-        const raw = categorySearch.value.trim();
-        if (!raw) return;
-        const selected = parseInt(categorySelect?.value, 10);
-        const parsed = this.parseCategorySearchQuery(raw);
-        if (parsed.mode !== "id" || selected === parsed.id) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat?.id) {
-          this.applyCategoryFromSearchInput(raw);
-        }
-      }, 200);
-    };
-
     if (categoryClear) {
       const clearForTyping = (e) => {
         if (e && typeof e.stopPropagation === "function") {
@@ -2455,6 +2481,7 @@ Please share payment details and license key.`;
           (node) =>
             node?.id === "category-search" ||
             node?.id === "category-dropdown" ||
+            node?.id === "category-results-inline" ||
             node?.id === "category-dropdown-portal" ||
             node?.id === "category-clear" ||
             node?.classList?.contains?.("cat-item"),
@@ -2463,6 +2490,7 @@ Please share payment details and license key.`;
           isInsideCategoryUi ||
           target?.closest?.("#category-search") ||
           target?.closest?.("#category-dropdown") ||
+          target?.closest?.("#category-results-inline") ||
           target?.closest?.("#category-dropdown-portal") ||
           target?.closest?.("#category-clear")
         ) {
@@ -2542,12 +2570,16 @@ Please share payment details and license key.`;
     dropdown.innerHTML = html;
     dropdown.style.display = "block";
     if (!window.WEB_OPTIMIZER_MODE) {
+      const wrap = document.getElementById("category-search-wrap");
+      if (wrap) wrap.classList.add("category-search-active");
       this.positionCategoryDropdownPortal();
     }
 
-    dropdown.onclick = (event) => {
+    const handleCategoryPick = (event) => {
       const item = event.target?.closest?.(".cat-item");
       if (!item || !dropdown.contains(item)) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
       const id = parseInt(item.dataset.id, 10);
       const cat =
         this.findCategoryById(id) || {
@@ -2560,6 +2592,9 @@ Please share payment details and license key.`;
       this._categoryUserPicked = true;
       this.hideCategoryDropdown();
     };
+
+    dropdown.onclick = handleCategoryPick;
+    dropdown.addEventListener("touchend", handleCategoryPick, { passive: false });
     return categories.length;
   }
 
