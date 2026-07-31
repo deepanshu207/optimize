@@ -391,6 +391,15 @@ const OptimizerUI = {
                         <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
                     </div>
 
+                    <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
+                        <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
+                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">No local history yet — generate &amp; save after getting prices</p>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" id="local-price-save-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save Local Price</button>
+                            <button type="button" id="local-price-view-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View Best</button>
+                        </div>
+                    </div>
+
                     <div id="processing-area" style="display:none;"></div>
                     <div id="results-area" style="display:none;"></div>
                 </div>
