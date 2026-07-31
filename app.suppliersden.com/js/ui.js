@@ -111,6 +111,82 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
+                .cat-lite-box {
+                    margin-top: 4px;
+                    padding: 10px;
+                    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+                    border: 1px solid #C9A227;
+                    border-radius: 10px;
+                }
+                .cat-lite-label {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #047857;
+                    margin-bottom: 6px;
+                    display: block;
+                }
+                #cat-lite-input {
+                    display: block;
+                    width: 100%;
+                    box-sizing: border-box;
+                    padding: 12px 14px;
+                    font-size: 16px;
+                    line-height: 1.3;
+                    min-height: 48px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    background: #fff;
+                    color: #111827;
+                    pointer-events: auto;
+                    touch-action: manipulation;
+                    -webkit-user-select: text;
+                    user-select: text;
+                    cursor: text;
+                }
+                #cat-lite-input:focus {
+                    outline: none;
+                    border-color: #C9A227;
+                    box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.25);
+                }
+                #cat-lite-results {
+                    display: none;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                    background: #fff;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    margin-top: 2px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                }
+                .cat-lite-item {
+                    display: block;
+                    width: 100%;
+                    padding: 12px 14px;
+                    border: none;
+                    border-bottom: 1px solid #f3f4f6;
+                    background: #fff;
+                    text-align: left;
+                    font-size: 14px;
+                    color: #111827;
+                    cursor: pointer;
+                    touch-action: manipulation;
+                }
+                .cat-lite-item:active { background: #fef3c7; }
+                .cat-lite-id { font-size: 10px; color: #6b7280; margin-left: 8px; }
+                .cat-lite-empty { padding: 12px; font-size: 12px; color: #6b7280; }
+                .cat-lite-hint { font-size: 10px; color: #6b7280; margin-top: 6px; line-height: 1.4; }
+                .cat-lite-clear-row { margin-top: 6px; text-align: right; }
+                #cat-lite-clear {
+                    background: none;
+                    border: none;
+                    color: #b45309;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    touch-action: manipulation;
+                }
                 #category-search, #category-quick-search {
                     display: block;
                     width: 100%;
@@ -334,32 +410,28 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div class="category-search-wrap">
+                        <div class="cat-lite-box">
+                            <label class="cat-lite-label" for="cat-lite-input">🔍 Search category</label>
+                            <input type="text" id="cat-lite-input" name="cat-lite-input"
+                                placeholder="Type name or ID — e.g. Jeans or 10011"
+                                autocomplete="off" autocorrect="off" autocapitalize="none"
+                                spellcheck="false" inputmode="text">
+                            <div id="cat-lite-results" role="listbox"></div>
+                            <div class="cat-lite-clear-row">
+                                <button type="button" id="cat-lite-clear">Clear</button>
+                            </div>
+                            <p id="cat-lite-hint" class="cat-lite-hint">Type to search 10 categories — tap outside to close</p>
+                        </div>
+                        <div class="optimizer-chrome-hidden category-search-wrap">
                             <input type="text" id="category-search" class="opt-input"
                                 placeholder="🔍 Search categories by name or ID"
                                 autocomplete="off" autocorrect="off" autocapitalize="none"
                                 spellcheck="false" inputmode="search"
-                                style="background:#fff;border-color:#d1d5db;">
+                                tabindex="-1" aria-hidden="true">
                             <button type="button" id="category-clear-btn" aria-label="Clear category" tabindex="-1">✕</button>
                         </div>
-                        <div id="category-dropdown"></div>
-                        <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
-                        <div class="category-quick-section">
-                            <p class="category-search-hint" style="color:#047857;margin-bottom:8px;line-height:1.4;">
-                                🧪 <strong>Quick test search</strong> — only 10 categories (keyboard debug, not all 3777)
-                            </p>
-                            <div class="category-quick-wrap category-search-wrap">
-                                <input type="text" id="category-quick-search" class="opt-input"
-                                    placeholder="Tap to search 10 test categories"
-                                    autocomplete="off" autocorrect="off" autocapitalize="none"
-                                    spellcheck="false" inputmode="search"
-                                    style="background:#fff;border-color:#a7f3d0;">
-                                <button type="button" id="category-quick-clear-btn" aria-label="Clear quick search" tabindex="-1">✕</button>
-                            </div>
-                            <div id="category-quick-dropdown"></div>
-                            <p id="category-quick-hint" class="category-search-hint" style="margin-top:4px;">10 test categories — tap outside to close list</p>
-                        </div>
+                        <div id="category-dropdown" class="optimizer-chrome-hidden"></div>
+                        <p class="category-search-hint optimizer-chrome-hidden" id="category-count-hint">Loading categories…</p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
