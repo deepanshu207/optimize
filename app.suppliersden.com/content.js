@@ -1960,6 +1960,7 @@ Please share payment details and license key.`;
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
+    const isExtensionCategoryUi = !window.WEB_OPTIMIZER_MODE;
 
     const renderSearchDropdown = (raw, immediate = false) => {
       const query = String(raw || "").trim();
@@ -2018,7 +2019,9 @@ Please share payment details and license key.`;
       }
     };
     categorySearch.onclick = focusCategorySearch;
+    categorySearch.ontouchstart = focusCategorySearch;
     categorySearch.ontouchend = focusCategorySearch;
+    categorySearch.onpointerup = focusCategorySearch;
 
     categorySearch.oninput = () => {
       this._categoryUserEditing = true;
@@ -2069,26 +2072,28 @@ Please share payment details and license key.`;
       );
     };
 
-    categorySearch.onblur = () => {
-      setTimeout(() => {
-        const active = document.activeElement;
-        if (
-          active === categorySearch ||
-          active?.closest?.("#category-dropdown")
-        ) {
-          return;
-        }
-        const raw = categorySearch.value.trim();
-        if (!raw) return;
-        const selected = parseInt(categorySelect?.value, 10);
-        const parsed = this.parseCategorySearchQuery(raw);
-        if (parsed.mode !== "id" || selected === parsed.id) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat?.id) {
-          this.applyCategoryFromSearchInput(raw);
-        }
-      }, 200);
-    };
+    categorySearch.onblur = isExtensionCategoryUi
+      ? null
+      : () => {
+          setTimeout(() => {
+            const active = document.activeElement;
+            if (
+              active === categorySearch ||
+              active?.closest?.("#category-dropdown")
+            ) {
+              return;
+            }
+            const raw = categorySearch.value.trim();
+            if (!raw) return;
+            const selected = parseInt(categorySelect?.value, 10);
+            const parsed = this.parseCategorySearchQuery(raw);
+            if (parsed.mode !== "id" || selected === parsed.id) return;
+            const result = this.resolveCategoryFromSearchInput(raw, 12);
+            if (result.status === "resolved" && result.cat?.id) {
+              this.applyCategoryFromSearchInput(raw);
+            }
+          }, 200);
+        };
 
     if (categoryClear) {
       const clearForTyping = (e) => {
@@ -2120,7 +2125,7 @@ Please share payment details and license key.`;
       categoryClear.onclick = clearForTyping;
     }
 
-    if (!this._categoryOutsideBound) {
+    if (!isExtensionCategoryUi && !this._categoryOutsideBound) {
       this._categoryOutsideBound = true;
       this._handleCategoryOutsideTap = (e) => {
         const target = e.target;
