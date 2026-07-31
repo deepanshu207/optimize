@@ -111,6 +111,89 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
+                .cat-static-box {
+                    margin-top: 4px;
+                    padding: 10px;
+                    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+                    border: 1px solid #C9A227;
+                    border-radius: 10px;
+                }
+                .cat-static-title {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #047857;
+                    margin: 0 0 8px;
+                    line-height: 1.4;
+                }
+                .cat-static-hint {
+                    font-size: 10px;
+                    color: #6b7280;
+                    margin: 8px 0 0;
+                    line-height: 1.4;
+                }
+                #cat-static-filter {
+                    display: block;
+                    width: 100%;
+                    box-sizing: border-box;
+                    padding: 12px 14px;
+                    font-size: 16px;
+                    line-height: 1.3;
+                    min-height: 48px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    background: #fff;
+                    color: #111827;
+                    margin-bottom: 8px;
+                }
+                #cat-static-filter:focus {
+                    outline: none;
+                    border-color: #C9A227;
+                    box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.25);
+                }
+                .cat-static-chips {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                }
+                .cat-static-chip {
+                    flex: 1 1 calc(50% - 6px);
+                    min-width: 0;
+                    padding: 10px 8px;
+                    border: 1px solid #C9A227;
+                    border-radius: 8px;
+                    background: #fff;
+                    color: #111827;
+                    font-size: 13px;
+                    font-weight: 600;
+                    text-align: left;
+                    cursor: pointer;
+                    touch-action: manipulation;
+                    min-height: 44px;
+                }
+                .cat-static-chip:active { background: #fef3c7; }
+                .cat-static-chip.active {
+                    background: #fef3c7;
+                    border-color: #047857;
+                    box-shadow: 0 0 0 1px #047857;
+                }
+                .cat-static-chip-id {
+                    display: block;
+                    font-size: 10px;
+                    color: #6b7280;
+                    font-weight: 500;
+                    margin-top: 2px;
+                }
+                .cat-static-clear-row { margin-top: 8px; text-align: right; }
+                #cat-static-clear {
+                    background: none;
+                    border: none;
+                    color: #b45309;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    touch-action: manipulation;
+                }
                 .cat-lite-box {
                     margin-top: 4px;
                     padding: 10px;
@@ -412,17 +495,40 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div class="cat-lite-box">
-                            <label class="cat-lite-label" for="cat-lite-input">🔍 Search category</label>
-                            <input type="text" id="cat-lite-input" name="cat-lite-input"
-                                placeholder="Type name or ID — e.g. Jeans or 10011"
-                                autocomplete="off" autocorrect="off" autocapitalize="none"
-                                spellcheck="false" inputmode="text">
-                            <div id="cat-lite-results" role="listbox"></div>
-                            <div class="cat-lite-clear-row">
-                                <button type="button" id="cat-lite-clear">Clear</button>
+                        <div class="cat-static-box">
+                            <p class="cat-static-title">Tap a category below (10 static — no search limit)</p>
+                            <input type="search" id="cat-static-filter" class="cat-static-filter"
+                                placeholder="Optional: filter by name or ID"
+                                list="cat-static-datalist"
+                                autocomplete="on" autocorrect="off" autocapitalize="none" spellcheck="false">
+                            <datalist id="cat-static-datalist">
+                                <option value="Kurtis (10004)">
+                                <option value="Jeans (10011)">
+                                <option value="Jeggings (10012)">
+                                <option value="Sarees (10003)">
+                                <option value="Tshirts (10000)">
+                                <option value="Shirts (10001)">
+                                <option value="Suits (10005)">
+                                <option value="Leggings (10006)">
+                                <option value="Dresses (10007)">
+                                <option value="Tops (10008)">
+                            </datalist>
+                            <div id="cat-static-chips" class="cat-static-chips">
+                                <button type="button" class="cat-static-chip" data-id="10004" data-name="Kurtis">Kurtis<span class="cat-static-chip-id">ID 10004</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10011" data-name="Jeans">Jeans<span class="cat-static-chip-id">ID 10011</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10012" data-name="Jeggings">Jeggings<span class="cat-static-chip-id">ID 10012</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10003" data-name="Sarees">Sarees<span class="cat-static-chip-id">ID 10003</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10000" data-name="Tshirts">Tshirts<span class="cat-static-chip-id">ID 10000</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10001" data-name="Shirts">Shirts<span class="cat-static-chip-id">ID 10001</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10005" data-name="Suits">Suits<span class="cat-static-chip-id">ID 10005</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10006" data-name="Leggings">Leggings<span class="cat-static-chip-id">ID 10006</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10007" data-name="Dresses">Dresses<span class="cat-static-chip-id">ID 10007</span></button>
+                                <button type="button" class="cat-static-chip" data-id="10008" data-name="Tops">Tops<span class="cat-static-chip-id">ID 10008</span></button>
                             </div>
-                            <p id="cat-lite-hint" class="cat-lite-hint">Type to search 10 categories — tap outside to close</p>
+                            <div class="cat-static-clear-row">
+                                <button type="button" id="cat-static-clear">Clear</button>
+                            </div>
+                            <p class="cat-static-hint">Keyboard optional — tap any chip to select. Filter is optional.</p>
                         </div>
                         <div class="optimizer-chrome-hidden category-search-wrap">
                             <input type="text" id="category-search" class="opt-input"
