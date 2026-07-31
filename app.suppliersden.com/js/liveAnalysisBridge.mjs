@@ -3,7 +3,7 @@
  * Ranks local strategy variants by estimated shipping ₹ from image shape/type.
  */
 import { optimizeImage, analyzeImage, getSmartPlan } from "./lib/strategies.js?v=67";
-import { loadImage } from "./lib/canvas-utils.js?v=97";
+import { loadImage } from "./lib/canvas-utils.js?v=98";
 import { blobToDataUrl } from "./lib/encoder.js?v=67";
 import {
   buildShowcaseVariants,
