@@ -86,12 +86,22 @@ class MeeshoShippingOptimizer {
 
   getLiveVariantReportModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveVariantReport.mjs?v=2";
+      return "/js/liveVariantReport.mjs?v=3";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=2");
+      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=3");
     }
-    return "/js/liveVariantReport.mjs?v=2";
+    return "/js/liveVariantReport.mjs?v=3";
+  }
+
+  getLocalPriceModelModuleUrl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return "/js/localPriceModel.mjs?v=1";
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL("js/localPriceModel.mjs?v=1");
+    }
+    return "/js/localPriceModel.mjs?v=1";
   }
 
   getStaticComposeModuleUrl() {
@@ -156,6 +166,14 @@ class MeeshoShippingOptimizer {
       () => this.getLiveVariantReportModuleUrl(),
       () => !!window.LiveVariantReport?.analyzeLiveVariants,
       "__liveVariantReportModulePromise",
+    );
+  }
+
+  async preloadLocalPriceModelModule() {
+    return this.importOptimizerModule(
+      () => this.getLocalPriceModelModuleUrl(),
+      () => !!window.LocalPriceModel?.applyLocalPriceEstimates,
+      "__localPriceModelModulePromise",
     );
   }
 
@@ -1157,6 +1175,9 @@ Please share payment details and license key.`;
     const fileInput = document.getElementById("image-input");
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
+    const localPriceBtn = document.getElementById("local-price-btn");
+    const importReportBtn = document.getElementById("import-report-btn");
+    const localReportInput = document.getElementById("local-report-input");
     const tabbedGenerateMode = this.isTabbedOptimizerUI() && generateBtn;
 
     const showFilePreview = (file) => {
@@ -1211,6 +1232,7 @@ Please share payment details and license key.`;
       const gownStaticBtn = document.getElementById("generate-gown-static-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
+        if (localPriceBtn) localPriceBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
         if (showcaseBtn) showcaseBtn.disabled = false;
         if (promoBtn) promoBtn.disabled = false;
@@ -1270,6 +1292,33 @@ Please share payment details and license key.`;
 
       generateBtn.disabled = !getUploadFile();
       generateBtn.onclick = runGenerate;
+      if (localPriceBtn) {
+        localPriceBtn.disabled = !getUploadFile();
+        localPriceBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const file = getUploadFile();
+          if (!file) {
+            OptimizerUtils.showNotification("Choose an image first", "error");
+            return;
+          }
+          void this.generateLocalPriceResults(file);
+        };
+      }
+      if (importReportBtn && localReportInput) {
+        importReportBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          localReportInput.click();
+        };
+        localReportInput.onchange = (e) => {
+          void this.importLocalPriceReports(e.target.files);
+          localReportInput.value = "";
+        };
+        void this.preloadLocalPriceModelModule().then(() => {
+          this.updateLocalPriceStatus();
+        });
+      }
       const testGenBtn = document.getElementById("test-generate-btn");
       if (testGenBtn) {
         testGenBtn.disabled = !getUploadFile();
@@ -1692,6 +1741,7 @@ Please share payment details and license key.`;
     const uploadArea = document.getElementById("upload-area");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
+    const localPriceBtn = document.getElementById("local-price-btn");
     const bootMsg = document.getElementById("boot-msg");
 
     const showPreview = (dataUrl) => {
@@ -1718,6 +1768,7 @@ Please share payment details and license key.`;
     const enable = () => {
       if (generateBtn) generateBtn.disabled = false;
       if (testGenBtn) testGenBtn.disabled = false;
+      if (localPriceBtn) localPriceBtn.disabled = false;
       ["generate-showcase-btn", "generate-promo-lifestyle-btn", "generate-tall-static-btn", "generate-gown-static-btn"].forEach(
         (id) => {
           const btn = document.getElementById(id);
@@ -2741,6 +2792,7 @@ Please share payment details and license key.`;
     const imageInput = document.getElementById("image-input");
     const generateBtn = document.getElementById("generate-btn");
     const testGenBtn = document.getElementById("test-generate-btn");
+    const localPriceBtn = document.getElementById("local-price-btn");
     const generateSticky = document.getElementById("generate-sticky");
 
     if (processingArea) {
@@ -2791,6 +2843,7 @@ Please share payment details and license key.`;
         this.getActiveOptimizerTab() === "test" ? "block" : "none";
       testGenBtn.disabled = !hasFile;
     }
+    if (localPriceBtn) localPriceBtn.disabled = !hasFile;
 
     this.setupOptimizerTabs();
     this.syncStaticPromoChrome();
@@ -3756,10 +3809,11 @@ Please share payment details and license key.`;
   }
 
   async createLiveVariantReport() {
-    const priced = this.currentResults.filter((r) => r.shippingCost > 0);
+    const reportRows = [...this.currentResults, ...this.framedExtraResults];
+    const priced = reportRows.filter((r) => r.shippingCost > 0 || r.estShipping > 0);
     if (!priced.length) {
       OptimizerUtils.showNotification(
-        "Add live shipping prices first, then create report",
+        "Add live/local prices first, then create report",
         "error",
       );
       return null;
@@ -3774,9 +3828,10 @@ Please share payment details and license key.`;
     try {
       const context = this.buildLiveReportContext();
       const analysis = window.LiveVariantReport.createAndDownloadReport(
-        [...this.currentResults, ...this.framedExtraResults],
+        reportRows,
         context,
       );
+      await this.saveLocalPriceSamplesFromAnalysis(analysis);
       const rec = analysis.recommendation;
       const pickPrices = (rec.picks || [])
         .map((p) => `₹${p.shippingCost}`)
@@ -3795,6 +3850,178 @@ Please share payment details and license key.`;
         "error",
       );
       return null;
+    }
+  }
+
+  async saveLocalPriceSamplesFromAnalysis(analysis) {
+    const ready = await this.preloadLocalPriceModelModule();
+    if (!ready || !window.LocalPriceModel?.samplesFromAnalysis) return 0;
+    const samples = window.LocalPriceModel.samplesFromAnalysis(analysis);
+    const all = window.LocalPriceModel.addStoredSamples(samples);
+    this.updateLocalPriceStatus(all.length);
+    return samples.length;
+  }
+
+  updateLocalPriceStatus(count) {
+    const el = document.getElementById("local-price-status");
+    if (!el) return;
+    const n =
+      count ??
+      (window.LocalPriceModel?.loadStoredSamples
+        ? window.LocalPriceModel.loadStoredSamples().length
+        : 0);
+    el.textContent = n
+      ? `Local price model: ${n} report row(s) saved. More reports = better estimates.`
+      : "Learns from imported/saved reports. No live API used.";
+  }
+
+  async importLocalPriceReports(files) {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+    const ready = await this.preloadLocalPriceModelModule();
+    if (!ready || !window.LocalPriceModel?.samplesFromReportCsv) {
+      OptimizerUtils.showNotification("Local price model failed to load", "error");
+      return;
+    }
+
+    let imported = 0;
+    for (const file of list) {
+      try {
+        const text = await file.text();
+        const samples = window.LocalPriceModel.samplesFromReportCsv(text);
+        if (samples.length) {
+          window.LocalPriceModel.addStoredSamples(samples);
+          imported += samples.length;
+        }
+      } catch (e) {
+        console.warn("Report import failed:", file?.name, e);
+      }
+    }
+    const total = window.LocalPriceModel.loadStoredSamples().length;
+    this.updateLocalPriceStatus(total);
+    OptimizerUtils.showNotification(
+      imported
+        ? `Imported ${imported} report row(s) for local pricing`
+        : "No priced rows found in selected report(s)",
+      imported ? "success" : "error",
+    );
+  }
+
+  async generateLocalPriceResults(file) {
+    if (!file) {
+      OptimizerUtils.showNotification("Choose an image first", "error");
+      return;
+    }
+    if (this.isProcessing) return;
+    const ready = await this.preloadLocalPriceModelModule();
+    if (!ready || !window.LocalPriceModel?.applyLocalPriceEstimates) {
+      OptimizerUtils.showNotification("Local price model failed to load", "error");
+      return;
+    }
+    if (typeof MeeshoAPI === "undefined" || !MeeshoAPI.generateLocalVariations) {
+      OptimizerUtils.showNotification("Local generator unavailable", "error");
+      return;
+    }
+
+    this.isProcessing = true;
+    this.shouldStop = false;
+    this.lastProcessedFile = file;
+    this.currentResults = [];
+    this.framedExtraResults = [];
+    this.liveAnalysis = null;
+
+    const uploadArea = document.getElementById("upload-area");
+    const processingArea = document.getElementById("processing-area");
+    const resultsArea = document.getElementById("results-area");
+    const generateBtn = document.getElementById("generate-btn");
+    const localBtn = document.getElementById("local-price-btn");
+    const sections = document.querySelectorAll(".opt-section");
+
+    if (uploadArea) uploadArea.style.display = "none";
+    if (generateBtn) generateBtn.disabled = true;
+    if (localBtn) localBtn.disabled = true;
+    sections.forEach((s) => (s.style.display = "none"));
+    if (resultsArea) {
+      resultsArea.style.display = "none";
+      resultsArea.innerHTML = "";
+    }
+
+    const maxAttempts =
+      parseInt(document.getElementById("max-attempts")?.value, 10) || 50;
+    const count = Math.min(Math.max(maxAttempts, 10), 60);
+    const startTime = Date.now();
+    const renderProgress = (attempt, max) => {
+      if (!processingArea) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      processingArea.style.display = "block";
+      processingArea.innerHTML = this.getSmartModeHTML(
+        attempt,
+        max,
+        0,
+        null,
+        0,
+        elapsed,
+        { phaseLabel: "Local price model" },
+      );
+      const stopBtn = document.getElementById("stop-btn");
+      if (stopBtn) stopBtn.onclick = () => { this.shouldStop = true; };
+    };
+
+    try {
+      const blob = file instanceof Blob ? file : new Blob([await file.arrayBuffer()]);
+      await this.ensureOriginalImageUrl(file);
+      this.gatherSettings();
+      renderProgress(0, count);
+      const local = await MeeshoAPI.generateLocalVariations(
+        blob,
+        count,
+        (attempt, max) => renderProgress(attempt, max),
+        () => this.shouldStop,
+      );
+      const variants = [
+        ...(local.results || []).map((r, i) => this.mapResultFromApi(r, i)),
+        ...(local.framedExtras || []).map((r, i) => this.mapResultFromApi(r, i + 30000)),
+      ];
+      if (!variants.length) throw new Error("No local variants generated");
+
+      const samples = window.LocalPriceModel.loadStoredSamples();
+      const context = this.buildLiveReportContext();
+      const priced = window.LocalPriceModel.applyLocalPriceEstimates(
+        variants,
+        samples,
+        context,
+      );
+      this.currentResults = priced.results.slice(0, 10);
+      this.framedExtraResults = [];
+      this.showFramedExtras = false;
+      this.liveAnalysis = null;
+
+      if (processingArea) processingArea.style.display = "none";
+      if (resultsArea) {
+        resultsArea.style.display = "block";
+        delete resultsArea.dataset.view;
+        resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+          this.currentResults,
+          this.getResultsViewOptions(),
+        );
+        this.setupResultsEvents();
+      }
+      this.showPostResultsControls();
+      this.updateLocalPriceStatus(samples.length);
+      OptimizerUtils.showNotification(
+        `Local price ready — top ${this.currentResults.length} from ${samples.length} saved row(s)`,
+        "success",
+      );
+    } catch (e) {
+      console.error("Local price generation failed:", e);
+      OptimizerUtils.showNotification("Local price failed: " + (e.message || "unknown"), "error");
+      if (processingArea) processingArea.style.display = "none";
+      if (uploadArea) uploadArea.style.display = "block";
+      sections.forEach((s) => (s.style.display = "block"));
+    } finally {
+      if (generateBtn) generateBtn.disabled = false;
+      if (localBtn) localBtn.disabled = false;
+      this.isProcessing = false;
     }
   }
 
