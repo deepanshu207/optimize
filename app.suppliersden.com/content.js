@@ -56,6 +56,7 @@ class MeeshoShippingOptimizer {
     this._quickCategories = [];
     this._catLiteWired = false;
     this._catLitePool = [];
+    this._catLiteInteractionAt = 0;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -961,6 +962,7 @@ class MeeshoShippingOptimizer {
     this._categorySearchWired = false;
     this._categoryQuickWired = false;
     this._catLiteWired = false;
+    this._catLiteInteractionAt = 0;
 
     this.setupMainEvents();
 
@@ -1459,9 +1461,30 @@ Please share payment details and license key.`;
       .slice(0, limit);
   }
 
+  catLiteHasDraftSearch() {
+    const lite = document.getElementById("cat-lite-input");
+    if (!lite) return false;
+    const val = lite.value.trim();
+    if (!val) return false;
+    const committed = String(this._categorySearchCommittedValue || "").trim();
+    return val !== committed;
+  }
+
+  catLiteRecentlyActive() {
+    return Date.now() - (this._catLiteInteractionAt || 0) < 3000;
+  }
+
+  markCatLiteInteraction() {
+    this._catLiteInteractionAt = Date.now();
+    this._categoryUserEditing = true;
+    clearTimeout(this._categoryEditingTimer);
+  }
+
   applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
     if (this._categoryUserEditing && !options.force) return false;
+    if (!options.force && this.catLiteHasDraftSearch()) return false;
+    if (!options.force && this.catLiteRecentlyActive()) return false;
 
     const liteEl = document.getElementById("cat-lite-input");
     if (liteEl && document.activeElement === liteEl && !options.force) return false;
@@ -1497,6 +1520,15 @@ Please share payment details and license key.`;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
 
+      if (!this._categoryUserPicked && this.catLiteHasDraftSearch()) {
+        if (attempts < maxAttempts) setTimeout(tick, delayMs);
+        return;
+      }
+      if (!this._categoryUserPicked && this.catLiteRecentlyActive()) {
+        if (attempts < maxAttempts) setTimeout(tick, delayMs);
+        return;
+      }
+
       const liteEl = document.getElementById("cat-lite-input");
       const searchEl = document.getElementById("category-search");
       if (
@@ -1520,7 +1552,9 @@ Please share payment details and license key.`;
         liteEl &&
         document.activeElement !== liteEl &&
         searchEl &&
-        document.activeElement !== searchEl
+        document.activeElement !== searchEl &&
+        !this.catLiteHasDraftSearch() &&
+        !this.catLiteRecentlyActive()
       ) {
         this._categoryUserEditing = false;
       }
@@ -1542,6 +1576,9 @@ Please share payment details and license key.`;
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
     const liteEl = document.getElementById("cat-lite-input");
     const searchEl = document.getElementById("category-search");
+    if (this.catLiteHasDraftSearch() || this.catLiteRecentlyActive()) {
+      return;
+    }
     if (
       this._categoryUserEditing &&
       liteEl &&
@@ -1847,6 +1884,7 @@ Please share payment details and license key.`;
     if (this._catLiteWired) return;
     const input = document.getElementById("cat-lite-input");
     const results = document.getElementById("cat-lite-results");
+    const box = input?.closest(".cat-lite-box");
     if (!input || !results) return;
 
     this._catLiteWired = true;
@@ -1857,38 +1895,107 @@ Please share payment details and license key.`;
         : this.getCatLiteFallbackPool();
 
     const hideResults = () => {
-      results.style.display = "none";
-      results.innerHTML = "";
+      const r = document.getElementById("cat-lite-results");
+      if (!r) return;
+      r.style.display = "none";
+      r.innerHTML = "";
     };
 
     const showResults = (items) => {
+      const r = document.getElementById("cat-lite-results");
+      if (!r) return;
       if (!items.length) {
-        results.innerHTML =
+        r.innerHTML =
           '<div class="cat-lite-empty">No match — try another word or ID</div>';
-        results.style.display = "block";
+        r.style.display = "block";
         return;
       }
-      results.innerHTML = items
+      r.innerHTML = items
         .map(
           (c) =>
             `<button type="button" class="cat-lite-item" data-id="${c.id}">${this.escapeHtmlLite(c.name)}<span class="cat-lite-id">ID ${c.id}</span></button>`,
         )
         .join("");
-      results.style.display = "block";
+      r.style.display = "block";
     };
 
     this.prepareSearchInput(input);
 
+    const focusLiteInput = () => {
+      this.markCatLiteInteraction();
+      try {
+        input.focus({ preventScroll: true });
+      } catch {
+        input.focus();
+      }
+    };
+
+    if (box) {
+      box.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!e.target.closest("#cat-lite-input, #cat-lite-clear, .cat-lite-item")) {
+            return;
+          }
+          this.markCatLiteInteraction();
+        },
+        { passive: true },
+      );
+      box.addEventListener("mousedown", () => {
+        this.markCatLiteInteraction();
+      });
+    }
+
+    input.addEventListener(
+      "touchstart",
+      () => {
+        this.markCatLiteInteraction();
+      },
+      { passive: true },
+    );
+
+    input.addEventListener("touchend", (e) => {
+      this.markCatLiteInteraction();
+      if (document.activeElement !== input) {
+        e.preventDefault();
+        focusLiteInput();
+      }
+    });
+
     input.addEventListener("focus", () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-      setTimeout(() => {
-        input.scrollIntoView({ block: "center", behavior: "smooth" });
-      }, 80);
+      this.markCatLiteInteraction();
+      const committed = this._categorySearchCommittedValue;
+      if (committed && input.value === committed) {
+        requestAnimationFrame(() => {
+          try {
+            input.setSelectionRange(0, input.value.length);
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      this.markCatLiteInteraction();
+      const committed = this._categorySearchCommittedValue;
+      if (
+        committed &&
+        input.value === committed &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        input.value = e.key;
+        this._categorySearchCommittedValue = "";
+        e.preventDefault();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
     });
 
     input.addEventListener("input", () => {
-      this._categoryUserEditing = true;
+      this.markCatLiteInteraction();
       const q = input.value.trim().toLowerCase();
       if (!q) {
         hideResults();
@@ -1906,10 +2013,13 @@ Please share payment details and license key.`;
     input.addEventListener("blur", () => {
       clearTimeout(this._categoryEditingTimer);
       this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== input) {
-          this._categoryUserEditing = false;
+        if (document.activeElement === input) return;
+        if (this.catLiteHasDraftSearch() || this.catLiteRecentlyActive()) {
+          this._categoryUserEditing = true;
+          return;
         }
-      }, 300);
+        this._categoryUserEditing = false;
+      }, 600);
     });
 
     results.addEventListener("click", (e) => {
@@ -1933,7 +2043,7 @@ Please share payment details and license key.`;
         input.value = "";
         hideResults();
         this._categorySearchCommittedValue = "";
-        this._categoryUserEditing = true;
+        this.markCatLiteInteraction();
         this._categoryUserPicked = false;
         const select = document.getElementById("category-select");
         if (select) select.value = "";
@@ -1948,13 +2058,16 @@ Please share payment details and license key.`;
         if (!window.WEB_OPTIMIZER_MODE) {
           this.applyPageCategoryIfAvailable();
         }
-        this.focusSearchInput(input);
+        focusLiteInput();
       });
     }
 
-    if (!this._catLiteOutsideBound) {
-      this._catLiteOutsideBound = true;
-      document.addEventListener("click", (e) => {
+    const root =
+      document.getElementById("opt-modal") ||
+      document.getElementById("optimizer-app");
+    if (root && !root._catLiteOutsideClose) {
+      root._catLiteOutsideClose = true;
+      root.addEventListener("click", (e) => {
         if (e.target.closest(".cat-lite-box")) return;
         hideResults();
       });
