@@ -102,6 +102,45 @@ const OptimizerUI = {
                     border-radius: 8px;
                     box-shadow: none;
                 }
+                .category-dropdown-portal {
+                    position: fixed;
+                    z-index: 2147483646;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+                    max-height: min(240px, 50vh);
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .category-results-inline {
+                    display: none;
+                    margin-top: 8px;
+                    max-height: min(260px, 42vh);
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                    background: #fff;
+                    border: 2px solid #047857;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 16px rgba(4,120,87,0.15);
+                }
+                .category-results-inline .cat-item {
+                    padding: 14px 12px;
+                    font-size: 14px;
+                    min-height: 48px;
+                }
+                .category-results-inline .cat-item:active {
+                    background: rgba(4,120,87,0.14);
+                }
+                #category-search-status {
+                    color: #047857;
+                    font-weight: 600;
+                    margin-top: 6px;
+                }
+                #category-search-wrap.category-search-active {
+                    outline: 2px solid rgba(4,120,87,0.35);
+                    border-radius: 8px;
+                }
                 .cat-item-ext {
                     display: block;
                     width: 100%;
@@ -345,12 +384,14 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div class="category-search-wrap" id="category-search-wrap">
-                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search">
-                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;font-size:18px;line-height:1;padding:4px 8px;">✕</span>
-                            <div id="category-dropdown" class="category-dropdown"></div>
-                        </div>
+                        <label class="category-search-wrap" id="category-search-wrap" for="category-search">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Tap here — search by name or ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search">
+                            <span id="category-clear" role="button" aria-label="Clear category" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;font-size:18px;line-height:1;padding:4px 8px;z-index:2;">✕</span>
+                            <div id="category-dropdown" class="category-dropdown" aria-hidden="true"></div>
+                        </label>
+                        <div id="category-results-inline" class="category-results-inline" role="listbox" aria-label="Category search results"></div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
+                        <p id="category-search-status" class="category-search-hint" style="display:none;"></p>
                         <p class="category-search-hint">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
