@@ -64,42 +64,27 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
-                .category-search-wrap { position: relative; }
-                #category-clear-btn, #category-quick-clear-btn {
-                    position: absolute; right: 8px; top: 50%;
-                    transform: translateY(-50%);
-                    background: none; border: none;
-                    color: #9ca3af; font-size: 20px; line-height: 1;
-                    cursor: pointer; padding: 4px 8px;
-                    display: none; z-index: 2;
-                    touch-action: manipulation;
-                }
-                .category-quick-section {
-                    margin-top: 10px;
-                    padding: 10px;
-                    background: #f0fdf4;
-                    border-radius: 8px;
-                    border: 1px solid #a7f3d0;
-                }
-                #category-dropdown, #category-quick-dropdown {
+                .category-dropdown {
                     display: none;
-                    max-height: 220px;
+                    max-height: 200px;
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
                     border: 1px solid #d1d5db;
-                    border-radius: 8px;
-                    margin-top: 4px;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+                    border-radius: 0 0 8px 8px;
+                    margin-top: -1px;
+                    position: relative;
+                    z-index: 10001;
+                    box-shadow: 0 10px 28px rgba(0,0,0,0.15);
                 }
                 .cat-item {
-                    padding: 12px;
+                    padding: 10px 12px;
                     cursor: pointer;
                     border-bottom: 1px solid #eee;
-                    font-size: 13px;
-                    -webkit-tap-highlight-color: rgba(102,126,234,0.12);
+                    font-size: 12px;
+                    transition: background 0.15s;
                 }
-                .cat-item:active { background: rgba(102,126,234,0.12); }
+                .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
                 .cat-item-name {
                     display: flex;
                     justify-content: space-between;
@@ -111,156 +96,11 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
-                .cat-az-box {
-                    margin-top: 4px;
-                    padding: 10px;
-                    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-                    border: 1px solid #C9A227;
-                    border-radius: 10px;
-                }
-                .cat-az-title {
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: #047857;
-                    margin: 0 0 8px;
-                    line-height: 1.4;
-                }
-                .cat-az-letters {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                    margin-bottom: 10px;
-                }
-                .cat-az-letter {
-                    min-width: 28px;
-                    flex: 1 1 28px;
-                    max-width: 36px;
-                    padding: 6px 2px;
-                    font-size: 12px;
-                    font-weight: 700;
-                    border: 1px solid #d1d5db;
-                    border-radius: 4px;
-                    background: #fff;
-                    color: #374151;
-                    cursor: pointer;
-                    touch-action: manipulation;
-                    min-height: 36px;
-                }
-                .cat-az-letter:disabled {
-                    opacity: 0.3;
-                    cursor: default;
-                }
-                .cat-az-letter.active {
-                    background: #fef3c7;
-                    border-color: #C9A227;
-                    color: #047857;
-                }
-                #cat-az-select {
-                    font-size: 16px !important;
-                    min-height: 48px;
-                    background: #fff !important;
-                    color: #111827 !important;
-                    border-color: #d1d5db !important;
-                }
-                .cat-az-clear-row { margin-top: 8px; text-align: right; }
-                #cat-az-clear {
-                    background: none;
-                    border: none;
-                    color: #b45309;
-                    font-size: 11px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    padding: 4px 8px;
-                    touch-action: manipulation;
-                }
-                .cat-lite-box {
-                    margin-top: 4px;
-                    padding: 10px;
-                    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-                    border: 1px solid #C9A227;
-                    border-radius: 10px;
-                }
-                .cat-lite-label {
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: #047857;
-                    margin-bottom: 6px;
-                    display: block;
-                }
-                #cat-lite-input {
-                    display: block;
-                    width: 100%;
-                    box-sizing: border-box;
-                    padding: 12px 14px;
-                    font-size: 16px;
-                    line-height: 1.3;
-                    min-height: 48px;
-                    border: 1px solid #d1d5db;
-                    border-radius: 8px;
-                    background: #fff;
-                    color: #111827;
-                    pointer-events: auto;
-                    touch-action: manipulation;
-                    -webkit-user-select: text;
-                    user-select: text;
-                    cursor: text;
-                }
-                #cat-lite-input:focus {
-                    outline: none;
-                    border-color: #C9A227;
-                    box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.25);
-                }
-                #cat-lite-results {
-                    display: none;
-                    max-height: 200px;
-                    overflow-y: auto;
-                    -webkit-overflow-scrolling: touch;
-                    background: #fff;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
-                    margin-top: 2px;
-                    margin-bottom: 0;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                }
-                #cat-lite-results:empty { display: none !important; margin: 0; padding: 0; border: none; }
-                .cat-lite-item {
-                    display: block;
-                    width: 100%;
-                    padding: 12px 14px;
-                    border: none;
-                    border-bottom: 1px solid #f3f4f6;
-                    background: #fff;
-                    text-align: left;
-                    font-size: 14px;
-                    color: #111827;
-                    cursor: pointer;
-                    touch-action: manipulation;
-                }
-                .cat-lite-item:active { background: #fef3c7; }
-                .cat-lite-id { font-size: 10px; color: #6b7280; margin-left: 8px; }
-                .cat-lite-empty { padding: 12px; font-size: 12px; color: #6b7280; }
-                .cat-lite-hint { font-size: 10px; color: #6b7280; margin-top: 6px; line-height: 1.4; }
-                .cat-lite-clear-row { margin-top: 6px; text-align: right; }
-                #cat-lite-clear {
-                    background: none;
-                    border: none;
-                    color: #b45309;
-                    font-size: 11px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    padding: 4px 8px;
-                    touch-action: manipulation;
-                }
-                #category-search, #category-quick-search {
-                    display: block;
-                    width: 100%;
-                    pointer-events: auto;
+                #category-search {
                     touch-action: manipulation;
                     -webkit-user-select: text; user-select: text;
                     font-size: 16px !important;
-                    min-height: 48px;
-                    padding-right: 44px !important;
-                    cursor: text;
+                    min-height: 44px;
                 }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
@@ -474,27 +314,13 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div class="cat-az-box">
-                            <p class="cat-az-title" id="category-az-hint">Loading clothes categories…</p>
-                            <div class="cat-az-letters" id="cat-az-letters" role="tablist" aria-label="Category first letter"></div>
-                            <label class="opt-label" for="cat-az-select">Category</label>
-                            <select id="cat-az-select" class="opt-select">
-                                <option value="">— Tap A–Z letter, then pick here —</option>
-                            </select>
-                            <div class="cat-az-clear-row">
-                                <button type="button" id="cat-az-clear">Clear</button>
-                            </div>
+                        <div style="position:relative;z-index:10000;">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
+                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
                         </div>
-                        <div class="optimizer-chrome-hidden category-search-wrap">
-                            <input type="text" id="category-search" class="opt-input"
-                                placeholder="🔍 Search categories by name or ID"
-                                autocomplete="off" autocorrect="off" autocapitalize="none"
-                                spellcheck="false" inputmode="search"
-                                tabindex="-1" aria-hidden="true">
-                            <button type="button" id="category-clear-btn" aria-label="Clear category" tabindex="-1">✕</button>
-                        </div>
-                        <div id="category-dropdown" class="optimizer-chrome-hidden"></div>
-                        <p class="category-search-hint optimizer-chrome-hidden" id="category-count-hint">Loading categories…</p>
+                        <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
+                        <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+                        <div id="category-dropdown" class="category-dropdown"></div>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
