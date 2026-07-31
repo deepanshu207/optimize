@@ -387,6 +387,13 @@ const OptimizerUI = {
                         </div>
                     </div>
 
+                    <div class="local-price-actions" id="local-price-actions" style="display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0;">
+                        <input type="file" id="local-report-input" accept=".csv,text/csv" multiple style="display:none;">
+                        <button type="button" id="import-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:11px;font-size:12px;">📥 Add Report CSVs</button>
+                        <button type="button" id="local-price-btn" class="generate-btn" disabled style="background:linear-gradient(135deg,#10b981,#047857);font-size:14px;">🧮 Generate Local Price</button>
+                        <div id="local-price-status" style="font-size:10px;color:#6b7280;line-height:1.35;text-align:center;">Learns from imported/saved reports. No live API used.</div>
+                    </div>
+
                     <div class="generate-sticky" id="generate-sticky">
                         <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
                         <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
@@ -457,7 +464,9 @@ const OptimizerUI = {
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const estInr = frozenEst;
     const priceLabel =
-      testLabMode || analysisMode
+      r.localPrice && frozenShip > 0
+      ? "local ₹" + frozenShip
+      : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
         : "est ₹" + estInr
