@@ -1965,9 +1965,14 @@ Please share payment details and license key.`;
       const query = String(raw || "").trim();
       const run = () => {
         this._categorySearchFrame = null;
+        if (!query) {
+          categoryDropdown.style.display = "none";
+          categoryDropdown.innerHTML = "";
+          return;
+        }
         this.renderCategoryDropdown(
-          query ? this.filterCategoriesForSearch(query, 60) : [],
-          { query, showSearchHint: true, idle: !query },
+          this.filterCategoriesForSearch(query, 60),
+          { query, showSearchHint: false },
         );
         categoryDropdown.style.display = "block";
       };
@@ -1994,8 +1999,26 @@ Please share payment details and license key.`;
           if (raw && this._categorySelectionSource) categorySearch.select();
         } catch (e) {}
       }, 0);
-      renderSearchDropdown(raw, true);
+      if (raw) {
+        renderSearchDropdown(raw, true);
+      } else {
+        categoryDropdown.style.display = "none";
+        categoryDropdown.innerHTML = "";
+      }
     };
+
+    const focusCategorySearch = () => {
+      this._categoryUserEditing = true;
+      categorySearch.readOnly = false;
+      categorySearch.disabled = false;
+      try {
+        categorySearch.focus({ preventScroll: true });
+      } catch (e) {
+        categorySearch.focus();
+      }
+    };
+    categorySearch.onclick = focusCategorySearch;
+    categorySearch.ontouchend = focusCategorySearch;
 
     categorySearch.oninput = () => {
       this._categoryUserEditing = true;
@@ -2081,7 +2104,8 @@ Please share payment details and license key.`;
         this._categoryUserPicked = false;
         this._categorySelectionSource = null;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        renderSearchDropdown("", true);
+        categoryDropdown.style.display = "none";
+        categoryDropdown.innerHTML = "";
         this.refreshCategoryApiPreview();
         setTimeout(() => {
           try {
