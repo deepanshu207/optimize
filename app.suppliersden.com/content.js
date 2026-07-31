@@ -1067,6 +1067,8 @@ class MeeshoShippingOptimizer {
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
+    this._extensionCategoryUiBound = false;
+
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
     const isNarrow = window.matchMedia("(max-width: 640px)").matches;
@@ -1081,17 +1083,19 @@ class MeeshoShippingOptimizer {
             display: flex;
             justify-content: ${isNarrow ? "stretch" : "center"};
             align-items: ${isNarrow ? "stretch" : "center"};
-            backdrop-filter: blur(5px);
         `;
 
     const content = document.createElement("div");
     content.style.cssText = isNarrow
-      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
+      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;"
       : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
     content.innerHTML = OptimizerUI.createModalHTML();
 
     this.modal.appendChild(content);
     document.body.appendChild(this.modal);
+
+    content.addEventListener("click", (e) => e.stopPropagation());
+    content.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
 
     this.setupMainEvents();
 
@@ -1706,6 +1710,10 @@ Please share payment details and license key.`;
     const manualMode = this.isManualShippingMode();
     const needsCategory = !window.WEB_OPTIMIZER_MODE && !manualMode;
     const searchEl = document.getElementById("category-search");
+    const nativeSelect = document.getElementById("category-native-select");
+    const idInput = document.getElementById("category-id-input");
+    const nativeId = parseInt(nativeSelect?.value, 10);
+    const directId = parseInt(idInput?.value?.trim(), 10);
     const raw = searchEl?.value?.trim() || "";
 
     const resolveTypedCategory = () => {
@@ -1730,6 +1738,22 @@ Please share payment details and license key.`;
       return resolveTypedCategory();
     }
 
+    if (!window.WEB_OPTIMIZER_MODE && nativeId > 0) {
+      const cat = this.findCategoryById(nativeId);
+      if (cat) this.applyCategorySelection(cat, { source: "user" });
+      return { ok: true, id: nativeId };
+    }
+
+    if (!window.WEB_OPTIMIZER_MODE && directId > 0) {
+      const cat = this.findCategoryById(directId);
+      if (cat) {
+        this.applyCategorySelection(cat, { source: "user" });
+      } else {
+        this.applyCategoryByIdOnly(directId, { source: "user" });
+      }
+      return { ok: true, id: directId };
+    }
+
     const selected = parseInt(categorySelect?.value, 10);
     if (selected > 0) {
       return { ok: true, id: selected };
@@ -1747,7 +1771,7 @@ Please share payment details and license key.`;
       return {
         ok: false,
         message:
-          "Search by category name or ID (e.g. gown, 10123, or id:10253) — then pick or press Enter",
+          "Pick a category from the list or enter a numeric Category ID, then tap Apply",
       };
     }
 
@@ -1806,9 +1830,14 @@ Please share payment details and license key.`;
 
   isCategoryEditingActive() {
     const search = document.getElementById("category-search");
+    const nativeSelect = document.getElementById("category-native-select");
+    const idInput = document.getElementById("category-id-input");
+    const active = document.activeElement;
     return (
       !!this._categoryUserEditing ||
-      document.activeElement === search ||
+      active === search ||
+      active === nativeSelect ||
+      active === idInput ||
       Date.now() < (this._categoryEditingPauseUntil || 0)
     );
   }
@@ -2166,18 +2195,17 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
-  // Extension-only: minimal category search (no shared web event stack)
+  // Extension-only: native category picker (select + ID field)
   bindExtensionCategoryUI(categories) {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
-    const categoryWrap = document.getElementById("category-search-wrap");
+    const nativeSelect = document.getElementById("category-native-select");
+    const idInput = document.getElementById("category-id-input");
+    const idApply = document.getElementById("category-id-apply");
     const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
+    const categorySearch = document.getElementById("category-search");
     const refreshBtn = document.getElementById("refresh-categories");
     const categoryError = document.getElementById("category-error");
 
-    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
+    if (!nativeSelect || !categories?.length) return false;
 
     this.allCategories = categories;
     this.ensureCategorySearchIndex(categories);
@@ -2189,162 +2217,85 @@ Please share payment details and license key.`;
     }
 
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    categorySearch.placeholder = `Type category name or ID (${categories.length} loaded)`;
     const countHint = document.getElementById("category-count-hint");
     if (countHint) {
-      countHint.textContent = `${categories.length} categories ready — type to search`;
+      countHint.textContent = `${categories.length} categories — pick from list or enter ID`;
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
-    if (this._extensionCategoryUiBound) {
-      return true;
-    }
-    this._extensionCategoryUiBound = true;
-
-    categorySearch.readOnly = false;
-    categorySearch.disabled = false;
-    categorySearch.setAttribute("enterkeyhint", "search");
-
-    let searchTimer = null;
-    let lastAppliedLabel = "";
-
-    const hideDropdown = () => {
-      categoryDropdown.style.display = "none";
-      categoryDropdown.innerHTML = "";
-    };
-
-    const updateClearBtn = (raw) => {
-      if (!categoryClear) return;
-      categoryClear.style.display = raw ? "block" : "none";
-    };
-
-    const runSearch = (raw) => {
-      const query = String(raw || "").trim();
-      if (!query) {
-        hideDropdown();
-        return;
-      }
-      if (!/^\d+$/.test(query) && query.length < 2) {
-        hideDropdown();
-        return;
-      }
-
-      const hits = this.filterCategoriesForSearch(query, 15);
-      if (!hits.length) {
-        categoryDropdown.innerHTML =
-          '<div class="category-empty">No match — try another name or ID</div>';
-        categoryDropdown.style.display = "block";
-        return;
-      }
-
+    if (!nativeSelect._categoriesPopulated) {
+      nativeSelect._categoriesPopulated = true;
+      const sorted = categories.slice().sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || "")),
+      );
       const frag = document.createDocumentFragment();
-      hits.forEach((cat) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "cat-item-ext";
-        btn.dataset.id = String(cat.id);
-        btn.textContent = `${cat.name} (${cat.id})`;
-        frag.appendChild(btn);
+      sorted.forEach((cat) => {
+        const opt = document.createElement("option");
+        opt.value = String(cat.id);
+        opt.textContent = `${cat.name} (${cat.id})`;
+        frag.appendChild(opt);
       });
-      categoryDropdown.innerHTML = "";
-      categoryDropdown.appendChild(frag);
-      categoryDropdown.style.display = "block";
-    };
-
-    const scheduleSearch = (raw) => {
-      if (searchTimer) clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => runSearch(raw), 280);
-    };
-
-    const clearField = () => {
-      this.markCategoryEditingActive(8000);
-      categorySearch.value = "";
-      lastAppliedLabel = "";
-      updateClearBtn("");
-      if (categorySelect) categorySelect.value = "";
-      if (selectedCategory) selectedCategory.style.display = "none";
-      const selectedCategoryDetail = document.getElementById("selected-category-detail");
-      if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
-      this._categoryUserPicked = false;
-      this._categorySelectionSource = null;
-      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-      hideDropdown();
-      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
-      categorySearch.focus();
-    };
-
-    categorySearch.onfocus = () => {
-      this.markCategoryEditingActive(8000);
-      if (categoryWrap) categoryWrap.classList.add("ext-cat-active");
-      updateClearBtn(categorySearch.value.trim());
-    };
-
-    categorySearch.onblur = () => {
-      setTimeout(() => {
-        if (document.activeElement === categorySearch) return;
-        if (categoryWrap) categoryWrap.classList.remove("ext-cat-active");
-      }, 120);
-    };
-
-    categorySearch.oninput = () => {
-      this.markCategoryEditingActive(8000);
-      const raw = categorySearch.value;
-      updateClearBtn(raw.trim());
-      if (categorySelect?.value && raw.trim() !== lastAppliedLabel) {
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        this._categorySelectionSource = null;
-        this._categoryUserPicked = false;
-      }
-      scheduleSearch(raw);
-    };
-
-    categorySearch.onkeydown = (e) => {
-      if (e.key === "Escape") {
-        hideDropdown();
-        return;
-      }
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      const raw = categorySearch.value.trim();
-      if (!raw) return;
-      const result = this.applyCategoryFromSearchInput(raw);
-      if (result.status === "resolved" && result.cat) {
-        lastAppliedLabel = `${result.cat.name} (${result.cat.id})`;
-        hideDropdown();
-        return;
-      }
-      if (result.status === "ambiguous" && result.hits?.length) {
-        this.applyCategorySelection(result.hits[0], { source: "user" });
-        lastAppliedLabel = `${result.hits[0].name} (${result.hits[0].id})`;
-        this._categoryUserPicked = true;
-        hideDropdown();
-      }
-    };
-
-    if (categoryClear) {
-      categoryClear.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        clearField();
-      };
+      nativeSelect.appendChild(frag);
     }
 
-    categoryDropdown.onclick = (event) => {
-      const item = event.target?.closest?.(".cat-item-ext");
-      if (!item) return;
-      const id = parseInt(item.dataset.id, 10);
-      const cat = this.findCategoryById(id);
-      if (!cat) return;
-      this.applyCategorySelection(cat, { source: "user" });
-      this._categoryUserPicked = true;
-      lastAppliedLabel = `${cat.name} (${cat.id})`;
-      hideDropdown();
-      this.markCategoryEditingActive(2000);
+    const applyCategoryId = (rawId, source = "user") => {
+      const parsed = parseInt(rawId, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) return false;
+      const cat = this.findCategoryById(parsed);
+      if (cat) {
+        this.applyCategorySelection(cat, { source });
+      } else {
+        this.applyCategoryByIdOnly(parsed, { source });
+      }
+      this._categoryUserPicked = source === "user";
+      this.syncExtensionCategoryControls(parsed);
+      return true;
     };
 
-    console.log("✅ Extension category search ready:", categories.length);
+    if (!this._extensionCategoryUiBound) {
+      this._extensionCategoryUiBound = true;
+
+      nativeSelect.onchange = () => {
+        this.markCategoryEditingActive(4000);
+        const id = nativeSelect.value;
+        if (!id) {
+          if (categorySelect) categorySelect.value = "";
+          if (categorySearch) categorySearch.value = "";
+          if (idInput) idInput.value = "";
+          this._categoryUserPicked = false;
+          this._categorySelectionSource = null;
+          if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+          this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+          return;
+        }
+        applyCategoryId(id, "user");
+      };
+
+      if (idApply && idInput) {
+        const applyTypedId = () => {
+          this.markCategoryEditingActive(4000);
+          const raw = idInput.value.trim();
+          if (!raw) return;
+          if (applyCategoryId(raw, "user")) {
+            nativeSelect.value = String(parseInt(raw, 10));
+          }
+        };
+        idApply.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          applyTypedId();
+        };
+        idInput.onkeydown = (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            applyTypedId();
+          }
+        };
+      }
+    }
+
+    console.log("✅ Extension native category picker ready:", categories.length);
     this.applyDefaultCategoryIfNeeded();
     setTimeout(() => {
       if (!this.isCategoryEditingActive() && !this._categoryUserPicked) {
@@ -2352,6 +2303,26 @@ Please share payment details and license key.`;
       }
     }, 2000);
     return true;
+  }
+
+  syncExtensionCategoryControls(id) {
+    if (window.WEB_OPTIMIZER_MODE) return;
+    const parsed = parseInt(id, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    const nativeSelect = document.getElementById("category-native-select");
+    const idInput = document.getElementById("category-id-input");
+    const categorySearch = document.getElementById("category-search");
+    const cat = this.findCategoryById(parsed);
+    if (nativeSelect) {
+      const hasOption = Array.from(nativeSelect.options).some(
+        (opt) => parseInt(opt.value, 10) === parsed,
+      );
+      nativeSelect.value = hasOption ? String(parsed) : "";
+    }
+    if (idInput) idInput.value = String(parsed);
+    if (categorySearch) {
+      categorySearch.value = cat ? `${cat.name} (${cat.id})` : `ID ${parsed}`;
+    }
   }
 
   // Load categories into dropdown
@@ -2788,6 +2759,7 @@ Please share payment details and license key.`;
       source: options.source || "user",
       cat,
     });
+    this.syncExtensionCategoryControls(cat.id);
     return true;
   }
 
@@ -2820,6 +2792,7 @@ Please share payment details and license key.`;
       source: options.source || "page",
       cat: null,
     });
+    this.syncExtensionCategoryControls(parsed);
     return true;
   }
 
