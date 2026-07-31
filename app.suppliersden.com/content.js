@@ -2097,8 +2097,9 @@ Please share payment details and license key.`;
 
     if (categoryClear) {
       const clearForTyping = (e) => {
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
         this._categoryUserEditing = true;
         categorySearch.value = "";
         categoryClear.style.display = "none";
@@ -2112,16 +2113,14 @@ Please share payment details and license key.`;
         categoryDropdown.style.display = "none";
         categoryDropdown.innerHTML = "";
         this.refreshCategoryApiPreview();
+        focusCategorySearch();
         setTimeout(() => {
-          try {
-            categorySearch.focus({ preventScroll: true });
-          } catch (err) {
-            categorySearch.focus();
-          }
+          focusCategorySearch();
         }, 0);
       };
       categoryClear.onmousedown = clearForTyping;
-      categoryClear.ontouchstart = clearForTyping;
+      categoryClear.ontouchend = clearForTyping;
+      categoryClear.onpointerup = clearForTyping;
       categoryClear.onclick = clearForTyping;
     }
 
