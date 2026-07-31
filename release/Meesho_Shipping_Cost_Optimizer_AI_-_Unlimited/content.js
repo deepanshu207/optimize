@@ -1127,6 +1127,9 @@ class MeeshoShippingOptimizer {
       return;
     }
     if (this.modal) {
+      this.hideCategoryDropdown();
+      const portal = document.getElementById("category-dropdown-portal");
+      if (portal) portal.remove();
       this.modal.remove();
       this.modal = null;
     }
@@ -1668,8 +1671,7 @@ Please share payment details and license key.`;
     const result = this.resolveCategoryFromSearchInput(raw);
     if (result.status === "resolved" && result.cat) {
       this.applyCategorySelection(result.cat, { source: "user" });
-      const categoryDropdown = document.getElementById("category-dropdown");
-      if (categoryDropdown) categoryDropdown.style.display = "none";
+      this.hideCategoryDropdown();
       return result;
     }
     return result;
@@ -2178,6 +2180,69 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
+  getCategoryDropdownEl() {
+    if (window.WEB_OPTIMIZER_MODE) {
+      return document.getElementById("category-dropdown");
+    }
+    let portal = document.getElementById("category-dropdown-portal");
+    if (!portal) {
+      portal = document.createElement("div");
+      portal.id = "category-dropdown-portal";
+      portal.className = "category-dropdown category-dropdown-portal";
+      portal.setAttribute("role", "listbox");
+      document.body.appendChild(portal);
+    }
+    return portal;
+  }
+
+  positionCategoryDropdownPortal() {
+    if (window.WEB_OPTIMIZER_MODE) return;
+    const input = document.getElementById("category-search");
+    const portal = document.getElementById("category-dropdown-portal");
+    if (!input || !portal || portal.style.display === "none") return;
+    const rect = input.getBoundingClientRect();
+    const pad = 8;
+    const width = Math.min(rect.width, window.innerWidth - pad * 2);
+    const left = Math.max(pad, Math.min(rect.left, window.innerWidth - width - pad));
+    const top = rect.bottom + 4;
+    const maxH = Math.max(140, window.innerHeight - top - pad);
+    portal.style.left = `${left}px`;
+    portal.style.top = `${top}px`;
+    portal.style.width = `${width}px`;
+    portal.style.maxHeight = `${maxH}px`;
+  }
+
+  hideCategoryDropdown() {
+    ["category-dropdown", "category-dropdown-portal"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = "none";
+      el.innerHTML = "";
+    });
+    const status = document.getElementById("category-search-status");
+    if (status) {
+      status.style.display = "none";
+      status.textContent = "";
+    }
+  }
+
+  updateCategorySearchStatus(query, count) {
+    const status = document.getElementById("category-search-status");
+    if (!status || window.WEB_OPTIMIZER_MODE) return;
+    const q = String(query || "").trim();
+    if (!q) {
+      status.style.display = "none";
+      status.textContent = "";
+      return;
+    }
+    status.style.display = "block";
+    if (count > 0) {
+      status.textContent = `${count} match${count === 1 ? "" : "es"} for "${q}" — tap a result below`;
+    } else {
+      status.textContent = `No match for "${q}" — try numeric ID like 10123`;
+    }
+  }
+
   // Load categories into dropdown (same search + ID flow for web and extension)
   bindCategoryUI(categories) {
     const categorySearch = document.getElementById("category-search");
@@ -2227,15 +2292,12 @@ Please share payment details and license key.`;
       const run = () => {
         this._categorySearchFrame = null;
         if (!query) {
-          categoryDropdown.style.display = "none";
-          categoryDropdown.innerHTML = "";
+          this.hideCategoryDropdown();
           return;
         }
-        this.renderCategoryDropdown(
-          this.filterCategoriesForSearch(query, 60),
-          { query, showSearchHint: false },
-        );
-        categoryDropdown.style.display = "block";
+        const hits = this.filterCategoriesForSearch(query, 60);
+        this.renderCategoryDropdown(hits, { query, showSearchHint: false });
+        this.updateCategorySearchStatus(query, hits.length);
       };
 
       if (this._categorySearchFrame && typeof cancelAnimationFrame === "function") {
@@ -2255,6 +2317,9 @@ Please share payment details and license key.`;
       this.markCategoryEditingActive();
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
+      try {
+        categorySearch.scrollIntoView({ block: "center", behavior: "smooth" });
+      } catch (e) {}
       setTimeout(() => {
         try {
           if (raw && this._categorySelectionSource) categorySearch.select();
@@ -2263,8 +2328,7 @@ Please share payment details and license key.`;
       if (raw) {
         renderSearchDropdown(raw, true);
       } else {
-        categoryDropdown.style.display = "none";
-        categoryDropdown.innerHTML = "";
+        this.hideCategoryDropdown();
       }
     };
 
@@ -2275,6 +2339,14 @@ Please share payment details and license key.`;
       categorySearch.focus();
     };
     categorySearch.onclick = focusCategorySearch;
+    categorySearch.addEventListener(
+      "touchstart",
+      () => {
+        this.markCategoryEditingActive();
+        if (document.activeElement !== categorySearch) categorySearch.focus();
+      },
+      { passive: true },
+    );
 
     categorySearch.oninput = () => {
       this.markCategoryEditingActive();
@@ -2292,7 +2364,7 @@ Please share payment details and license key.`;
 
     categorySearch.onkeydown = (e) => {
       if (e.key === "Escape") {
-        categoryDropdown.style.display = "none";
+        this.hideCategoryDropdown();
         categorySearch.blur();
         return;
       }
@@ -2310,7 +2382,7 @@ Please share payment details and license key.`;
       }
       if (result.status === "ambiguous" && result.hits?.length) {
         this.applyCategorySelection(result.hits[0], { source: "user" });
-        categoryDropdown.style.display = "none";
+        this.hideCategoryDropdown();
         OptimizerUtils.showNotification(
           `Selected top match: ${result.hits[0].name} (ID ${result.hits[0].id})`,
           "info",
@@ -2361,8 +2433,7 @@ Please share payment details and license key.`;
         this._categoryUserPicked = false;
         this._categorySelectionSource = null;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        categoryDropdown.style.display = "none";
-        categoryDropdown.innerHTML = "";
+        this.hideCategoryDropdown();
         this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
         focusCategorySearch();
       };
@@ -2384,6 +2455,7 @@ Please share payment details and license key.`;
           (node) =>
             node?.id === "category-search" ||
             node?.id === "category-dropdown" ||
+            node?.id === "category-dropdown-portal" ||
             node?.id === "category-clear" ||
             node?.classList?.contains?.("cat-item"),
         );
@@ -2391,11 +2463,12 @@ Please share payment details and license key.`;
           isInsideCategoryUi ||
           target?.closest?.("#category-search") ||
           target?.closest?.("#category-dropdown") ||
+          target?.closest?.("#category-dropdown-portal") ||
           target?.closest?.("#category-clear")
         ) {
           return;
         }
-        currentDropdown.style.display = "none";
+        this.hideCategoryDropdown();
       };
       document.addEventListener("pointerdown", this._handleCategoryOutsideTap, true);
       document.addEventListener("click", this._handleCategoryOutsideTap, true);
@@ -2421,8 +2494,14 @@ Please share payment details and license key.`;
   }
 
   renderCategoryDropdown(categories, options = {}) {
-    const dropdown = document.getElementById("category-dropdown");
-    if (!dropdown) return;
+    const dropdown = this.getCategoryDropdownEl();
+    if (!dropdown) return 0;
+
+    const inlineDropdown = document.getElementById("category-dropdown");
+    if (!window.WEB_OPTIMIZER_MODE && inlineDropdown) {
+      inlineDropdown.style.display = "none";
+      inlineDropdown.innerHTML = "";
+    }
 
     const query = String(options.query || "").trim();
     const helperHtml = options.showSearchHint
@@ -2462,6 +2541,9 @@ Please share payment details and license key.`;
     });
     dropdown.innerHTML = html;
     dropdown.style.display = "block";
+    if (!window.WEB_OPTIMIZER_MODE) {
+      this.positionCategoryDropdownPortal();
+    }
 
     dropdown.onclick = (event) => {
       const item = event.target?.closest?.(".cat-item");
@@ -2476,8 +2558,9 @@ Please share payment details and license key.`;
         };
       this.applyCategorySelection(cat, { source: "user" });
       this._categoryUserPicked = true;
-      dropdown.style.display = "none";
+      this.hideCategoryDropdown();
     };
+    return categories.length;
   }
 
   async loadCategoryDropdown() {
