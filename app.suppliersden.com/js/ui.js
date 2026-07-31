@@ -96,6 +96,12 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
+                #category-search {
+                    touch-action: manipulation;
+                    -webkit-user-select: text; user-select: text;
+                    font-size: 16px !important;
+                    min-height: 44px;
+                }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
                     .opt-modal-ext .opt-header { border-radius: 0 !important; }
