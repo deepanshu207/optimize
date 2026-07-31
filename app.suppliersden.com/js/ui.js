@@ -64,17 +64,21 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
+                .category-search-wrap { position: relative; z-index: 10000; }
                 .category-dropdown {
                     display: none;
-                    max-height: 200px;
+                    position: absolute;
+                    top: calc(100% + 2px);
+                    left: 0;
+                    right: 0;
+                    max-height: min(220px, 45vh);
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
                     border: 1px solid #d1d5db;
                     border-radius: 0 0 8px 8px;
-                    margin-top: -1px;
-                    position: relative;
-                    z-index: 10001;
+                    margin-top: 0;
+                    z-index: 10050;
                     box-shadow: 0 10px 28px rgba(0,0,0,0.15);
                 }
                 .cat-item {
@@ -82,12 +86,14 @@ const OptimizerUI = {
                     cursor: pointer;
                     border-bottom: 1px solid #eee;
                     font-size: 12px;
+                    line-height: 1.35;
                     transition: background 0.15s;
                 }
                 .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
                 .cat-item-name {
                     display: flex;
                     justify-content: space-between;
+                    align-items: flex-start;
                     gap: 8px;
                     color: #111827;
                     font-weight: 600;
@@ -95,13 +101,14 @@ const OptimizerUI = {
                 .cat-item-id { font-size: 10px; color: #6b7280; white-space: nowrap; font-weight: 500; }
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
-                .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
+                .category-empty { padding: 12px; color: #6b7280; font-size: 12px; line-height: 1.4; }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
                     .opt-modal-ext .opt-header { border-radius: 0 !important; }
                     .opt-tab { font-size: 14px; padding: 14px 8px; }
                     .opt-body { padding: 14px !important; }
                     .opt-row { grid-template-columns: 1fr !important; }
+                    .category-dropdown { max-height: 180px; }
                 }
             </style>
         `;
@@ -308,13 +315,13 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div style="position:relative;z-index:10000;">
+                        <div class="category-search-wrap">
                             <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
                             <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
+                            <div id="category-dropdown" class="category-dropdown"></div>
                         </div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
                         <p class="category-search-hint">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
-                        <div id="category-dropdown" class="category-dropdown"></div>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>

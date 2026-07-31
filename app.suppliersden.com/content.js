@@ -924,6 +924,9 @@ class MeeshoShippingOptimizer {
       MeeshoAPI.detectAllValues?.();
     }
 
+    const fab = document.getElementById("meesho-optimizer-fab");
+    if (fab) fab.style.display = "none";
+
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
@@ -978,6 +981,8 @@ class MeeshoShippingOptimizer {
       this.modal.remove();
       this.modal = null;
     }
+    const fab = document.getElementById("meesho-optimizer-fab");
+    if (fab) fab.style.display = "";
   }
 
   setupLicenseEvents() {
@@ -1961,10 +1966,8 @@ Please share payment details and license key.`;
       const run = () => {
         this._categorySearchFrame = null;
         this.renderCategoryDropdown(
-          query
-            ? this.filterCategoriesForSearch(query, 60)
-            : this.getDefaultCategorySlice(40),
-          { query, showSearchHint: true },
+          query ? this.filterCategoriesForSearch(query, 60) : [],
+          { query, showSearchHint: true, idle: !query },
         );
         categoryDropdown.style.display = "block";
       };
@@ -2154,6 +2157,11 @@ Please share payment details and license key.`;
       : "";
 
     if (!categories?.length) {
+      if (options.idle && helperHtml) {
+        dropdown.innerHTML = helperHtml;
+        dropdown.style.display = "block";
+        return;
+      }
       dropdown.innerHTML =
         `${helperHtml}<div class="category-empty">No matching categories — try name or ID</div>`;
       dropdown.style.display = "block";
