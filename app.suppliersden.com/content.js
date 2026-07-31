@@ -170,11 +170,130 @@ class MeeshoShippingOptimizer {
   }
 
   async preloadLocalPriceModelModule() {
-    return this.importOptimizerModule(
+    const loaded = await this.importOptimizerModule(
       () => this.getLocalPriceModelModuleUrl(),
       () => !!window.LocalPriceModel?.applyLocalPriceEstimates,
       "__localPriceModelModulePromise",
     );
+    if (loaded) return true;
+    return this.installInlineLocalPriceModelFallback();
+  }
+
+  async installInlineLocalPriceModelFallback() {
+    if (window.LocalPriceModel?.applyLocalPriceEstimates) return true;
+    await this.preloadLiveVariantReportModule();
+    const report = window.LiveVariantReport;
+    if (!report?.parseReportCsv || !report?.pickRecommendedVariants) return false;
+
+    const key = "meesho_local_price_reports_v1";
+    const n = (v, fallback = 0) => {
+      const num = Number(v);
+      return Number.isFinite(num) ? num : fallback;
+    };
+    const feature = (row = {}, context = {}) => {
+      const meta = row.meta || {};
+      return {
+        categoryId: String(context.categoryId || row.categoryId || ""),
+        path: meta.path || row.path || row.variantStyle || "",
+        kb: n(meta.kb || meta.actualKb || meta.targetKb || row.kb, 0),
+      };
+    };
+    const loadStoredSamples = () => {
+      try {
+        const rows = JSON.parse(localStorage.getItem(key) || "[]");
+        return Array.isArray(rows) ? rows : [];
+      } catch (e) {
+        return [];
+      }
+    };
+    const saveStoredSamples = (samples) => {
+      const rows = (samples || []).filter((s) => n(s.shippingCost) > 0).slice(-2500);
+      try {
+        localStorage.setItem(key, JSON.stringify(rows));
+      } catch (e) {}
+      return rows;
+    };
+    const addStoredSamples = (samples) => saveStoredSamples([...loadStoredSamples(), ...(samples || [])]);
+    const samplesFromReportCsv = (text) => {
+      const parsed = report.parseReportCsv(text);
+      const meta = parsed.meta || {};
+      return (parsed.variants || [])
+        .filter((row) => n(row.shippingCost) > 0)
+        .map((row) => ({
+          shippingCost: n(row.shippingCost),
+          categoryId: String(meta.category_id || meta.categoryId || ""),
+          features: feature(row, { categoryId: meta.category_id || meta.categoryId || "" }),
+          source: "report_csv_fallback",
+        }));
+    };
+    const samplesFromAnalysis = (analysis) => {
+      const ctx = analysis?.context || {};
+      return (analysis?.variantRows || [])
+        .filter((row) => n(row.shippingCost) > 0)
+        .map((row) => ({
+          shippingCost: n(row.shippingCost),
+          categoryId: String(ctx.categoryId || ""),
+          features: feature(row, { categoryId: ctx.categoryId || "" }),
+          source: "analysis_fallback",
+        }));
+    };
+    const fallbackPrice = (row) => {
+      const meta = row.meta || {};
+      const existing = n(row.estShipping || meta.estInr, 0);
+      if (existing > 0) return existing;
+      const kb = n(meta.kb || meta.actualKb || meta.targetKb, 48);
+      if (kb <= 18) return 50;
+      if (kb <= 28) return 60;
+      if (kb <= 42) return 70;
+      if (kb <= 60) return 80;
+      if (kb <= 90) return 100;
+      return 120;
+    };
+    const applyLocalPriceEstimates = (variants, samples = [], context = {}) => {
+      const rows = (variants || []).map((row, index) => {
+        const f = feature(row, context);
+        const ranked = (samples || [])
+          .filter((s) => n(s.shippingCost) > 0)
+          .map((s) => {
+            const sf = s.features || {};
+            let score = 1;
+            if (context.categoryId && s.categoryId && String(context.categoryId) === String(s.categoryId)) score += 20;
+            if (sf.path && f.path && String(sf.path).toLowerCase() === String(f.path).toLowerCase()) score += 10;
+            if (sf.kb && f.kb) score += Math.max(0, 20 - Math.abs(sf.kb - f.kb) * 0.5);
+            return { s, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+        const price = ranked.length
+          ? Math.round(ranked.reduce((sum, r) => sum + n(r.s.shippingCost) * r.score, 0) / ranked.reduce((sum, r) => sum + r.score, 0))
+          : fallbackPrice(row);
+        return {
+          ...row,
+          variantId: row.variantId || `local-${index + 1}`,
+          shippingCost: price,
+          estShipping: price,
+          isVerified: false,
+          liveVerified: false,
+          localOnly: true,
+          localPrice: true,
+          localPriceSource: ranked.length ? "inline_report_model" : "inline_kb_fallback",
+          _frozenPricing: { shippingCost: price, estShipping: price, metaEstInr: price },
+          meta: { ...(row.meta || {}), estInr: price },
+        };
+      }).sort((a, b) => (a.shippingCost || 999) - (b.shippingCost || 999));
+      return { results: rows, samplesUsed: samples.length, recommendation: report.pickRecommendedVariants(rows) };
+    };
+
+    window.LocalPriceModel = {
+      STORAGE_KEY: key,
+      samplesFromReportCsv,
+      samplesFromAnalysis,
+      loadStoredSamples,
+      saveStoredSamples,
+      addStoredSamples,
+      applyLocalPriceEstimates,
+    };
+    return true;
   }
 
   isStaticPromoRow(row) {
@@ -2481,6 +2600,11 @@ Please share payment details and license key.`;
     const categorySelect = document.getElementById("category-select");
     if (categorySelect?.value) {
       this.refreshCategoryApiPreview();
+      return;
+    }
+
+    if (!window.WEB_OPTIMIZER_MODE) {
+      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
       return;
     }
 
