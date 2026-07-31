@@ -934,31 +934,45 @@ class MeeshoShippingOptimizer {
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
+    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
+
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
-    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
+    // pointer-events:none on shell lets inputs receive focus on mobile (Kiwi/Android).
     this.modal.style.cssText = `
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
+            inset: 0;
             z-index: 99999;
             display: flex;
             justify-content: ${isNarrow ? "stretch" : "center"};
             align-items: ${isNarrow ? "stretch" : "center"};
-            backdrop-filter: ${isNarrow ? "none" : "blur(5px)"};
+            pointer-events: none;
         `;
 
+    const backdrop = document.createElement("div");
+    backdrop.className = "opt-modal-backdrop";
+    backdrop.style.cssText = `
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: ${isNarrow ? "none" : "blur(5px)"};
+            pointer-events: auto;
+        `;
+    backdrop.onclick = () => this.closeModal();
+
     const content = document.createElement("div");
+    content.className = "opt-modal-content";
     content.style.cssText = isNarrow
-      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
-      : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
+      ? "position:relative;z-index:1;width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;pointer-events:auto;-webkit-overflow-scrolling:touch;"
+      : "position:relative;z-index:1;max-width:480px;width:95%;max-height:90vh;overflow-y:auto;pointer-events:auto;";
     content.innerHTML = OptimizerUI.createModalHTML();
 
+    this.modal.appendChild(backdrop);
     this.modal.appendChild(content);
     document.body.appendChild(this.modal);
+
+    const fab = document.getElementById("meesho-optimizer-fab");
+    if (fab) fab.style.display = "none";
 
     this._categorySearchWired = false;
     this._categoryQuickWired = false;
@@ -967,10 +981,6 @@ class MeeshoShippingOptimizer {
     this._staticCatWired = false;
 
     this.setupMainEvents();
-
-    this.modal.onclick = (e) => {
-      if (e.target === this.modal) this.closeModal();
-    };
 
     setTimeout(() => {
       this.detectShipping();
@@ -995,6 +1005,8 @@ class MeeshoShippingOptimizer {
       this.modal.remove();
       this.modal = null;
     }
+    const fab = document.getElementById("meesho-optimizer-fab");
+    if (fab) fab.style.display = "";
   }
 
   setupLicenseEvents() {
@@ -1879,6 +1891,30 @@ Please share payment details and license key.`;
     }
   }
 
+  /** Mobile/Kiwi: unlock text fields inside fixed extension modal. */
+  wireMobileTextInput(input, focusBtnId) {
+    if (!input) return;
+    input.readOnly = false;
+    input.disabled = false;
+    input.setAttribute("readonly", "readonly");
+    const unlock = () => input.removeAttribute("readonly");
+    input.addEventListener("touchstart", unlock, { passive: true });
+    input.addEventListener("focus", unlock);
+    const focusBtn = focusBtnId ? document.getElementById(focusBtnId) : null;
+    if (focusBtn) {
+      focusBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        unlock();
+        try {
+          input.focus({ preventScroll: true });
+        } catch {
+          input.focus();
+        }
+      });
+    }
+  }
+
   getStaticCategoryList() {
     return this.getCatLiteFallbackPool();
   }
@@ -1917,6 +1953,7 @@ Please share payment details and license key.`;
     const filter = document.getElementById("cat-static-filter");
     if (filter) {
       this.prepareSearchInput(filter);
+      this.wireMobileTextInput(filter, "cat-static-focus-btn");
       filter.addEventListener("input", () => {
         const q = filter.value.trim().toLowerCase();
         chipsRoot.querySelectorAll(".cat-static-chip").forEach((btn) => {
@@ -1948,12 +1985,33 @@ Please share payment details and license key.`;
       });
     }
 
+    document.querySelectorAll(".cat-letter-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const letter = (btn.dataset.letter || "").toLowerCase();
+        if (filter) filter.value = letter ? letter : "";
+        chipsRoot.querySelectorAll(".cat-static-chip").forEach((chip) => {
+          if (!letter) {
+            chip.style.display = "";
+            return;
+          }
+          const name = (chip.dataset.name || "").toLowerCase();
+          chip.style.display = name.startsWith(letter) ? "" : "none";
+        });
+        document.querySelectorAll(".cat-letter-btn").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+      });
+    });
+
     const clearBtn = document.getElementById("cat-static-clear");
     if (clearBtn) {
       clearBtn.addEventListener("click", () => {
         if (filter) filter.value = "";
         chipsRoot.querySelectorAll(".cat-static-chip").forEach((btn) => {
           btn.style.display = "";
+        });
+        document.querySelectorAll(".cat-letter-btn").forEach((b) => {
+          b.classList.toggle("active", !b.dataset.letter);
         });
         this.paintStaticCategoryChips(null);
         this._categoryUserPicked = false;

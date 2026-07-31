@@ -143,7 +143,56 @@ const OptimizerUI = {
                     border-radius: 8px;
                     background: #fff;
                     color: #111827;
+                    margin-bottom: 6px;
+                    position: relative;
+                    z-index: 2;
+                    pointer-events: auto !important;
+                    touch-action: manipulation;
+                    -webkit-user-select: text;
+                    user-select: text;
+                    cursor: text;
+                    -webkit-appearance: none;
+                    appearance: none;
+                }
+                #cat-static-focus-btn {
+                    display: block;
+                    width: 100%;
                     margin-bottom: 8px;
+                    padding: 10px 12px;
+                    border: 1px dashed #C9A227;
+                    border-radius: 8px;
+                    background: #fff;
+                    color: #047857;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    touch-action: manipulation;
+                    min-height: 44px;
+                }
+                .cat-static-letters {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-bottom: 8px;
+                }
+                .cat-letter-btn {
+                    flex: 1 1 auto;
+                    min-width: 36px;
+                    padding: 8px 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    background: #fff;
+                    color: #374151;
+                    font-size: 13px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    touch-action: manipulation;
+                    min-height: 40px;
+                }
+                .cat-letter-btn.active {
+                    background: #fef3c7;
+                    border-color: #C9A227;
+                    color: #047857;
                 }
                 #cat-static-filter:focus {
                     outline: none;
@@ -497,22 +546,20 @@ const OptimizerUI = {
                         </div>
                         <div class="cat-static-box">
                             <p class="cat-static-title">Tap a category below (10 static — no search limit)</p>
-                            <input type="search" id="cat-static-filter" class="cat-static-filter"
-                                placeholder="Optional: filter by name or ID"
-                                list="cat-static-datalist"
-                                autocomplete="on" autocorrect="off" autocapitalize="none" spellcheck="false">
-                            <datalist id="cat-static-datalist">
-                                <option value="Kurtis (10004)">
-                                <option value="Jeans (10011)">
-                                <option value="Jeggings (10012)">
-                                <option value="Sarees (10003)">
-                                <option value="Tshirts (10000)">
-                                <option value="Shirts (10001)">
-                                <option value="Suits (10005)">
-                                <option value="Leggings (10006)">
-                                <option value="Dresses (10007)">
-                                <option value="Tops (10008)">
-                            </datalist>
+                            <button type="button" id="cat-static-focus-btn">Tap to open keyboard &amp; type filter</button>
+                            <input type="text" id="cat-static-filter" name="cat-static-filter"
+                                placeholder="Type name or ID — e.g. Jeans or 10011"
+                                autocomplete="off" autocorrect="off" autocapitalize="none"
+                                spellcheck="false" inputmode="text">
+                            <div class="cat-static-letters" id="cat-static-letters">
+                                <button type="button" class="cat-letter-btn active" data-letter="">All</button>
+                                <button type="button" class="cat-letter-btn" data-letter="j">J</button>
+                                <button type="button" class="cat-letter-btn" data-letter="k">K</button>
+                                <button type="button" class="cat-letter-btn" data-letter="s">S</button>
+                                <button type="button" class="cat-letter-btn" data-letter="t">T</button>
+                                <button type="button" class="cat-letter-btn" data-letter="l">L</button>
+                                <button type="button" class="cat-letter-btn" data-letter="d">D</button>
+                            </div>
                             <div id="cat-static-chips" class="cat-static-chips">
                                 <button type="button" class="cat-static-chip" data-id="10004" data-name="Kurtis">Kurtis<span class="cat-static-chip-id">ID 10004</span></button>
                                 <button type="button" class="cat-static-chip" data-id="10011" data-name="Jeans">Jeans<span class="cat-static-chip-id">ID 10011</span></button>
@@ -528,7 +575,7 @@ const OptimizerUI = {
                             <div class="cat-static-clear-row">
                                 <button type="button" id="cat-static-clear">Clear</button>
                             </div>
-                            <p class="cat-static-hint">Keyboard optional — tap any chip to select. Filter is optional.</p>
+                            <p class="cat-static-hint">Tap chips to select. Use letter row to filter without keyboard.</p>
                         </div>
                         <div class="optimizer-chrome-hidden category-search-wrap">
                             <input type="text" id="category-search" class="opt-input"
