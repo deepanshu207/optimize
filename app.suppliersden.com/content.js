@@ -1,5 +1,101 @@
 // Meesho Shipping Optimizer v6.0.0 - Main Entry Point
 
+// ─── Local Price Database ───────────────────────────────────────────────────
+// Accumulates past report results in localStorage to estimate best local price
+// without a live Meesho API call.
+const LocalPriceDB = {
+  KEY: "meesho_local_price_db",
+  MAX_ENTRIES: 200,
+
+  _read() {
+    try {
+      return JSON.parse(localStorage.getItem(this.KEY) || "[]");
+    } catch {
+      return [];
+    }
+  },
+
+  _write(entries) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(entries.slice(-this.MAX_ENTRIES)));
+    } catch {}
+  },
+
+  /** Save all priced variants from a completed run. */
+  saveRun(variants, context = {}) {
+    if (!variants?.length) return;
+    const priced = variants.filter((v) => Number(v.shippingCost) > 0);
+    if (!priced.length) return;
+    const ts = Date.now();
+    const cat = String(context.categoryId || "");
+    const entries = this._read();
+    priced.forEach((v) => {
+      entries.push({
+        ts,
+        cat,
+        price: Number(v.shippingCost),
+        variantId: v.variantId || "",
+        name: v.name || "",
+        kb: v.meta?.kb || v.meta?.actualKb || "",
+        width: v.meta?.width || v.meta?.canvasW || "",
+        height: v.meta?.height || v.meta?.canvasH || "",
+        borderPx: v.meta?.borderPx ?? "",
+        style: v.variantStyle || v.meta?.style || "",
+      });
+    });
+    this._write(entries);
+  },
+
+  /** Return all unique prices seen across all saved runs, sorted ascending. */
+  allPrices(catFilter = "") {
+    const entries = this._read();
+    const rows = catFilter
+      ? entries.filter((e) => e.cat === String(catFilter))
+      : entries;
+    const prices = [...new Set(rows.map((e) => Number(e.price)).filter((p) => p > 0))];
+    return prices.sort((a, b) => a - b);
+  },
+
+  /** Best local price estimate: lowest price seen ≥ 2 times, or overall lowest. */
+  bestLocalPrice(catFilter = "") {
+    const entries = this._read();
+    const rows = catFilter
+      ? entries.filter((e) => e.cat === String(catFilter))
+      : entries;
+    const counts = {};
+    rows.forEach((e) => {
+      const p = Number(e.price);
+      if (p > 0) counts[p] = (counts[p] || 0) + 1;
+    });
+    const confirmed = Object.keys(counts)
+      .map(Number)
+      .filter((p) => counts[p] >= 2)
+      .sort((a, b) => a - b);
+    if (confirmed.length) return confirmed[0];
+    const all = Object.keys(counts).map(Number).sort((a, b) => a - b);
+    return all[0] || null;
+  },
+
+  /** Summary for display. */
+  summary(catFilter = "") {
+    const entries = this._read();
+    const rows = catFilter
+      ? entries.filter((e) => e.cat === String(catFilter))
+      : entries;
+    if (!rows.length) return null;
+    const prices = rows.map((e) => Number(e.price)).filter((p) => p > 0);
+    const best = this.bestLocalPrice(catFilter);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const runs = new Set(rows.map((e) => e.ts)).size;
+    return { best, min, max, count: rows.length, runs };
+  },
+
+  clear() {
+    localStorage.removeItem(this.KEY);
+  },
+};
+
 class MeeshoShippingOptimizer {
   constructor() {
     this.currentShippingCost = null;
@@ -154,7 +250,7 @@ class MeeshoShippingOptimizer {
   async preloadLiveVariantReportModule() {
     return this.importOptimizerModule(
       () => this.getLiveVariantReportModuleUrl(),
-      () => !!window.LiveVariantReport?.analyzeLiveVariants,
+      () => !!window.LiveVariantReport?.createAndDownloadReport,
       "__liveVariantReportModulePromise",
     );
   }
@@ -1357,6 +1453,38 @@ Please share payment details and license key.`;
     }
 
     this.wireClearUploadButton();
+    this.wireLocalPriceButtons();
+  }
+
+  wireLocalPriceButtons() {
+    const saveBtn = document.getElementById("local-price-save-btn");
+    if (saveBtn) saveBtn.onclick = () => this.saveLocalPriceSnapshot();
+    const viewBtn = document.getElementById("local-price-view-btn");
+    if (viewBtn) viewBtn.onclick = () => this.showLocalPriceReport();
+    const clearBtn = document.getElementById("local-price-clear-btn");
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        if (!confirm("Clear all local price history?")) return;
+        LocalPriceDB.clear();
+        OptimizerUtils.showNotification("Local price history cleared.", "info");
+      };
+    }
+    this.refreshLocalPriceUI();
+  }
+
+  refreshLocalPriceUI() {
+    const hint = document.getElementById("local-price-hint");
+    if (!hint) return;
+    const categorySelect = document.getElementById("category-select");
+    const catId = categorySelect?.value || "";
+    const summary = LocalPriceDB.summary(catId);
+    if (summary) {
+      hint.textContent = `📦 Local best: ₹${summary.best} (${summary.runs} runs, ${summary.count} variants)`;
+      hint.style.color = "#047857";
+    } else {
+      hint.textContent = "No local history yet — generate & save after getting prices";
+      hint.style.color = "#6b7280";
+    }
   }
 
   categoryMatchesQuery(cat, query) {
@@ -3065,6 +3193,9 @@ Please share payment details and license key.`;
       OptimizerUtils.showNotification("Error: " + err.message, "error");
     }
 
+    // Auto-save priced results to local price DB
+    try { this.saveToLocalPriceDB(); } catch (e) { console.warn("LocalPriceDB save:", e); }
+
     // Show results
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
@@ -3529,6 +3660,64 @@ Please share payment details and license key.`;
         "error",
       );
       return null;
+    }
+  }
+
+  /** Auto-save priced results to local DB after every report or generate run. */
+  saveToLocalPriceDB() {
+    const all = [...(this.currentResults || []), ...(this.framedExtraResults || [])];
+    const context = this.buildLiveReportContext();
+    LocalPriceDB.saveRun(all, context);
+  }
+
+  showLocalPriceReport() {
+    const categorySelect = document.getElementById("category-select");
+    const catId = categorySelect?.value || "";
+    const summary = LocalPriceDB.summary(catId);
+    const prices = LocalPriceDB.allPrices(catId);
+
+    if (!summary) {
+      OptimizerUtils.showNotification(
+        "No local price history yet — generate variants with live shipping first, then save.",
+        "error",
+      );
+      return;
+    }
+
+    const lines = [
+      `📦 Local Price History${catId ? ` (category ${catId})` : " (all)"}`,
+      `Runs saved: ${summary.runs}  |  Variants: ${summary.count}`,
+      `Price range: ₹${summary.min} – ₹${summary.max}`,
+      `Best local estimate: ₹${summary.best}`,
+      `All prices seen: ${prices.map((p) => "₹" + p).join(", ")}`,
+    ];
+
+    // Find the ₹1 pair if any
+    for (let i = 0; i < prices.length - 1; i++) {
+      if (prices[i + 1] - prices[i] === 1) {
+        lines.push(`✓ ₹1 pair: ₹${prices[i]} + ₹${prices[i + 1]} — test BOTH`);
+        break;
+      }
+    }
+
+    OptimizerUtils.showNotification(lines.join("\n"), "success", 8000);
+
+    // Also log full data to console for copying
+    console.log("[LocalPriceDB] Full history:", LocalPriceDB._read());
+  }
+
+  saveLocalPriceSnapshot() {
+    this.saveToLocalPriceDB();
+    const categorySelect = document.getElementById("category-select");
+    const catId = categorySelect?.value || "";
+    const summary = LocalPriceDB.summary(catId);
+    if (summary) {
+      OptimizerUtils.showNotification(
+        `Saved! Best local price: ₹${summary.best}  (${summary.runs} runs, ${summary.count} variants)`,
+        "success",
+      );
+    } else {
+      OptimizerUtils.showNotification("Saved to local history.", "success");
     }
   }
 
@@ -6914,6 +7103,15 @@ Please share payment details and license key.`;
       restartBtn.onclick = () => {
         this.resetToUploadForm();
       };
+    }
+
+    const localPriceSaveBtn = document.getElementById("local-price-save-btn");
+    if (localPriceSaveBtn) {
+      localPriceSaveBtn.onclick = () => this.saveLocalPriceSnapshot();
+    }
+    const localPriceViewBtn = document.getElementById("local-price-view-btn");
+    if (localPriceViewBtn) {
+      localPriceViewBtn.onclick = () => this.showLocalPriceReport();
     }
   }
 
