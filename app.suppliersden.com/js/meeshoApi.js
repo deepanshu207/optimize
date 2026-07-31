@@ -572,6 +572,14 @@ const MeeshoAPI = {
   },
 
   detectCategoryId: function () {
+    const now = Date.now();
+    if (
+      this.cache.detectedPageCategoryCheckedAt &&
+      now - this.cache.detectedPageCategoryCheckedAt < 2500
+    ) {
+      return this.cache.detectedPageCategoryId || null;
+    }
+
     const methods = [
       () => this.detectCategoryIdFromDom(),
       () => this.detectCategoryIdFromLabels(),
@@ -585,10 +593,14 @@ const MeeshoAPI = {
         const id = fn();
         if (id) {
           console.log("📁 Detected Meesho page category:", id);
+          this.cache.detectedPageCategoryId = id;
+          this.cache.detectedPageCategoryCheckedAt = now;
           return id;
         }
       } catch (e) {}
     }
+    this.cache.detectedPageCategoryId = null;
+    this.cache.detectedPageCategoryCheckedAt = now;
     return null;
   },
 

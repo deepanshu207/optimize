@@ -1798,6 +1798,20 @@ Please share payment details and license key.`;
     void this.loadCategoryDropdown();
   }
 
+  markCategoryEditingActive(ms = 4000) {
+    this._categoryUserEditing = true;
+    this._categoryEditingPauseUntil = Date.now() + ms;
+  }
+
+  isCategoryEditingActive() {
+    const search = document.getElementById("category-search");
+    return (
+      !!this._categoryUserEditing ||
+      document.activeElement === search ||
+      Date.now() < (this._categoryEditingPauseUntil || 0)
+    );
+  }
+
   showPostResultsControls() {
     const categorySearch = document.getElementById("category-search");
     const categorySection = categorySearch?.closest(".opt-section");
@@ -1866,6 +1880,7 @@ Please share payment details and license key.`;
     let attempts = 0;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
+      if (this.isCategoryEditingActive()) return;
 
       attempts++;
       const gotCategory =
@@ -1882,6 +1897,7 @@ Please share payment details and license key.`;
 
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
+    if (this.isCategoryEditingActive()) return;
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.syncCatalogPricing?.();
       MeeshoAPI.detectCatalogImageUrl?.();
@@ -1955,6 +1971,7 @@ Please share payment details and license key.`;
   }
 
   async importPageImageIfNeeded() {
+    if (this.isCategoryEditingActive()) return false;
     if (this._uploadUserPicked || this._uploadUserCleared) return false;
     if (this._pendingFile || document.getElementById("image-input")?.files?.[0]) {
       return false;
@@ -1962,6 +1979,9 @@ Please share payment details and license key.`;
     if (typeof MeeshoAPI === "undefined" || !MeeshoAPI.detectCatalogImageUrl) {
       return false;
     }
+    const now = Date.now();
+    if (now - (this._pageImageImportCheckedAt || 0) < 3000) return false;
+    this._pageImageImportCheckedAt = now;
 
     const url = MeeshoAPI.detectCatalogImageUrl();
     if (!url) return false;
@@ -2212,7 +2232,7 @@ Please share payment details and license key.`;
     };
 
     categorySearch.onfocus = () => {
-      this._categoryUserEditing = true;
+      this.markCategoryEditingActive();
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       if (!isExtensionCategoryUi) {
@@ -2231,7 +2251,7 @@ Please share payment details and license key.`;
     };
 
     const focusCategorySearch = () => {
-      this._categoryUserEditing = true;
+      this.markCategoryEditingActive();
       categorySearch.readOnly = false;
       categorySearch.disabled = false;
       if (document.activeElement === categorySearch) return;
@@ -2252,7 +2272,7 @@ Please share payment details and license key.`;
     }
 
     categorySearch.oninput = () => {
-      this._categoryUserEditing = true;
+      this.markCategoryEditingActive();
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       if (categorySelect?.value || this._categorySelectionSource) {
@@ -2332,7 +2352,7 @@ Please share payment details and license key.`;
         if (e && typeof e.stopPropagation === "function") {
           e.stopPropagation();
         }
-        this._categoryUserEditing = true;
+        this.markCategoryEditingActive();
         categorySearch.value = "";
         categoryClear.style.display = "none";
         if (categorySelect) categorySelect.value = "";
@@ -2452,29 +2472,21 @@ Please share payment details and license key.`;
     dropdown.innerHTML = html;
     dropdown.style.display = "block";
 
-    dropdown.querySelectorAll(".cat-item").forEach((item) => {
-      item.onmouseenter = () => {
-        item.style.background = "rgba(102,126,234,0.12)";
-      };
-      item.onmouseleave = () => {
-        item.style.background = "transparent";
-      };
-      item.onclick = () => {
-        const id = parseInt(item.dataset.id, 10);
-        const cat =
-          this.allCategories?.find((c) => c.id === id) ||
-          this.findCategoryById(id) || {
-            id,
-            name: item.dataset.name,
-            path: item.dataset.path,
-            parentName: item.dataset.path,
-          };
-        this.applyCategorySelection(cat, { source: "user" });
-        this._categoryUserPicked = true;
-        const categoryDropdown = document.getElementById("category-dropdown");
-        if (categoryDropdown) categoryDropdown.style.display = "none";
-      };
-    });
+    dropdown.onclick = (event) => {
+      const item = event.target?.closest?.(".cat-item");
+      if (!item || !dropdown.contains(item)) return;
+      const id = parseInt(item.dataset.id, 10);
+      const cat =
+        this.findCategoryById(id) || {
+          id,
+          name: item.dataset.name,
+          path: item.dataset.path,
+          parentName: item.dataset.path,
+        };
+      this.applyCategorySelection(cat, { source: "user" });
+      this._categoryUserPicked = true;
+      dropdown.style.display = "none";
+    };
   }
 
   async loadCategoryDropdown() {
@@ -2567,6 +2579,7 @@ Please share payment details and license key.`;
     }
     this._categorySelectionSource = options.source || "user";
     this._categoryUserEditing = false;
+    this._categoryEditingPauseUntil = 0;
 
     if (categorySelect) categorySelect.value = String(cat.id);
     if (categorySearch) {
@@ -2603,6 +2616,7 @@ Please share payment details and license key.`;
     if (categorySearch) categorySearch.value = `ID ${parsed}`;
     this._categorySelectionSource = options.source || "page";
     this._categoryUserEditing = false;
+    this._categoryEditingPauseUntil = 0;
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
