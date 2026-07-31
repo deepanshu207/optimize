@@ -64,43 +64,30 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
-                /* category-search-wrap: no overflow, no stacking context — results flow inline */
-                .category-search-wrap { position: relative; }
-                #category-clear-btn {
-                    position: absolute; right: 8px; top: 50%;
-                    transform: translateY(-50%);
-                    background: none; border: none;
-                    color: #9ca3af; font-size: 20px; line-height: 1;
-                    cursor: pointer; padding: 4px 6px;
-                    display: none; z-index: 1;
-                }
-                /* Results list is in NORMAL DOCUMENT FLOW — not position:absolute.
-                   This means overflow-y:auto on the modal container scrolls through it
-                   rather than clipping it. Works on every mobile browser. */
-                #category-dropdown {
+                .category-dropdown {
                     display: none;
-                    max-height: 220px;
+                    max-height: 200px;
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
-                    border: 2px solid #047857;
-                    border-radius: 8px;
-                    margin-top: 4px;
-                    box-shadow: 0 4px 16px rgba(4,120,87,0.15);
+                    border: 1px solid #d1d5db;
+                    border-radius: 0 0 8px 8px;
+                    margin-top: -1px;
+                    position: relative;
+                    z-index: 10001;
+                    box-shadow: 0 10px 28px rgba(0,0,0,0.15);
                 }
                 .cat-item {
-                    padding: 13px 12px;
+                    padding: 10px 12px;
                     cursor: pointer;
-                    border-bottom: 1px solid #f3f4f6;
-                    font-size: 13px;
-                    line-height: 1.35;
-                    -webkit-tap-highlight-color: rgba(4,120,87,0.12);
+                    border-bottom: 1px solid #eee;
+                    font-size: 12px;
+                    transition: background 0.15s;
                 }
-                .cat-item:active { background: rgba(4,120,87,0.12); }
+                .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
                 .cat-item-name {
                     display: flex;
                     justify-content: space-between;
-                    align-items: flex-start;
                     gap: 8px;
                     color: #111827;
                     font-weight: 600;
@@ -108,29 +95,13 @@ const OptimizerUI = {
                 .cat-item-id { font-size: 10px; color: #6b7280; white-space: nowrap; font-weight: 500; }
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
-                .category-empty { padding: 12px; color: #6b7280; font-size: 12px; line-height: 1.4; }
-                #category-search {
-                    touch-action: manipulation;
-                    -webkit-user-select: text; user-select: text;
-                    font-size: 16px !important; /* 16px stops iOS zoom-in on focus */
-                    min-height: 48px;
-                }
-                .local-price-section { background: linear-gradient(135deg,rgba(16,185,129,0.08),rgba(4,120,87,0.04)); border: 1px solid rgba(4,120,87,0.25); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
-                .local-price-section .opt-section-title { color: #047857; }
-                .local-price-card { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-                .local-price-card.best { border-color: #10b981; box-shadow: 0 2px 8px rgba(16,185,129,0.15); }
-                .local-price-tag { font-size: 22px; font-weight: 700; color: #10b981; }
-                .local-price-meta { font-size: 10px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
-                .local-price-conf { font-size: 10px; color: #047857; font-weight: 600; }
-                #local-price-results { display: none; }
-                #local-price-status-line { font-size: 11px; color: #047857; margin-top: 6px; text-align: center; display: none; }
+                .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
                     .opt-modal-ext .opt-header { border-radius: 0 !important; }
                     .opt-tab { font-size: 14px; padding: 14px 8px; }
                     .opt-body { padding: 14px !important; }
                     .opt-row { grid-template-columns: 1fr !important; }
-                    .category-dropdown { max-height: 180px; }
                 }
             </style>
         `;
@@ -196,20 +167,6 @@ const OptimizerUI = {
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
                             <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
-                    </div>
-
-                    <div class="local-price-section" style="margin-top:12px;">
-                        <div class="opt-section-title" style="margin-bottom:8px;">🧮 Local Price (Learn from Reports)</div>
-                        <div style="font-size:10px;color:#4b5563;margin-bottom:10px;line-height:1.45;">Import your saved CSV reports to see which image configs give the lowest shipping — no live API needed.</div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                            <label style="display:flex;align-items:center;justify-content:center;padding:10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;text-align:center;gap:4px;min-height:44px;">
-                                📥 Import Reports
-                                <input type="file" id="local-report-input" accept=".csv,text/csv" multiple style="display:none;">
-                            </label>
-                            <button type="button" id="local-price-btn" class="opt-btn" style="background:linear-gradient(135deg,#10b981,#047857);color:#fff;font-size:12px;font-weight:700;min-height:44px;">🧮 Generate Local Price</button>
-                        </div>
-                        <div id="local-price-status-line"></div>
-                        <div id="local-price-results"></div>
                     </div>
 
                     <div id="processing-area" style="display:none;"></div>
@@ -347,31 +304,26 @@ const OptimizerUI = {
                     </div>
 
                     <div class="opt-section" style="padding:12px;">
-                        <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span>📁 Category <span style="font-size:10px;font-weight:400;color:#6b7280;">(Optional)</span></span>
-                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄 Refresh</button>
+                        <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
+                            <span>📁 Category (Required)</span>
+                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <!-- Wrap only input+clear in position:relative; dropdown is OUTSIDE this wrapper so it flows in the document and is never clipped by overflow:auto -->
-                        <div class="category-search-wrap">
-                            <input type="text" id="category-search" class="opt-input"
-                                placeholder="🔍 Tap to search categories"
-                                autocomplete="off" autocorrect="off" autocapitalize="none"
-                                spellcheck="false" inputmode="search"
-                                style="padding-right:40px;background:#fff;border-color:#d1d5db;">
-                            <button type="button" id="category-clear-btn" aria-label="Clear category">✕</button>
+                        <div style="position:relative;z-index:10000;">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
+                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
                         </div>
-                        <!-- Results in NORMAL FLOW — not absolute, never clipped -->
-                        <div id="category-dropdown"></div>
-                        <p id="category-count-hint" class="category-search-hint" style="margin-top:6px;">Loading categories…</p>
-                        <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.1);border-radius:6px;">
-                            <span style="font-size:11px;color:#ef4444;">⚠️ Not loaded — tap 🔄 Refresh</span>
+                        <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
+                        <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+                        <div id="category-dropdown" class="category-dropdown"></div>
+                        <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
+                            <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
-                        <div id="selected-category" style="margin-top:8px;padding:8px;background:rgba(4,120,87,0.1);border-radius:6px;display:none;">
-                            <span style="font-size:11px;color:#047857;font-weight:700;">✓ </span>
-                            <span id="selected-category-name" style="font-size:12px;color:#111827;font-weight:600;"></span>
-                            <div id="selected-category-detail" style="font-size:10px;color:#4b5563;margin-top:2px;"></div>
+                        <div id="selected-category" style="margin-top:8px;padding:8px;background:rgba(102,126,234,0.15);border-radius:6px;display:none;">
+                            <span style="font-size:11px;color:#a78bfa;">✓ </span>
+                            <span id="selected-category-name" style="font-size:12px;color:black;font-weight:600;"></span>
+                            <div id="selected-category-detail" style="font-size:10px;color:#4b5563;margin-top:4px;line-height:1.4;"></div>
                         </div>
-                        <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:4px;line-height:1.4;display:none;"></div>
+                        <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.4;display:none;"></div>
                         <input type="hidden" id="category-select" value="">
                     </div>
 
@@ -426,20 +378,6 @@ const OptimizerUI = {
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
                             <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
-                    </div>
-
-                    <div class="local-price-section">
-                        <div class="opt-section-title" style="margin-bottom:8px;">🧮 Local Price (Learn from Reports)</div>
-                        <div style="font-size:10px;color:#4b5563;margin-bottom:10px;line-height:1.45;">Import your saved CSV reports — the model learns which image configs give the lowest shipping. Gets smarter every import.</div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                            <label style="display:flex;align-items:center;justify-content:center;padding:10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;text-align:center;gap:4px;min-height:44px;">
-                                📥 Import Reports
-                                <input type="file" id="local-report-input" accept=".csv,text/csv" multiple style="display:none;">
-                            </label>
-                            <button type="button" id="local-price-btn" class="opt-btn" style="background:linear-gradient(135deg,#10b981,#047857);color:#fff;font-size:12px;font-weight:700;min-height:44px;">🧮 Generate Local Price</button>
-                        </div>
-                        <div id="local-price-status-line"></div>
-                        <div id="local-price-results"></div>
                     </div>
 
                     <div class="generate-sticky" id="generate-sticky">
@@ -1130,11 +1068,6 @@ const OptimizerUI = {
           ? ` · ${results.filter((r) => r.noPid).length} kept without PID`
           : ""
       }</div>
-                ${
-                  options.livePricingCategory?.id
-                    ? `<div style="font-size:10px;color:#2563eb;margin-top:6px;padding:6px 8px;background:rgba(37,99,235,0.08);border-radius:6px;">Live prices checked with <strong>sscat_id ${options.livePricingCategory.id}</strong> · ${options.livePricingCategory.name || "category"}<br><span style="color:#6b7280;">Upload on Meesho must use the same leaf category or shipping may differ (e.g. ₹61 here vs ₹79 on listing).</span></div>`
-                    : ""
-                }
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
         `;

@@ -130,50 +130,18 @@
     .session-status.ok { background: #ecfdf5; color: #047857; }
     .session-status.warn { background: #fffbeb; color: #b45309; }
     .session-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.4; }
-    .category-search-wrap { position: relative; z-index: 10000; }
-    .local-price-card { background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;margin-bottom:8px; }
-    .local-price-card.best { border-color:#10b981;box-shadow:0 2px 8px rgba(16,185,129,0.15); }
-    .local-price-tag { font-size:22px;font-weight:700;color:#10b981; }
-    .local-price-meta { font-size:10px;color:#6b7280;margin-top:2px;line-height:1.4; }
-    .local-price-conf { font-size:10px;color:#047857;font-weight:600; }
     .category-dropdown {
       display: none;
-      position: absolute;
-      top: calc(100% + 2px);
-      left: 0;
-      right: 0;
-      max-height: min(220px, 45vh);
+      max-height: 200px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       background: #fff;
       border: 1px solid #ddd;
       border-radius: 0 0 8px 8px;
-      margin-top: 0;
-      z-index: 10050;
+      margin-top: -1px;
+      position: relative;
+      z-index: 10001;
       box-shadow: 0 10px 28px rgba(0,0,0,0.12);
-    }
-    .cat-item {
-      padding: 10px 12px;
-      cursor: pointer;
-      border-bottom: 1px solid #eee;
-      font-size: 12px;
-      line-height: 1.35;
-      transition: background 0.15s;
-    }
-    .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
-    .cat-item-name {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 8px;
-      color: #111827;
-      font-weight: 600;
-    }
-    .cat-item-id { font-size: 10px; color: #6b7280; white-space: nowrap; font-weight: 500; }
-    .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
-    .category-empty { padding: 12px; color: #6b7280; font-size: 12px; line-height: 1.4; }
-    @media (max-width: 640px) {
-      .category-dropdown { max-height: 180px; }
     }
     .smart-mode-note {
       font-size: 11px;
@@ -265,19 +233,6 @@
             <div style="color:#10b981;font-size:12px;margin-top:4px;">✓ Image selected</div>
             <button type="button" id="clear-upload-btn" style="margin-top:10px;padding:8px 16px;font-size:13px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;width:100%;max-width:220px;">Cancel &amp; upload again</button>
           </div>
-          <div class="local-price-section" style="margin:12px 16px 0;padding:12px;background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(4,120,87,0.04));border:1px solid rgba(4,120,87,0.25);border-radius:10px;">
-            <div class="opt-section-title" style="color:#047857;font-size:13px;font-weight:700;margin-bottom:6px;">🧮 Local Price (Learn from Reports)</div>
-            <div style="font-size:11px;color:#4b5563;margin-bottom:10px;line-height:1.45;">Import saved CSV reports — learns which image configs give lowest shipping. No live API needed.</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-              <label style="display:flex;align-items:center;justify-content:center;padding:10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#374151;text-align:center;gap:4px;min-height:44px;">
-                📥 Import Reports
-                <input type="file" id="local-report-input" accept=".csv,text/csv" multiple style="display:none;">
-              </label>
-              <button type="button" id="local-price-btn" style="background:linear-gradient(135deg,#10b981,#047857);color:#fff;font-size:12px;font-weight:700;min-height:44px;border:none;border-radius:8px;cursor:pointer;padding:10px;">🧮 Generate Local Price</button>
-            </div>
-            <div id="local-price-status-line" style="font-size:11px;color:#047857;margin-top:6px;display:none;"></div>
-            <div id="local-price-results" style="display:none;margin-top:8px;"></div>
-          </div>
           <div class="generate-sticky" id="generate-sticky" style="margin:8px 16px 0;">
             <button type="button" id="generate-btn" class="generate-btn" disabled style="margin-top:0;">🚀 Generate Variants</button>
             <button type="button" id="generate-showcase-btn" data-static-gen="showcase" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:linear-gradient(135deg,#ff9800,#4caf50);color:#fff;">🖼️ Generate Showcase Frames (25)</button>
@@ -333,13 +288,13 @@
               <span>📁 Category <span style="font-size:10px;font-weight:normal;color:#6b7280;">(optional)</span></span>
               <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
             </div>
-            <div class="category-search-wrap">
+            <div style="position:relative;z-index:10000;">
               <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" autocomplete="off">
               <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888;display:none;">✕</span>
-              <div id="category-dropdown" class="category-dropdown"></div>
             </div>
             <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:4px;line-height:1.4;">Loading categories…</p>
-            <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
+            <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+            <div id="category-dropdown" class="category-dropdown"></div>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
               <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>
@@ -537,8 +492,6 @@
   <script src="/js/utils.js"></script>
   <script src="/js/license.js"></script>
   <script src="/js/meeshoApi.js?v=96"></script>
-  <script src="/js/liveVariantReport.js?v=2"></script>
-  <script src="/js/localPriceModel.js?v=1"></script>
   <script src="/js/imageGenerator.js"></script>
   <script src="/js/ui.js?v=96"></script>
   <script src="/content.js?v=96"></script>

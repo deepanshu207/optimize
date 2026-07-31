@@ -50,9 +50,6 @@ class MeeshoShippingOptimizer {
     this._categoryUserPicked = false;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
-    this._livePricingCategory = null;
-    this._categorySelectionSource = null;
-    this._categoryUserEditing = false;
     this.init();
   }
 
@@ -152,7 +149,6 @@ class MeeshoShippingOptimizer {
   }
 
   async preloadLiveVariantReportModule() {
-    if (window.LiveVariantReport?.analyzeLiveVariants) return true;
     return this.importOptimizerModule(
       () => this.getLiveVariantReportModuleUrl(),
       () => !!window.LiveVariantReport?.analyzeLiveVariants,
@@ -568,30 +564,8 @@ class MeeshoShippingOptimizer {
       this.setup();
     }
 
-    // Pre-load categories immediately in background so modal shows them instantly.
-    this._preloadCategories();
-
     // Also listen for URL changes (SPA navigation)
     this.observeUrlChanges();
-  }
-
-  /** Start loading categories in background before the modal opens. */
-  _preloadCategories() {
-    if (window.WEB_OPTIMIZER_MODE) return;
-    if (this._categoriesPreloadPromise) return;
-    this._categoriesPreloadPromise = (async () => {
-      try {
-        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.ensureFullCategories) {
-          const list = await MeeshoAPI.ensureFullCategories();
-          if (list?.length) {
-            this.allCategories = list;
-            console.log("✅ Categories pre-loaded:", list.length);
-          }
-        }
-      } catch (e) {
-        console.warn("Category pre-load failed:", e.message || e);
-      }
-    })();
   }
 
   // Observe URL changes for SPA
@@ -947,9 +921,6 @@ class MeeshoShippingOptimizer {
       MeeshoAPI.detectAllValues?.();
     }
 
-    const fab = document.getElementById("meesho-optimizer-fab");
-    if (fab) fab.style.display = "none";
-
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
@@ -1004,8 +975,6 @@ class MeeshoShippingOptimizer {
       this.modal.remove();
       this.modal = null;
     }
-    const fab = document.getElementById("meesho-optimizer-fab");
-    if (fab) fab.style.display = "";
   }
 
   setupLicenseEvents() {
@@ -1385,135 +1354,6 @@ Please share payment details and license key.`;
     }
 
     this.wireClearUploadButton();
-    this.wireLocalPriceButtons();
-  }
-
-  // ── Local Price (learn from saved CSV reports) ───────────────────────────
-
-  wireLocalPriceButtons() {
-    const importInput = document.getElementById("local-report-input");
-    const localPriceBtn = document.getElementById("local-price-btn");
-    const statusLine = document.getElementById("local-price-status-line");
-
-    if (importInput) {
-      importInput.onchange = async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        if (!window.LocalPriceModel) {
-          OptimizerUtils.showNotification("Local price model not loaded", "error");
-          return;
-        }
-        let totalAdded = 0;
-        let totalVariants = 0;
-        for (const file of files) {
-          try {
-            const text = await file.text();
-            const { variants, meta } = window.LocalPriceModel.parseReportCsvText(text);
-            const result = window.LocalPriceModel.importVariants(variants, meta);
-            totalAdded += result.added;
-            totalVariants = result.total;
-          } catch (err) {
-            console.warn("Import error:", file.name, err);
-          }
-        }
-        importInput.value = "";
-        const summary = window.LocalPriceModel.getSummary();
-        if (statusLine) {
-          statusLine.style.display = "block";
-          statusLine.textContent =
-            `✅ Imported ${totalAdded} priced rows from ${files.length} report${files.length > 1 ? "s" : ""} — ${summary.uniqueConfigs} configs, ${summary.totalVariants} total`;
-        }
-        OptimizerUtils.showNotification(
-          `Imported ${totalAdded} rows. ${summary.uniqueConfigs} configs learned.`,
-          "success",
-        );
-        this.showLocalPriceResults();
-      };
-    }
-
-    if (localPriceBtn) {
-      localPriceBtn.onclick = () => {
-        this.showLocalPriceResults();
-      };
-    }
-  }
-
-  showLocalPriceResults() {
-    const resultsEl = document.getElementById("local-price-results");
-    const statusLine = document.getElementById("local-price-status-line");
-    if (!resultsEl) return;
-
-    if (!window.LocalPriceModel) {
-      resultsEl.style.display = "block";
-      resultsEl.innerHTML = `<div style="font-size:11px;color:#ef4444;padding:8px;">Local price model not available.</div>`;
-      return;
-    }
-
-    const summary = window.LocalPriceModel.getSummary();
-    if (!summary.totalVariants) {
-      resultsEl.style.display = "block";
-      resultsEl.innerHTML = `
-        <div style="font-size:11px;color:#6b7280;padding:8px;text-align:center;line-height:1.5;">
-          No data yet.<br>Import one or more CSV reports first — each report adds to the learning database.
-        </div>`;
-      if (statusLine) {
-        statusLine.style.display = "block";
-        statusLine.textContent = "No reports imported yet.";
-      }
-      return;
-    }
-
-    const { configs } = window.LocalPriceModel.getBestConfigs(10);
-    if (!configs.length) {
-      resultsEl.style.display = "block";
-      resultsEl.innerHTML = `<div style="font-size:11px;color:#6b7280;padding:8px;">No priced configs found. Import more reports.</div>`;
-      return;
-    }
-
-    if (statusLine) {
-      statusLine.style.display = "block";
-      statusLine.textContent =
-        `📊 ${summary.uniqueConfigs} configs from ${summary.reportCount} report${summary.reportCount !== 1 ? "s" : ""} · ${summary.totalVariants} variants · best seen ₹${summary.lowestSeen ?? "—"}`;
-    }
-
-    const cards = configs.map((c, i) => {
-      const isBest = i === 0;
-      const confPct = Math.round(c.confidence * 100);
-      const confLabel = confPct >= 80 ? "High confidence" : confPct >= 40 ? "Medium confidence" : "Low confidence (add more reports)";
-      const styleLabel = c.path || c.key.split("|")[0] || "variant";
-      const dimLabel = c.width && c.height ? `${c.width}×${c.height}px` : "";
-      const kbLabel = c.kb ? `${c.kb}KB` : "";
-      const borderLabel = c.borderPx ? `border ${c.borderPx}px` : "";
-      const catLabel = c.categories ? `category: ${c.categories}` : "";
-      const metaParts = [dimLabel, kbLabel, borderLabel, catLabel].filter(Boolean).join(" · ");
-      const rangeLabel = c.minShipping !== c.maxShipping ? `₹${c.minShipping}–₹${c.maxShipping}` : `₹${c.minShipping}`;
-      return `
-        <div class="local-price-card${isBest ? " best" : ""}">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <div>
-              ${isBest ? `<div style="font-size:9px;font-weight:700;color:#10b981;text-transform:uppercase;margin-bottom:2px;">🏆 Best config</div>` : ""}
-              <div class="local-price-tag">₹${c.minShipping}</div>
-              <div class="local-price-meta">Range: ${rangeLabel} · avg ₹${c.avgShipping} · ${c.sampleCount} samples</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:11px;font-weight:600;color:#374151;max-width:140px;word-break:break-word;">${this.escapeHtml(styleLabel)}</div>
-              <div class="local-price-conf">${confPct}% ${confLabel}</div>
-            </div>
-          </div>
-          ${metaParts ? `<div class="local-price-meta" style="margin-top:4px;">${this.escapeHtml(metaParts)}</div>` : ""}
-        </div>`;
-    });
-
-    resultsEl.style.display = "block";
-    resultsEl.innerHTML = cards.join("");
-  }
-
-  escapeHtml(str) {
-    return String(str ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 
   categoryMatchesQuery(cat, query) {
@@ -1540,86 +1380,24 @@ Please share payment details and license key.`;
 
   parseCategorySearchQuery(raw) {
     const text = String(raw || "").trim();
-    if (!text) return { mode: "empty", text: "" };
-
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.parseQueryId) {
-      const id = MeeshoCategories.parseQueryId(text);
-      if (id) return { mode: "id", id, text };
-    }
-
     if (/^\d{3,6}$/.test(text)) {
       return { mode: "id", id: parseInt(text, 10), text };
     }
-
-    const prefix = text.match(
-      /^(?:#|id\s*[:=]?\s*|sscat(?:_id)?\s*[:=]?\s*)(\d{3,6})$/i,
-    );
-    if (prefix) {
-      return { mode: "id", id: parseInt(prefix[1], 10), text };
-    }
-
-    const suffixParen = text.match(/\((\d{3,6})\)\s*$/);
-    if (suffixParen) {
+    const stripped = text.replace(/\s*\(\d{3,6}\)\s*$/, "").trim();
+    const idFromSuffix = text.match(/\((\d{3,6})\)\s*$/);
+    if (idFromSuffix) {
       return {
         mode: "id",
-        id: parseInt(suffixParen[1], 10),
-        text: text.replace(/\s*\(\d{3,6}\)\s*$/, "").trim(),
+        id: parseInt(idFromSuffix[1], 10),
+        text: stripped || text,
       };
     }
-
-    const suffixDot = text.match(/·\s*id\s*(\d{3,6})\s*$/i);
-    if (suffixDot) {
-      return { mode: "id", id: parseInt(suffixDot[1], 10), text };
-    }
-
-    return { mode: "text", text };
-  }
-
-  resolveCategoryFromSearchInput(raw, limit = 12) {
-    const query = String(raw || "").trim();
-    if (!query) return { status: "empty" };
-
-    const parsed = this.parseCategorySearchQuery(query);
-    if (parsed.mode === "id") {
-      const cat = this.findCategoryById(parsed.id);
-      if (cat) return { status: "resolved", cat, hits: [cat], query };
-      return { status: "not_found", query };
-    }
-
-    const hits = this.filterCategoriesForSearch(query, limit);
-    if (!hits.length) return { status: "not_found", query };
-    if (hits.length === 1) return { status: "resolved", cat: hits[0], hits, query };
-
-    const norm =
-      typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
-        ? MeeshoCategories.normalizeSearchText(parsed.text)
-        : parsed.text.toLowerCase();
-    const exact = hits.find((c) => {
-      const nameNorm =
-        typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
-          ? MeeshoCategories.normalizeSearchText(c.name)
-          : String(c.name || "").toLowerCase();
-      return nameNorm === norm || String(c.id) === parsed.text;
-    });
-    if (exact) return { status: "resolved", cat: exact, hits, query };
-
-    return { status: "ambiguous", hits, query };
-  }
-
-  applyCategoryFromSearchInput(raw) {
-    const result = this.resolveCategoryFromSearchInput(raw);
-    if (result.status === "resolved" && result.cat) {
-      this.applyCategorySelection(result.cat, { source: "user" });
-      const categoryDropdown = document.getElementById("category-dropdown");
-      if (categoryDropdown) categoryDropdown.style.display = "none";
-      return result;
-    }
-    return result;
+    return { mode: "text", text: stripped || text };
   }
 
   filterCategoriesForSearch(raw, limit = 100) {
     const parsed = this.parseCategorySearchQuery(raw);
-    if (parsed.mode === "empty") {
+    if (!parsed.text && parsed.mode !== "id") {
       return this.getDefaultCategorySlice(Math.min(limit, 50));
     }
 
@@ -1638,142 +1416,8 @@ Please share payment details and license key.`;
       .slice(0, limit);
   }
 
-  resolveCategorySelectionForGenerate(categorySelect) {
-    const manualMode = this.isManualShippingMode();
-    const needsCategory = !window.WEB_OPTIMIZER_MODE && !manualMode;
-    const searchEl = document.getElementById("category-search");
-    const raw = searchEl?.value?.trim() || "";
-
-    const resolveTypedCategory = () => {
-      const resolved = this.resolveCategoryFromSearchInput(raw, 12);
-      if (resolved.status === "resolved" && resolved.cat) {
-        this.applyCategorySelection(resolved.cat, { source: "user" });
-        return { ok: true, id: resolved.cat.id };
-      }
-      if (resolved.status === "ambiguous") {
-        return {
-          ok: false,
-          message: `Pick a category from the list (${resolved.hits.length} matches for "${raw}")`,
-        };
-      }
-      return {
-        ok: false,
-        message: `No category found for "${raw}" — try name or numeric ID (e.g. 10253)`,
-      };
-    };
-
-    if (raw && (this._categoryUserEditing || !parseInt(categorySelect?.value, 10))) {
-      return resolveTypedCategory();
-    }
-
-    const selected = parseInt(categorySelect?.value, 10);
-    if (selected > 0) {
-      return { ok: true, id: selected };
-    }
-
-    if (!needsCategory) {
-      return { ok: true, id: null };
-    }
-
-    if (!raw) {
-      if (!this._categoryUserPicked && this.applyPageCategoryIfAvailable({ force: true })) {
-        const pageSelected = parseInt(categorySelect?.value, 10);
-        if (pageSelected > 0) return { ok: true, id: pageSelected };
-      }
-      return {
-        ok: false,
-        message:
-          "Search by category name or ID (e.g. gown, 10123, or id:10253) — then pick or press Enter",
-      };
-    }
-
-    return resolveTypedCategory();
-  }
-
-  buildLivePricingOptions(resolved) {
-    if (!resolved?.id) return {};
-    const cat = resolved.cat || this.findCategoryById(resolved.id);
-    const display = cat
-      ? this.formatCategoryUi(cat, { source: resolved.source })
-      : this.formatCategoryIdUi(resolved.id, { source: resolved.source });
-    return {
-      sscatId: resolved.id,
-      categoryName: display.title || cat?.name || `ID ${resolved.id}`,
-      categorySource: resolved.source || "user",
-    };
-  }
-
-  rememberLivePricingCategory(resolved, apiMeta = {}) {
-    const id = apiMeta.pricingCategoryId || resolved?.id;
-    if (!id) return;
-    const cat = this.findCategoryById(id);
-    const source =
-      apiMeta.pricingCategorySource || resolved?.source || "user";
-    const display = cat
-      ? this.formatCategoryUi(cat, { source })
-      : {
-          title: apiMeta.pricingCategoryName || `Category ID ${id}`,
-          path: "",
-        };
-    this._livePricingCategory = {
-      id,
-      source,
-      name: apiMeta.pricingCategoryName || display.title || cat?.name || "",
-      path: display.path || cat?.path || "",
-    };
-  }
-
-  ensureCategoryUIReady() {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
-    if (!categorySearch || !categoryDropdown) return;
-    if (this.allCategories?.length) {
-      this.bindCategoryUI(this.allCategories);
-      return;
-    }
-    void this.loadCategoryDropdown();
-  }
-
-  showPostResultsControls() {
-    const categorySearch = document.getElementById("category-search");
-    const categorySection = categorySearch?.closest(".opt-section");
-    if (categorySection) categorySection.style.display = "block";
-
-    const livePanel = document.getElementById("live-tab-panel");
-    if (livePanel) {
-      livePanel.querySelectorAll(".opt-section").forEach((s) => {
-        s.style.display = "block";
-      });
-    } else if (window.WEB_OPTIMIZER_MODE) {
-      document.querySelectorAll(".opt-section").forEach((s) => {
-        if (!s.closest("#test-tab-panel")) s.style.display = "block";
-      });
-    }
-
-    const generateSticky = document.getElementById("generate-sticky");
-    const generateBtn = document.getElementById("generate-btn");
-    const hasFile =
-      this.lastProcessedFile ||
-      this._pendingFile ||
-      window.__webPendingFile ||
-      document.getElementById("image-input")?.files?.[0];
-
-    if (generateSticky) generateSticky.style.display = "";
-    if (generateBtn && hasFile) {
-      generateBtn.style.display =
-        this.getActiveOptimizerTab?.() === "test" ? "none" : "block";
-      generateBtn.disabled = false;
-    }
-
-    this.ensureCategoryUIReady();
-    this.refreshCategoryApiPreview(
-      this.peekCategoryForLiveApi(document.getElementById("category-select")),
-    );
-  }
-
-  applyPageCategoryIfAvailable(options = {}) {
+  applyPageCategoryIfAvailable() {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
-    if (this._categoryUserEditing && !options.force) return false;
 
     MeeshoAPI.syncCatalogPricing?.();
     const pageId = MeeshoAPI.detectCategoryId?.();
@@ -1802,19 +1446,6 @@ Please share payment details and license key.`;
     let attempts = 0;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
-
-      // Check if user is actively typing in the category search field
-      const searchEl = document.getElementById("category-search");
-      const userIsEditing =
-        this._categoryUserEditing && document.activeElement === searchEl;
-      if (userIsEditing) {
-        if (attempts < maxAttempts) setTimeout(tick, delayMs);
-        return;
-      }
-      // Auto-clear stale editing flag when user has left the field
-      if (this._categoryUserEditing && document.activeElement !== searchEl) {
-        this._categoryUserEditing = false;
-      }
 
       attempts++;
       const gotCategory =
@@ -1934,12 +1565,10 @@ Please share payment details and license key.`;
   findCategoryById(id) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    const fromAll = this.allCategories?.find((c) => c.id === parsed);
-    if (fromAll) return fromAll;
     if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
       return MeeshoCategories.findById(parsed);
     }
-    return null;
+    return this.allCategories?.find((c) => c.id === parsed) || null;
   }
 
   formatCategoryUi(cat, options = {}) {
@@ -2027,12 +1656,7 @@ Please share payment details and license key.`;
     const userPick = categorySelect?.value
       ? parseInt(categorySelect.value, 10)
       : null;
-    const selectedSource =
-      this._categoryUserPicked || this._categorySelectionSource === "user"
-        ? "user"
-        : this._categorySelectionSource || "";
-
-    if (userPick > 0 && selectedSource === "user") {
+    if (userPick > 0) {
       return {
         id: userPick,
         source: "user",
@@ -2053,14 +1677,6 @@ Please share payment details and license key.`;
           cat: this.findCategoryById(pageId),
         };
       }
-    }
-
-    if (userPick > 0) {
-      return {
-        id: userPick,
-        source: selectedSource || "selected",
-        cat: this.findCategoryById(userPick),
-      };
     }
 
     if (!needsCategoryForLiveApi) {
@@ -2093,151 +1709,75 @@ Please share payment details and license key.`;
 
   // Load categories into dropdown
   bindCategoryUI(categories) {
-    const search = document.getElementById("category-search");
-    const dropdown = document.getElementById("category-dropdown");
-    const select = document.getElementById("category-select");
-    const clearBtn = document.getElementById("category-clear-btn");
-    const selectedDiv = document.getElementById("selected-category");
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
     const refreshBtn = document.getElementById("refresh-categories");
-    const errorDiv = document.getElementById("category-error");
-    const countHint = document.getElementById("category-count-hint");
+    const categoryError = document.getElementById("category-error");
 
-    if (!search || !dropdown || !categories?.length) return false;
+    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
     this.allCategories = categories;
-    if (typeof MeeshoCategories !== "undefined") {
-      MeeshoCategories._list = categories;
-      if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
-        MeeshoCategories.LIST = categories;
-      }
+    const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
+    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
+    const countHint = document.getElementById("category-count-hint");
+    if (countHint) {
+      countHint.textContent =
+        categories.length >= 3000
+          ? `${categories.length} leaf categories loaded — type to search all`
+          : `${categories.length} categories loaded`;
     }
+    if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
+    if (categoryError) categoryError.style.display = "none";
 
-    const n = categories.length;
-    search.placeholder = n >= 3000
-      ? `🔍 Search ${n} categories by name or ID`
-      : `🔍 Search ${n} categories`;
-    if (countHint) countHint.textContent = `${n} categories loaded — type to search`;
-    if (refreshBtn) refreshBtn.style.display = "none";
-    if (errorDiv) errorDiv.style.display = "none";
-
-    // ── Helpers ────────────────────────────────────────────────────────────
-
-    const showClear = (show) => {
-      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
+    categorySearch.onfocus = () => {
+      this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+      categoryDropdown.style.display = "block";
     };
 
-    const hideDropdown = () => {
-      dropdown.style.display = "none";
-      dropdown.innerHTML = "";
-    };
+    categorySearch.oninput = () => {
+      const raw = categorySearch.value.trim();
+      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
 
-    const showResults = (query) => {
-      const q = String(query || "").trim();
-      if (!q) { hideDropdown(); return; }
-      const hits = this.filterCategoriesForSearch(q, 50);
-      if (!hits.length) {
-        dropdown.innerHTML = `<div class="category-empty">No match for "<strong>${this.escapeHtml(q)}</strong>" — try shorter name or numeric ID</div>`;
+      if (!raw) {
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
       } else {
-        dropdown.innerHTML = hits.map((cat) => {
-          const path = cat.path || cat.parentName || "";
-          return `<div class="cat-item" data-id="${cat.id}" data-name="${this.escapeHtml(cat.name)}">
-            <div class="cat-item-name">
-              <span>${this.escapeHtml(cat.name)}</span>
-              <span class="cat-item-id">ID ${cat.id}</span>
-            </div>
-            ${path ? `<div class="cat-item-path">${this.escapeHtml(path)}</div>` : ""}
-          </div>`;
-        }).join("");
+        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
       }
-      dropdown.style.display = "block";
+      categoryDropdown.style.display = "block";
     };
 
-    const resetSelection = () => {
-      this._categoryUserPicked = false;
-      this._categorySelectionSource = null;
-      this._categoryUserEditing = false;
-      clearTimeout(this._categoryEditingTimer);
-      if (select) select.value = "";
-      if (selectedDiv) selectedDiv.style.display = "none";
-      const selDetail = document.getElementById("selected-category-detail");
-      if (selDetail) selDetail.textContent = "";
-      const apiPreview = document.getElementById("category-api-preview");
-      if (apiPreview) { apiPreview.style.display = "none"; }
-      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-    };
-
-    // ── Debounced input handler ────────────────────────────────────────────
-    let _inputTimer = null;
-    search.oninput = () => {
-      this._categoryUserEditing = true;
-      const q = search.value.trim();
-      showClear(!!q);
-      // Clear previous selection when user starts typing again
-      if (this._categorySelectionSource && q) {
-        resetSelection();
-      }
-      clearTimeout(_inputTimer);
-      _inputTimer = setTimeout(() => showResults(q), 120);
-    };
-
-    // ── Clear button — simple onclick works for both mouse and touch ───────
-    if (clearBtn) {
-      clearBtn.onclick = (e) => {
-        e.preventDefault();
-        search.value = "";
-        showClear(false);
-        hideDropdown();
-        resetSelection();
-        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
-        search.focus();
+    if (categoryClear) {
+      categoryClear.onclick = () => {
+        categorySearch.value = "";
+        categoryClear.style.display = "none";
+        if (categorySelect) categorySelect.value = "";
+        if (selectedCategory) selectedCategory.style.display = "none";
+        const selectedCategoryDetail = document.getElementById("selected-category-detail");
+        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
+        this._categoryUserPicked = false;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+        this.refreshCategoryApiPreview();
+        this.applyPageCategoryIfAvailable();
       };
     }
 
-    // ── Enter key: apply best match ────────────────────────────────────────
-    search.onkeydown = (e) => {
-      if (e.key === "Escape") { hideDropdown(); search.blur(); return; }
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      const q = search.value.trim();
-      if (!q) return;
-      const result = this.applyCategoryFromSearchInput(q);
-      if (result?.status === "resolved" || result?.status === "ambiguous") {
-        const cat = result.cat || result.hits?.[0];
-        if (cat) {
-          this.applyCategorySelection(cat, { source: "user" });
-          hideDropdown();
+    if (!this._categoryClickBound) {
+      this._categoryClickBound = true;
+      document.addEventListener("click", (e) => {
+        if (
+          !e.target.closest("#category-search") &&
+          !e.target.closest("#category-dropdown")
+        ) {
+          categoryDropdown.style.display = "none";
         }
-      } else {
-        OptimizerUtils.showNotification(`No category found for "${q}"`, "error");
-      }
-    };
-
-    // ── Tap a result ───────────────────────────────────────────────────────
-    dropdown.onclick = (e) => {
-      const item = e.target?.closest?.(".cat-item");
-      if (!item) return;
-      const id = parseInt(item.dataset.id, 10);
-      const cat = this.findCategoryById(id) || {
-        id, name: item.dataset.name || `ID ${id}`,
-      };
-      this.applyCategorySelection(cat, { source: "user" });
-      this._categoryUserPicked = true;
-      hideDropdown();
-      showClear(true);
-    };
-
-    // ── Collapse results when tapping elsewhere (web only) ─────────────────
-    if (!window.WEB_OPTIMIZER_MODE && !this._categoryOutsideBound) {
-      this._categoryOutsideBound = true;
-      this._handleCategoryOutsideTap = (e) => {
-        const t = e.target;
-        if (t === search || t === dropdown || t === clearBtn || t?.closest?.("#category-dropdown") || t?.closest?.(".category-search-wrap")) return;
-        hideDropdown();
-      };
-      document.addEventListener("pointerdown", this._handleCategoryOutsideTap, true);
+      });
     }
 
-    console.log("✅ Loaded", n, "categories");
+    console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
       this.applyDefaultCategoryIfNeeded();
       this.scheduleMeeshoPageSync();
@@ -2247,52 +1787,29 @@ Please share payment details and license key.`;
     return true;
   }
 
-  escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  renderCategoryDropdown(categories, options = {}) {
+  renderCategoryDropdown(categories) {
     const dropdown = document.getElementById("category-dropdown");
     if (!dropdown) return;
 
-    const query = String(options.query || "").trim();
-    const helperHtml = options.showSearchHint
-      ? `<div class="category-empty" style="text-align:left;background:#f8fafc;color:#475569;">
-          ${query
-            ? `Showing matches for <strong>${this.escapeHtml(query)}</strong>. Press <strong>Enter</strong> to use the best match.`
-            : `Type a category name or ID above, e.g. <strong>gown</strong>, <strong>10253</strong>, or <strong>id:10123</strong>.`}
-        </div>`
-      : "";
-
     if (!categories?.length) {
-      if (options.idle && helperHtml) {
-        dropdown.innerHTML = helperHtml;
-        dropdown.style.display = "block";
-        return;
-      }
       dropdown.innerHTML =
-        `${helperHtml}<div class="category-empty">No matching categories — try name or ID</div>`;
+        '<div class="category-empty">No matching categories — try name or ID</div>';
       dropdown.style.display = "block";
       return;
     }
 
-    let html = helperHtml;
+    let html = "";
     categories.forEach((cat) => {
       const path = cat.path || cat.parentName || "";
-      const safeName = this.escapeHtml(cat.name || "");
-      const safePath = this.escapeHtml(path);
+      const safeName = String(cat.name || "").replace(/"/g, "&quot;");
+      const safePath = String(path).replace(/"/g, "&quot;");
       html += `
                 <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}">
                     <div class="cat-item-name">
-                      <span>${this.escapeHtml(cat.name)}</span>
+                      <span>${cat.name}</span>
                       <span class="cat-item-id">ID ${cat.id}</span>
                     </div>
-                    <div class="cat-item-path">${path ? this.escapeHtml(path) : "Leaf category (sscat_id)"}</div>
+                    <div class="cat-item-path">${path || "Leaf category (sscat_id)"}</div>
                 </div>
             `;
     });
@@ -2325,53 +1842,81 @@ Please share payment details and license key.`;
   }
 
   async loadCategoryDropdown() {
-    const search = document.getElementById("category-search");
-    const dropdown = document.getElementById("category-dropdown");
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
+    const selectedCategoryName = document.getElementById(
+      "selected-category-name"
+    );
     const refreshBtn = document.getElementById("refresh-categories");
-    const errorDiv = document.getElementById("category-error");
+    const categoryError = document.getElementById("category-error");
 
-    if (!search || !dropdown) return;
+    if (!categorySearch || !categoryDropdown) return;
 
-    // Refresh button
+    if (typeof MeeshoAPI === "undefined") {
+      categorySearch.placeholder = "API not available";
+      if (refreshBtn) refreshBtn.style.display = "block";
+      if (categoryError) categoryError.style.display = "block";
+      return;
+    }
+
+    // Refresh button handler
     if (refreshBtn) {
       refreshBtn.onclick = async () => {
-        refreshBtn.textContent = "⏳";
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.cache.categories = null;
+        refreshBtn.textContent = "⏳...";
+        MeeshoAPI.cache.categories = null;
+        try {
+          const categories = await MeeshoAPI.fetchCategories(true);
+          if (categories?.length && this.bindCategoryUI(categories)) {
+            refreshBtn.textContent = "🔄 Refresh";
+            return;
+          }
+        } catch (e) {
+          console.warn("Live category refresh failed:", e);
+        }
         await this.loadCategoryDropdown();
         refreshBtn.textContent = "🔄 Refresh";
       };
     }
 
-    // Use pre-loaded categories if already available (from _preloadCategories)
-    if (this.allCategories?.length) {
-      this.bindCategoryUI(this.allCategories);
-      return;
-    }
-
-    search.placeholder = "Loading…";
+    categorySearch.placeholder = "Loading categories...";
 
     try {
       const categories = await this.ensureFullCategories();
-      if (categories?.length) {
-        this.bindCategoryUI(categories);
+
+      if (categories?.length && this.bindCategoryUI(categories)) {
         return;
       }
-      // Failed to load
-      search.placeholder = "Tap 🔄 Refresh to load categories";
+
+      if (window.WEB_OPTIMIZER_MODE) {
+        categorySearch.placeholder = "Optional — skip to generate variants";
+        if (categoryError) categoryError.style.display = "none";
+        if (refreshBtn) refreshBtn.style.display = "block";
+        return;
+      }
+
+      categorySearch.placeholder = "Not loaded — click Refresh";
       if (refreshBtn) refreshBtn.style.display = "block";
-      if (errorDiv) errorDiv.style.display = "block";
-    } catch (err) {
-      console.error("loadCategoryDropdown error:", err);
-      search.placeholder = "Load failed — tap 🔄 Refresh";
+      if (categoryError) categoryError.style.display = "block";
+    } catch (error) {
+      console.error("Failed to load categories:", error);
+      if (window.WEB_OPTIMIZER_MODE) {
+        categorySearch.placeholder = "Optional — skip to generate variants";
+        if (categoryError) categoryError.style.display = "none";
+      } else {
+        categorySearch.placeholder = "Failed - Click Refresh";
+        if (categoryError) categoryError.style.display = "block";
+      }
       if (refreshBtn) refreshBtn.style.display = "block";
-      if (errorDiv) errorDiv.style.display = "block";
     }
   }
 
   applyCategorySelection(catOrId, options = {}) {
     const categorySelect = document.getElementById("category-select");
     const categorySearch = document.getElementById("category-search");
-    const categoryClear = document.getElementById("category-clear-btn") || document.getElementById("category-clear");
+    const categoryClear = document.getElementById("category-clear");
 
     const cat =
       typeof catOrId === "object"
@@ -2384,9 +1929,6 @@ Please share payment details and license key.`;
     if (options.source === "user") {
       this._categoryUserPicked = true;
     }
-    this._categorySelectionSource = options.source || "user";
-    this._categoryUserEditing = false;
-    clearTimeout(this._categoryEditingTimer);
 
     if (categorySelect) categorySelect.value = String(cat.id);
     if (categorySearch) {
@@ -2395,7 +1937,7 @@ Please share payment details and license key.`;
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(cat.id, options.source || "user");
+      MeeshoAPI.setCategory(cat.id);
     }
     this.refreshCategoryApiPreview({
       id: cat.id,
@@ -2421,13 +1963,10 @@ Please share payment details and license key.`;
 
     if (categorySelect) categorySelect.value = String(parsed);
     if (categorySearch) categorySearch.value = `ID ${parsed}`;
-    this._categorySelectionSource = options.source || "page";
-    this._categoryUserEditing = false;
-    clearTimeout(this._categoryEditingTimer);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
-      MeeshoAPI.setCategory(parsed, options.source || "page");
+      MeeshoAPI.setCategory(parsed);
     }
     this.refreshCategoryApiPreview({
       id: parsed,
@@ -2475,7 +2014,7 @@ Please share payment details and license key.`;
 
   applyDefaultCategoryIfNeeded() {
     if (!this.allCategories?.length) {
-      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+      this.refreshCategoryApiPreview();
       return;
     }
 
@@ -2492,13 +2031,6 @@ Please share payment details and license key.`;
       return;
     }
 
-    // Extension: never auto-fill a default — user must pick their product category.
-    if (!window.WEB_OPTIMIZER_MODE) {
-      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
-      return;
-    }
-
-    // Web: apply Kurtis as a convenient default so the API preview shows something.
     const defId =
       typeof MeeshoCategories !== "undefined"
         ? MeeshoCategories.getDefaultCategoryId()
@@ -2863,7 +2395,6 @@ Please share payment details and license key.`;
     if (window.WEB_OPTIMIZER_MODE && hasFile) {
       this.refreshLiveResultsPanel({ scroll: false });
     }
-    this.ensureCategoryUIReady();
   }
 
   /**
@@ -2882,11 +2413,6 @@ Please share payment details and license key.`;
     }
 
     const categorySelect = document.getElementById("category-select");
-    const catGate = this.resolveCategorySelectionForGenerate(categorySelect);
-    if (!catGate.ok) {
-      OptimizerUtils.showNotification(catGate.message, "error");
-      return;
-    }
     const resolved = this.resolveCategoryForLiveApi(categorySelect);
     if (resolved.error) {
       OptimizerUtils.showNotification(
@@ -2903,7 +2429,6 @@ Please share payment details and license key.`;
         : `ID ${resolved.id}`;
       console.log(`📁 Live API category (${resolved.source}):`, label);
     }
-    const pricingOpts = this.buildLivePricingOptions(resolved);
 
     const manualMode = this.isManualShippingMode();
 
@@ -3015,10 +2540,8 @@ Please share payment details and license key.`;
               "success"
             );
           },
-          () => this.shouldStop,
-          pricingOpts,
+          () => this.shouldStop
         );
-        this.rememberLivePricingCategory(resolved, result);
       }
 
       if (
@@ -3118,11 +2641,6 @@ Please share payment details and license key.`;
     }
 
     const categorySelect = document.getElementById("category-select");
-    const catGate = this.resolveCategorySelectionForGenerate(categorySelect);
-    if (!catGate.ok) {
-      OptimizerUtils.showNotification(catGate.message, "error");
-      return;
-    }
     const resolved = this.resolveCategoryForLiveApi(categorySelect);
     if (resolved.error) {
       OptimizerUtils.showNotification(
@@ -3139,7 +2657,6 @@ Please share payment details and license key.`;
         : `ID ${resolved.id}`;
       console.log(`📁 Live API category (${resolved.source}):`, label);
     }
-    const pricingOpts = this.buildLivePricingOptions(resolved);
 
     const manualMode = this.isManualShippingMode();
 
@@ -3276,10 +2793,8 @@ Please share payment details and license key.`;
               "success"
             );
           },
-          () => this.shouldStop,
-          pricingOpts,
+          () => this.shouldStop
         );
-        this.rememberLivePricingCategory(resolved, result);
       }
 
       if (
@@ -3404,7 +2919,6 @@ Please share payment details and license key.`;
         );
         this.setupResultsEvents();
       }
-      this.showPostResultsControls();
     } else {
       if (resultsArea) resultsArea.style.display = "none";
       if (uploadArea) uploadArea.style.display = "block";
@@ -3788,13 +3302,7 @@ Please share payment details and license key.`;
 
   buildLiveReportContext() {
     const categorySelect = document.getElementById("category-select");
-    const peek = this._livePricingCategory?.id
-      ? {
-          id: this._livePricingCategory.id,
-          source: this._livePricingCategory.source,
-          cat: this.findCategoryById(this._livePricingCategory.id),
-        }
-      : this.peekCategoryForLiveApi(categorySelect);
+    const peek = this.peekCategoryForLiveApi(categorySelect);
     const cat = peek?.cat || this.findCategoryById(peek?.id);
     const display = cat
       ? this.formatCategoryUi(cat, { source: peek?.source })
@@ -3891,7 +3399,6 @@ Please share payment details and license key.`;
       isGeneratingGownStatic: this.isGeneratingGownStatic,
       gownStaticVariantCount: 25,
       staticPromoHubActive: this.shouldShowStaticPromoWorkspace(),
-      livePricingCategory: this._livePricingCategory || null,
     };
   }
 
@@ -4097,7 +3604,6 @@ Please share payment details and license key.`;
       liveVerified: r.liveVerified,
       liveTotalPrice: r.liveTotalPrice,
       meeshoPriceUsed: r.meeshoPriceUsed,
-      pricingCategoryId: r.pricingCategoryId,
       testLab: !!r.testLab,
       noPid: !!r.noPid,
       analysisMode: !!r.analysisMode,

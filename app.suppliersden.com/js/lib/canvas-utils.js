@@ -1,38 +1,9 @@
 /** Canvas helpers — trim, white background, Meesho frames. */
 
 const WHITE_TOL = 18;
-let readScratchCanvas = null;
-
-function createReadScratchCanvas() {
-  if (typeof document !== "undefined" && document.createElement) {
-    return document.createElement("canvas");
-  }
-  if (typeof OffscreenCanvas !== "undefined") {
-    return new OffscreenCanvas(1, 1);
-  }
-  return null;
-}
 
 function readCanvasCtx(canvas) {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-
-  const attrs = ctx.getContextAttributes?.();
-  if (!attrs || attrs.willReadFrequently) return ctx;
-
-  if (!readScratchCanvas) readScratchCanvas = createReadScratchCanvas();
-  if (!readScratchCanvas) return ctx;
-
-  if (readScratchCanvas.width !== canvas.width) readScratchCanvas.width = canvas.width;
-  if (readScratchCanvas.height !== canvas.height) readScratchCanvas.height = canvas.height;
-
-  const scratchCtx = readScratchCanvas.getContext("2d", {
-    willReadFrequently: true,
-  });
-  if (!scratchCtx) return ctx;
-  scratchCtx.clearRect(0, 0, canvas.width, canvas.height);
-  scratchCtx.drawImage(canvas, 0, 0);
-  return scratchCtx;
+  return canvas.getContext("2d", { willReadFrequently: true });
 }
 
 export function loadImage(file) {
@@ -57,8 +28,7 @@ export function nearWhite(data, i) {
 }
 
 export function measureWhiteRatio(canvas) {
-  const ctx = readCanvasCtx(canvas);
-  const { data } = ctx.getImageData(
+  const { data } = readCanvasCtx(canvas).getImageData(
     0,
     0,
     canvas.width,
@@ -73,8 +43,7 @@ export function measureWhiteRatio(canvas) {
 }
 
 export function measureNearWhiteRatio(canvas) {
-  const ctx = readCanvasCtx(canvas);
-  const { data } = ctx.getImageData(
+  const { data } = readCanvasCtx(canvas).getImageData(
     0,
     0,
     canvas.width,
@@ -87,10 +56,9 @@ export function measureNearWhiteRatio(canvas) {
 }
 
 export function flattenBackgroundWhite(canvas) {
-  const readCtx = readCanvasCtx(canvas);
-  const writeCtx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const { width, height } = canvas;
-  const img = readCtx.getImageData(0, 0, width, height);
+  const img = ctx.getImageData(0, 0, width, height);
   const d = img.data;
   const total = width * height;
   const seen = new Uint8Array(total);
@@ -121,13 +89,12 @@ export function flattenBackgroundWhite(canvas) {
     if (y > 0) push(idx - width);
     if (y < height - 1) push(idx + width);
   }
-  writeCtx.putImageData(img, 0, 0);
+  ctx.putImageData(img, 0, 0);
 }
 
 function contentBounds(canvas) {
   const { width, height } = canvas;
-  const ctx = readCanvasCtx(canvas);
-  const { data } = ctx.getImageData(0, 0, width, height);
+  const { data } = readCanvasCtx(canvas).getImageData(0, 0, width, height);
   let minX = width,
     minY = height,
     maxX = 0,
