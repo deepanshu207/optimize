@@ -1792,6 +1792,7 @@ Please share payment details and license key.`;
     const categoryDropdown = document.getElementById("category-dropdown");
     if (!categorySearch || !categoryDropdown) return;
     if (this.allCategories?.length) {
+      if (!window.WEB_OPTIMIZER_MODE && this._extensionCategoryUiBound) return;
       this.bindCategoryUI(this.allCategories);
       return;
     }
@@ -2114,11 +2115,11 @@ Please share payment details and license key.`;
       };
     }
 
-    if (typeof MeeshoAPI !== "undefined" && !userPick) {
+    if (typeof MeeshoAPI !== "undefined" && !userPick && !this.isCategoryEditingActive()) {
       MeeshoAPI.syncCatalogPricing?.();
     }
 
-    if (typeof MeeshoAPI !== "undefined") {
+    if (typeof MeeshoAPI !== "undefined" && !this.isCategoryEditingActive()) {
       const pageId = MeeshoAPI.detectCategoryId?.();
       if (pageId > 0) {
         return {
@@ -2165,8 +2166,200 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
+  // Extension-only: minimal category search (no shared web event stack)
+  bindExtensionCategoryUI(categories) {
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categoryWrap = document.getElementById("category-search-wrap");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
+    const refreshBtn = document.getElementById("refresh-categories");
+    const categoryError = document.getElementById("category-error");
+
+    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
+
+    this.allCategories = categories;
+    this.ensureCategorySearchIndex(categories);
+    if (typeof MeeshoCategories !== "undefined") {
+      MeeshoCategories._list = categories;
+      if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
+        MeeshoCategories.LIST = categories;
+      }
+    }
+
+    const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
+    categorySearch.placeholder = `Type category name or ID (${categories.length} loaded)`;
+    const countHint = document.getElementById("category-count-hint");
+    if (countHint) {
+      countHint.textContent = `${categories.length} categories ready — type to search`;
+    }
+    if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
+    if (categoryError) categoryError.style.display = "none";
+
+    if (this._extensionCategoryUiBound) {
+      return true;
+    }
+    this._extensionCategoryUiBound = true;
+
+    categorySearch.readOnly = false;
+    categorySearch.disabled = false;
+    categorySearch.setAttribute("enterkeyhint", "search");
+
+    let searchTimer = null;
+    let lastAppliedLabel = "";
+
+    const hideDropdown = () => {
+      categoryDropdown.style.display = "none";
+      categoryDropdown.innerHTML = "";
+    };
+
+    const updateClearBtn = (raw) => {
+      if (!categoryClear) return;
+      categoryClear.style.display = raw ? "block" : "none";
+    };
+
+    const runSearch = (raw) => {
+      const query = String(raw || "").trim();
+      if (!query) {
+        hideDropdown();
+        return;
+      }
+      if (!/^\d+$/.test(query) && query.length < 2) {
+        hideDropdown();
+        return;
+      }
+
+      const hits = this.filterCategoriesForSearch(query, 15);
+      if (!hits.length) {
+        categoryDropdown.innerHTML =
+          '<div class="category-empty">No match — try another name or ID</div>';
+        categoryDropdown.style.display = "block";
+        return;
+      }
+
+      const frag = document.createDocumentFragment();
+      hits.forEach((cat) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "cat-item-ext";
+        btn.dataset.id = String(cat.id);
+        btn.textContent = `${cat.name} (${cat.id})`;
+        frag.appendChild(btn);
+      });
+      categoryDropdown.innerHTML = "";
+      categoryDropdown.appendChild(frag);
+      categoryDropdown.style.display = "block";
+    };
+
+    const scheduleSearch = (raw) => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => runSearch(raw), 280);
+    };
+
+    const clearField = () => {
+      this.markCategoryEditingActive(8000);
+      categorySearch.value = "";
+      lastAppliedLabel = "";
+      updateClearBtn("");
+      if (categorySelect) categorySelect.value = "";
+      if (selectedCategory) selectedCategory.style.display = "none";
+      const selectedCategoryDetail = document.getElementById("selected-category-detail");
+      if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
+      this._categoryUserPicked = false;
+      this._categorySelectionSource = null;
+      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+      hideDropdown();
+      this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+      categorySearch.focus();
+    };
+
+    categorySearch.onfocus = () => {
+      this.markCategoryEditingActive(8000);
+      if (categoryWrap) categoryWrap.classList.add("ext-cat-active");
+      updateClearBtn(categorySearch.value.trim());
+    };
+
+    categorySearch.onblur = () => {
+      setTimeout(() => {
+        if (document.activeElement === categorySearch) return;
+        if (categoryWrap) categoryWrap.classList.remove("ext-cat-active");
+      }, 120);
+    };
+
+    categorySearch.oninput = () => {
+      this.markCategoryEditingActive(8000);
+      const raw = categorySearch.value;
+      updateClearBtn(raw.trim());
+      if (categorySelect?.value && raw.trim() !== lastAppliedLabel) {
+        if (categorySelect) categorySelect.value = "";
+        if (selectedCategory) selectedCategory.style.display = "none";
+        this._categorySelectionSource = null;
+        this._categoryUserPicked = false;
+      }
+      scheduleSearch(raw);
+    };
+
+    categorySearch.onkeydown = (e) => {
+      if (e.key === "Escape") {
+        hideDropdown();
+        return;
+      }
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const raw = categorySearch.value.trim();
+      if (!raw) return;
+      const result = this.applyCategoryFromSearchInput(raw);
+      if (result.status === "resolved" && result.cat) {
+        lastAppliedLabel = `${result.cat.name} (${result.cat.id})`;
+        hideDropdown();
+        return;
+      }
+      if (result.status === "ambiguous" && result.hits?.length) {
+        this.applyCategorySelection(result.hits[0], { source: "user" });
+        lastAppliedLabel = `${result.hits[0].name} (${result.hits[0].id})`;
+        this._categoryUserPicked = true;
+        hideDropdown();
+      }
+    };
+
+    if (categoryClear) {
+      categoryClear.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearField();
+      };
+    }
+
+    categoryDropdown.onclick = (event) => {
+      const item = event.target?.closest?.(".cat-item-ext");
+      if (!item) return;
+      const id = parseInt(item.dataset.id, 10);
+      const cat = this.findCategoryById(id);
+      if (!cat) return;
+      this.applyCategorySelection(cat, { source: "user" });
+      this._categoryUserPicked = true;
+      lastAppliedLabel = `${cat.name} (${cat.id})`;
+      hideDropdown();
+      this.markCategoryEditingActive(2000);
+    };
+
+    console.log("✅ Extension category search ready:", categories.length);
+    this.applyDefaultCategoryIfNeeded();
+    setTimeout(() => {
+      if (!this.isCategoryEditingActive() && !this._categoryUserPicked) {
+        this.applyPageCategoryIfAvailable();
+      }
+    }, 2000);
+    return true;
+  }
+
   // Load categories into dropdown
   bindCategoryUI(categories) {
+    if (!window.WEB_OPTIMIZER_MODE) {
+      return this.bindExtensionCategoryUI(categories);
+    }
+
     const categorySearch = document.getElementById("category-search");
     const categoryDropdown = document.getElementById("category-dropdown");
     const categorySelect = document.getElementById("category-select");
