@@ -27,11 +27,10 @@ There must be NO file named _headers (Chrome/Kiwi block names starting with _).
 4. Select the folder with manifest.json
 5. Open supplier.meesho.com → AI Optimizer button
 
-You should see at top:
-  - "Pick category" dropdown (native select)
-  - "Or enter Category ID" + Apply button
-  - Version badge like v1.6.9 in the yellow header
-
-If you still see a text box "Type category name or ID", you are on an OLD build — remove and reinstall.
+You should see the same category search as browser web:
+  - Text box: "Search by name or ID"
+  - Dropdown results while typing
+  - Press Enter or pick from list
+  - Version badge like v1.7.0 in the yellow header
 
 No license key needed — opens directly to Live / Test Lab.

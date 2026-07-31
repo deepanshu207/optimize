@@ -64,48 +64,21 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
-                .ext-category-native { display: flex; flex-direction: column; gap: 10px; }
-                .ext-cat-label {
-                    display: block;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: #374151;
-                    margin-bottom: 4px;
-                }
-                .ext-cat-select,
-                .ext-cat-id-input {
-                    width: 100%;
+                .category-search-wrap { position: relative; z-index: 10000; }
+                #category-search {
                     font-size: 16px;
-                    min-height: 48px;
-                    padding: 12px;
+                    min-height: 44px;
+                    padding-right: 34px;
                     color: #111827;
-                    background: #ffffff;
-                    border: 2px solid #d1d5db;
-                    border-radius: 8px;
+                    background: #fff;
                     -webkit-text-fill-color: #111827;
                     touch-action: manipulation;
                 }
-                .ext-cat-select:focus,
-                .ext-cat-id-input:focus {
+                #category-search:focus {
                     border-color: #047857;
-                    box-shadow: 0 0 0 3px rgba(4,120,87,0.22);
+                    box-shadow: 0 0 0 3px rgba(4,120,87,0.2);
                     outline: none;
                 }
-                .ext-cat-id-row { display: flex; gap: 8px; align-items: stretch; }
-                .ext-cat-id-row .ext-cat-id-input { flex: 1; }
-                .ext-cat-id-btn {
-                    min-width: 72px;
-                    min-height: 48px;
-                    padding: 0 14px;
-                    border: none;
-                    border-radius: 8px;
-                    background: #047857;
-                    color: #fff;
-                    font-size: 14px;
-                    font-weight: 700;
-                    touch-action: manipulation;
-                }
-                .category-search-legacy { display: none !important; }
                 .category-dropdown {
                     display: none;
                     position: absolute;
@@ -372,29 +345,13 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div class="ext-category-native" id="ext-category-native">
-                            <div>
-                                <label class="ext-cat-label" for="category-native-select">Pick category</label>
-                                <select id="category-native-select" class="ext-cat-select">
-                                    <option value="">— Choose category —</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="ext-cat-label" for="category-id-input">Or enter Category ID</label>
-                                <div class="ext-cat-id-row">
-                                    <input type="tel" id="category-id-input" class="ext-cat-id-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="e.g. 10123">
-                                    <button type="button" id="category-id-apply" class="ext-cat-id-btn">Apply</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="category-search-legacy">
-                            <div class="category-search-wrap" id="category-search-wrap">
-                                <input type="text" id="category-search" class="opt-input" tabindex="-1" aria-hidden="true">
-                                <button type="button" id="category-clear" tabindex="-1" aria-hidden="true"></button>
-                                <div id="category-dropdown" class="category-dropdown"></div>
-                            </div>
+                        <div class="category-search-wrap" id="category-search-wrap">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search">
+                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;font-size:18px;line-height:1;padding:4px 8px;">✕</span>
+                            <div id="category-dropdown" class="category-dropdown"></div>
                         </div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
+                        <p class="category-search-hint">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
