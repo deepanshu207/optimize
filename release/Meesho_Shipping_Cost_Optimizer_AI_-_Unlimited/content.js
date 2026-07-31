@@ -568,8 +568,30 @@ class MeeshoShippingOptimizer {
       this.setup();
     }
 
+    // Pre-load categories immediately in background so modal shows them instantly.
+    this._preloadCategories();
+
     // Also listen for URL changes (SPA navigation)
     this.observeUrlChanges();
+  }
+
+  /** Start loading categories in background before the modal opens. */
+  _preloadCategories() {
+    if (window.WEB_OPTIMIZER_MODE) return;
+    if (this._categoriesPreloadPromise) return;
+    this._categoriesPreloadPromise = (async () => {
+      try {
+        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.ensureFullCategories) {
+          const list = await MeeshoAPI.ensureFullCategories();
+          if (list?.length) {
+            this.allCategories = list;
+            console.log("✅ Categories pre-loaded:", list.length);
+          }
+        }
+      } catch (e) {
+        console.warn("Category pre-load failed:", e.message || e);
+      }
+    })();
   }
 
   // Observe URL changes for SPA
@@ -2070,39 +2092,17 @@ Please share payment details and license key.`;
   }
 
   // Load categories into dropdown
-  /**
-   * Mark that user is actively editing the category, pause page-sync for `ms`.
-   * Always sets true immediately so sync skips; timer re-checks focus.
-   */
-  markCategoryEditingActive(ms = 5000) {
-    this._categoryUserEditing = true;
-    clearTimeout(this._categoryEditingTimer);
-    this._categoryEditingTimer = setTimeout(() => {
-      const el = document.getElementById("category-search");
-      if (document.activeElement !== el) {
-        this._categoryUserEditing = false;
-      } else {
-        this.markCategoryEditingActive(ms);
-      }
-    }, ms);
-  }
-
   bindCategoryUI(categories) {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
-    const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
+    const search = document.getElementById("category-search");
+    const dropdown = document.getElementById("category-dropdown");
+    const select = document.getElementById("category-select");
+    const clearBtn = document.getElementById("category-clear-btn");
+    const selectedDiv = document.getElementById("selected-category");
     const refreshBtn = document.getElementById("refresh-categories");
-    const categoryError = document.getElementById("category-error");
+    const errorDiv = document.getElementById("category-error");
+    const countHint = document.getElementById("category-count-hint");
 
-    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
-
-    categorySearch.autocomplete = "off";
-    categorySearch.spellcheck = false;
-    categorySearch.setAttribute("enterkeyhint", "search");
-    categorySearch.readOnly = false;
-    categorySearch.disabled = false;
+    if (!search || !dropdown || !categories?.length) return false;
 
     this.allCategories = categories;
     if (typeof MeeshoCategories !== "undefined") {
@@ -2111,207 +2111,133 @@ Please share payment details and license key.`;
         MeeshoCategories.LIST = categories;
       }
     }
-    const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
-    const countHint = document.getElementById("category-count-hint");
-    if (countHint) {
-      countHint.textContent =
-        categories.length >= 3000
-          ? `${categories.length} leaf categories loaded — type to search all`
-          : `${categories.length} categories loaded`;
-    }
-    if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
-    if (categoryError) categoryError.style.display = "none";
 
-    const isExtension = !window.WEB_OPTIMIZER_MODE;
+    const n = categories.length;
+    search.placeholder = n >= 3000
+      ? `🔍 Search ${n} categories by name or ID`
+      : `🔍 Search ${n} categories`;
+    if (countHint) countHint.textContent = `${n} categories loaded — type to search`;
+    if (refreshBtn) refreshBtn.style.display = "none";
+    if (errorDiv) errorDiv.style.display = "none";
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    const showClear = (show) => {
+      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
+    };
 
     const hideDropdown = () => {
-      categoryDropdown.style.display = "none";
-      categoryDropdown.innerHTML = "";
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
     };
 
-    const renderSearchDropdown = (raw, immediate = false) => {
-      const query = String(raw || "").trim();
-      const run = () => {
-        this._categorySearchFrame = null;
-        if (!query) {
-          hideDropdown();
-          return;
-        }
-        this.renderCategoryDropdown(
-          this.filterCategoriesForSearch(query, 60),
-          { query, showSearchHint: false },
-        );
-        categoryDropdown.style.display = "block";
-      };
-
-      if (this._categorySearchFrame && typeof cancelAnimationFrame === "function") {
-        cancelAnimationFrame(this._categorySearchFrame);
-        this._categorySearchFrame = null;
-      }
-
-      if (immediate || typeof requestAnimationFrame !== "function") {
-        run();
-        return;
-      }
-
-      this._categorySearchFrame = requestAnimationFrame(run);
-    };
-
-    const focusCategorySearch = () => {
-      this.markCategoryEditingActive();
-      categorySearch.readOnly = false;
-      categorySearch.disabled = false;
-      categorySearch.focus();
-    };
-
-    categorySearch.onfocus = () => {
-      this.markCategoryEditingActive();
-      const raw = categorySearch.value.trim();
-      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-      try {
-        categorySearch.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      } catch (_e) {}
-      if (raw) {
-        renderSearchDropdown(raw, true);
+    const showResults = (query) => {
+      const q = String(query || "").trim();
+      if (!q) { hideDropdown(); return; }
+      const hits = this.filterCategoriesForSearch(q, 50);
+      if (!hits.length) {
+        dropdown.innerHTML = `<div class="category-empty">No match for "<strong>${this.escapeHtml(q)}</strong>" — try shorter name or numeric ID</div>`;
       } else {
-        hideDropdown();
+        dropdown.innerHTML = hits.map((cat) => {
+          const path = cat.path || cat.parentName || "";
+          return `<div class="cat-item" data-id="${cat.id}" data-name="${this.escapeHtml(cat.name)}">
+            <div class="cat-item-name">
+              <span>${this.escapeHtml(cat.name)}</span>
+              <span class="cat-item-id">ID ${cat.id}</span>
+            </div>
+            ${path ? `<div class="cat-item-path">${this.escapeHtml(path)}</div>` : ""}
+          </div>`;
+        }).join("");
       }
+      dropdown.style.display = "block";
     };
 
-    categorySearch.onblur = isExtension
-      ? null
-      : () => {
-          setTimeout(() => {
-            if (
-              document.activeElement === categorySearch ||
-              document.activeElement?.closest?.("#category-dropdown")
-            ) return;
-            const raw = categorySearch.value.trim();
-            if (!raw) return;
-            const selected = parseInt(categorySelect?.value, 10);
-            const parsed = this.parseCategorySearchQuery(raw);
-            if (parsed.mode !== "id" || selected === parsed.id) return;
-            const result = this.resolveCategoryFromSearchInput(raw, 12);
-            if (result.status === "resolved" && result.cat?.id) {
-              this.applyCategoryFromSearchInput(raw);
-            }
-          }, 200);
-        };
+    const resetSelection = () => {
+      this._categoryUserPicked = false;
+      this._categorySelectionSource = null;
+      this._categoryUserEditing = false;
+      clearTimeout(this._categoryEditingTimer);
+      if (select) select.value = "";
+      if (selectedDiv) selectedDiv.style.display = "none";
+      const selDetail = document.getElementById("selected-category-detail");
+      if (selDetail) selDetail.textContent = "";
+      const apiPreview = document.getElementById("category-api-preview");
+      if (apiPreview) { apiPreview.style.display = "none"; }
+      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+    };
 
-    categorySearch.onclick = focusCategorySearch;
+    // ── Debounced input handler ────────────────────────────────────────────
+    let _inputTimer = null;
+    search.oninput = () => {
+      this._categoryUserEditing = true;
+      const q = search.value.trim();
+      showClear(!!q);
+      // Clear previous selection when user starts typing again
+      if (this._categorySelectionSource && q) {
+        resetSelection();
+      }
+      clearTimeout(_inputTimer);
+      _inputTimer = setTimeout(() => showResults(q), 120);
+    };
 
-    if (isExtension) {
-      categorySearch.addEventListener("touchend", (e) => {
+    // ── Clear button — simple onclick works for both mouse and touch ───────
+    if (clearBtn) {
+      clearBtn.onclick = (e) => {
         e.preventDefault();
-        focusCategorySearch();
-      }, { passive: false });
+        search.value = "";
+        showClear(false);
+        hideDropdown();
+        resetSelection();
+        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+        search.focus();
+      };
     }
 
-    categorySearch.oninput = () => {
-      this.markCategoryEditingActive();
-      const raw = categorySearch.value.trim();
-      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-      if (categorySelect?.value || this._categorySelectionSource) {
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        this._categorySelectionSource = null;
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-      }
-      renderSearchDropdown(raw);
-    };
-
-    categorySearch.onkeydown = (e) => {
-      if (e.key === "Escape") {
-        hideDropdown();
-        categorySearch.blur();
-        return;
-      }
+    // ── Enter key: apply best match ────────────────────────────────────────
+    search.onkeydown = (e) => {
+      if (e.key === "Escape") { hideDropdown(); search.blur(); return; }
       if (e.key !== "Enter") return;
       e.preventDefault();
-      const raw = categorySearch.value.trim();
-      if (!raw) return;
-      const result = this.applyCategoryFromSearchInput(raw);
-      if (result.status === "resolved") {
-        OptimizerUtils.showNotification(
-          `Category: ${result.cat.name} (ID ${result.cat.id})`,
-          "success",
-        );
-        return;
+      const q = search.value.trim();
+      if (!q) return;
+      const result = this.applyCategoryFromSearchInput(q);
+      if (result?.status === "resolved" || result?.status === "ambiguous") {
+        const cat = result.cat || result.hits?.[0];
+        if (cat) {
+          this.applyCategorySelection(cat, { source: "user" });
+          hideDropdown();
+        }
+      } else {
+        OptimizerUtils.showNotification(`No category found for "${q}"`, "error");
       }
-      if (result.status === "ambiguous" && result.hits?.length) {
-        this.applyCategorySelection(result.hits[0], { source: "user" });
-        hideDropdown();
-        OptimizerUtils.showNotification(
-          `Selected: ${result.hits[0].name} (ID ${result.hits[0].id})`,
-          "info",
-        );
-        return;
-      }
-      OptimizerUtils.showNotification(
-        result.status === "not_found"
-          ? `No category found for "${raw}"`
-          : "Type a category name or ID",
-        "error",
-      );
     };
 
-    if (categoryClear) {
-      let _clearBusy = false;
-      const clearCategory = (e) => {
-        if (e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        if (_clearBusy) return;
-        _clearBusy = true;
-        setTimeout(() => { _clearBusy = false; }, 400);
-
-        this._categoryUserEditing = false;
-        this._categoryUserPicked = false;
-        this._categorySelectionSource = null;
-        clearTimeout(this._categoryEditingTimer);
-
-        categorySearch.value = "";
-        categoryClear.style.display = "none";
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        const selDetail = document.getElementById("selected-category-detail");
-        if (selDetail) selDetail.textContent = "";
-        const apiPreview = document.getElementById("category-api-preview");
-        if (apiPreview) { apiPreview.style.display = "none"; apiPreview.textContent = ""; }
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        hideDropdown();
-        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
-        setTimeout(() => { categorySearch.focus(); }, 0);
+    // ── Tap a result ───────────────────────────────────────────────────────
+    dropdown.onclick = (e) => {
+      const item = e.target?.closest?.(".cat-item");
+      if (!item) return;
+      const id = parseInt(item.dataset.id, 10);
+      const cat = this.findCategoryById(id) || {
+        id, name: item.dataset.name || `ID ${id}`,
       };
+      this.applyCategorySelection(cat, { source: "user" });
+      this._categoryUserPicked = true;
+      hideDropdown();
+      showClear(true);
+    };
 
-      categoryClear.onmousedown = (e) => { e.preventDefault(); clearCategory(e); };
-      categoryClear.addEventListener("touchend", clearCategory, { passive: false });
-    }
-
-    if (!isExtension && !this._categoryOutsideBound) {
+    // ── Collapse results when tapping elsewhere (web only) ─────────────────
+    if (!window.WEB_OPTIMIZER_MODE && !this._categoryOutsideBound) {
       this._categoryOutsideBound = true;
       this._handleCategoryOutsideTap = (e) => {
-        const target = e.target;
-        const currentDropdown = document.getElementById("category-dropdown");
-        if (!currentDropdown) return;
-        const path = typeof e.composedPath === "function" ? e.composedPath() : [];
-        const inside = path.some(
-          (node) =>
-            node?.id === "category-search" ||
-            node?.id === "category-dropdown" ||
-            node?.id === "category-clear" ||
-            node?.classList?.contains?.("cat-item"),
-        );
-        if (inside || target?.closest?.("#category-search") || target?.closest?.("#category-dropdown") || target?.closest?.("#category-clear")) return;
-        currentDropdown.style.display = "none";
+        const t = e.target;
+        if (t === search || t === dropdown || t === clearBtn || t?.closest?.("#category-dropdown") || t?.closest?.(".category-search-wrap")) return;
+        hideDropdown();
       };
       document.addEventListener("pointerdown", this._handleCategoryOutsideTap, true);
-      document.addEventListener("click", this._handleCategoryOutsideTap, true);
     }
 
-    console.log("✅ Loaded", categories.length, "categories");
+    console.log("✅ Loaded", n, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
       this.applyDefaultCategoryIfNeeded();
       this.scheduleMeeshoPageSync();
@@ -2399,81 +2325,53 @@ Please share payment details and license key.`;
   }
 
   async loadCategoryDropdown() {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
-    const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
-    const selectedCategoryName = document.getElementById(
-      "selected-category-name"
-    );
+    const search = document.getElementById("category-search");
+    const dropdown = document.getElementById("category-dropdown");
     const refreshBtn = document.getElementById("refresh-categories");
-    const categoryError = document.getElementById("category-error");
+    const errorDiv = document.getElementById("category-error");
 
-    if (!categorySearch || !categoryDropdown) return;
+    if (!search || !dropdown) return;
 
-    if (typeof MeeshoAPI === "undefined") {
-      categorySearch.placeholder = "API not available";
-      if (refreshBtn) refreshBtn.style.display = "block";
-      if (categoryError) categoryError.style.display = "block";
-      return;
-    }
-
-    // Refresh button handler
+    // Refresh button
     if (refreshBtn) {
       refreshBtn.onclick = async () => {
-        refreshBtn.textContent = "⏳...";
-        MeeshoAPI.cache.categories = null;
-        try {
-          const categories = await MeeshoAPI.fetchCategories(true);
-          if (categories?.length && this.bindCategoryUI(categories)) {
-            refreshBtn.textContent = "🔄 Refresh";
-            return;
-          }
-        } catch (e) {
-          console.warn("Live category refresh failed:", e);
-        }
+        refreshBtn.textContent = "⏳";
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.cache.categories = null;
         await this.loadCategoryDropdown();
         refreshBtn.textContent = "🔄 Refresh";
       };
     }
 
-    categorySearch.placeholder = "Loading categories...";
+    // Use pre-loaded categories if already available (from _preloadCategories)
+    if (this.allCategories?.length) {
+      this.bindCategoryUI(this.allCategories);
+      return;
+    }
+
+    search.placeholder = "Loading…";
 
     try {
       const categories = await this.ensureFullCategories();
-
-      if (categories?.length && this.bindCategoryUI(categories)) {
+      if (categories?.length) {
+        this.bindCategoryUI(categories);
         return;
       }
-
-      if (window.WEB_OPTIMIZER_MODE) {
-        categorySearch.placeholder = "Optional — skip to generate variants";
-        if (categoryError) categoryError.style.display = "none";
-        if (refreshBtn) refreshBtn.style.display = "block";
-        return;
-      }
-
-      categorySearch.placeholder = "Not loaded — click Refresh";
+      // Failed to load
+      search.placeholder = "Tap 🔄 Refresh to load categories";
       if (refreshBtn) refreshBtn.style.display = "block";
-      if (categoryError) categoryError.style.display = "block";
-    } catch (error) {
-      console.error("Failed to load categories:", error);
-      if (window.WEB_OPTIMIZER_MODE) {
-        categorySearch.placeholder = "Optional — skip to generate variants";
-        if (categoryError) categoryError.style.display = "none";
-      } else {
-        categorySearch.placeholder = "Failed - Click Refresh";
-        if (categoryError) categoryError.style.display = "block";
-      }
+      if (errorDiv) errorDiv.style.display = "block";
+    } catch (err) {
+      console.error("loadCategoryDropdown error:", err);
+      search.placeholder = "Load failed — tap 🔄 Refresh";
       if (refreshBtn) refreshBtn.style.display = "block";
+      if (errorDiv) errorDiv.style.display = "block";
     }
   }
 
   applyCategorySelection(catOrId, options = {}) {
     const categorySelect = document.getElementById("category-select");
     const categorySearch = document.getElementById("category-search");
-    const categoryClear = document.getElementById("category-clear");
+    const categoryClear = document.getElementById("category-clear-btn") || document.getElementById("category-clear");
 
     const cat =
       typeof catOrId === "object"
