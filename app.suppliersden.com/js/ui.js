@@ -157,8 +157,10 @@ const OptimizerUI = {
                     border: 1px solid #e5e7eb;
                     border-radius: 8px;
                     margin-top: 2px;
+                    margin-bottom: 0;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                 }
+                #cat-lite-results:empty { display: none !important; margin: 0; padding: 0; border: none; }
                 .cat-lite-item {
                     display: block;
                     width: 100%;
