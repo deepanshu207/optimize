@@ -235,6 +235,25 @@ const MeeshoAPI = {
     return Number.isFinite(id) && id > 0 ? id : null;
   },
 
+  /** Map visible Meesho category label/path text to leaf sscat_id. */
+  resolveCategoryLabelToId: function (raw) {
+    const val = String(raw || "").trim();
+    if (!val) return null;
+    const pick = (n) => this.parseCategoryId(n);
+    if (/^\d{4,6}$/.test(val)) return pick(val);
+    if (typeof MeeshoCategories === "undefined" || !MeeshoCategories.findByLabel) {
+      return null;
+    }
+    let leaf = val;
+    if (/[›>\/]/.test(val)) {
+      leaf = val.split(/[›>\/]+/).pop().trim();
+    }
+    if (!leaf || leaf.length < 2 || leaf.length > 60 || leaf.includes("₹")) {
+      return null;
+    }
+    return MeeshoCategories.findByLabel(leaf);
+  },
+
   /** Read sscat_id from the open Meesho catalog form (edit/add listing). */
   detectCategoryIdFromDom: function () {
     const pick = (raw) => this.parseCategoryId(raw);
@@ -320,23 +339,14 @@ const MeeshoAPI = {
     for (let i = categoryInputs.length - 1; i >= 0; i--) {
       const val = (categoryInputs[i].value || "").trim();
       if (val.length < 2 || val.length > 80) continue;
-      if (/^\d{4,6}$/.test(val)) {
-        const id = this.parseCategoryId(val);
-        if (id) return id;
-      }
-      const id = MeeshoCategories.findByLabel(val);
+      const id = this.resolveCategoryLabelToId(val);
       if (id) return id;
     }
 
     for (let i = inputs.length - 1; i >= 0; i--) {
       const val = (inputs[i].value || "").trim();
       if (val.length < 2 || val.length > 60 || val.includes("₹")) continue;
-      if (/^\d{4,6}$/.test(val)) {
-        const id = this.parseCategoryId(val);
-        if (id && MeeshoCategories.findById(id)) return id;
-        continue;
-      }
-      const id = MeeshoCategories.findByLabel(val);
+      const id = this.resolveCategoryLabelToId(val);
       if (id) return id;
     }
 
