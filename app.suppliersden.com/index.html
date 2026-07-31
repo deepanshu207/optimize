@@ -130,31 +130,24 @@
     .session-status.ok { background: #ecfdf5; color: #047857; }
     .session-status.warn { background: #fffbeb; color: #b45309; }
     .session-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.4; }
-    .category-search-wrap { position: relative; }
-    #category-clear-btn {
-      position: absolute; right: 8px; top: 50%;
-      transform: translateY(-50%);
-      background: none; border: none;
-      color: #888; font-size: 20px; line-height: 1;
-      cursor: pointer; padding: 4px 6px;
-      display: none; z-index: 1;
-    }
-    #category-dropdown {
+    .category-dropdown {
       display: none;
-      max-height: 220px;
+      max-height: 200px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       background: #fff;
-      border: 2px solid #047857;
-      border-radius: 8px;
-      margin-top: 4px;
-      box-shadow: 0 4px 16px rgba(4,120,87,0.15);
+      border: 1px solid #ddd;
+      border-radius: 0 0 8px 8px;
+      margin-top: -1px;
+      position: relative;
+      z-index: 10001;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.12);
     }
     #category-search {
       touch-action: manipulation;
       -webkit-user-select: text; user-select: text;
       font-size: 16px !important;
-      min-height: 48px;
+      min-height: 44px;
     }
     .smart-mode-note {
       font-size: 11px;
@@ -301,12 +294,13 @@
               <span>📁 Category <span style="font-size:10px;font-weight:normal;color:#6b7280;">(optional)</span></span>
               <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
             </div>
-            <div class="category-search-wrap">
-              <input type="text" id="category-search" class="opt-input" placeholder="🔍 Tap to search categories" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="search" style="padding-right:40px;">
-              <button type="button" id="category-clear-btn" aria-label="Clear category">✕</button>
+            <div style="position:relative;z-index:10000;">
+              <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" autocomplete="off">
+              <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888;display:none;">✕</span>
             </div>
-            <div id="category-dropdown"></div>
-            <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:6px;line-height:1.4;">Loading categories…</p>
+            <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:4px;line-height:1.4;">Loading categories…</p>
+            <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+            <div id="category-dropdown" class="category-dropdown"></div>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
               <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>

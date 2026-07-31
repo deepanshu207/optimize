@@ -49,9 +49,8 @@ class MeeshoShippingOptimizer {
     this._staticControlsVariantId = null;
     this._categoryUserPicked = false;
     this._categoryUserEditing = false;
-    this._categorySelectionSource = null;
     this._categoryEditingTimer = null;
-    this._categorySearchWired = false;
+    this._categorySearchCommittedValue = "";
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -568,28 +567,8 @@ class MeeshoShippingOptimizer {
       this.setup();
     }
 
-    this._preloadCategories();
-
     // Also listen for URL changes (SPA navigation)
     this.observeUrlChanges();
-  }
-
-  _preloadCategories() {
-    if (window.WEB_OPTIMIZER_MODE) return;
-    if (this._categoriesPreloadPromise) return;
-    this._categoriesPreloadPromise = (async () => {
-      try {
-        if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.ensureFullCategories) {
-          const list = await MeeshoAPI.ensureFullCategories();
-          if (list?.length) {
-            this.allCategories = list;
-            console.log("✅ Categories pre-loaded:", list.length);
-          }
-        }
-      } catch (e) {
-        console.warn("Category pre-load failed:", e.message || e);
-      }
-    })();
   }
 
   // Observe URL changes for SPA
@@ -1360,7 +1339,6 @@ Please share payment details and license key.`;
       WebSession.wireForm();
     }
     this.loadCategoryDropdown();
-    this.wireCategorySearchHandlers();
 
     // Live vs Test Lab tabs (web + extension modal)
     if (this.isTabbedOptimizerUI()) {
@@ -1405,7 +1383,6 @@ Please share payment details and license key.`;
 
   parseCategorySearchQuery(raw) {
     const text = String(raw || "").trim();
-    if (!text) return { mode: "empty", text: "" };
     if (/^\d{3,6}$/.test(text)) {
       return { mode: "id", id: parseInt(text, 10), text };
     }
@@ -1417,9 +1394,6 @@ Please share payment details and license key.`;
         id: parseInt(idFromSuffix[1], 10),
         text: stripped || text,
       };
-    }
-    if (/^id\s+\d{3,6}$/i.test(text)) {
-      return { mode: "id", id: parseInt(text.replace(/^id\s+/i, ""), 10), text };
     }
     return { mode: "text", text: stripped || text };
   }
@@ -1439,44 +1413,20 @@ Please share payment details and license key.`;
     if (!hits.length) return { status: "not_found", query };
     if (hits.length === 1) return { status: "resolved", cat: hits[0], hits, query };
 
-    const norm =
-      typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
-        ? MeeshoCategories.normalizeSearchText(parsed.text)
-        : parsed.text.toLowerCase();
-    const exact = hits.find((c) => {
-      const nameNorm =
-        typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText
-          ? MeeshoCategories.normalizeSearchText(c.name)
-          : String(c.name || "").toLowerCase();
-      return nameNorm === norm || String(c.id) === parsed.text;
-    });
+    const norm = parsed.text.toLowerCase();
+    const exact = hits.find(
+      (c) =>
+        String(c.name || "").toLowerCase() === norm ||
+        String(c.id) === parsed.text,
+    );
     if (exact) return { status: "resolved", cat: exact, hits, query };
 
     return { status: "ambiguous", hits, query };
   }
 
-  applyCategoryFromSearchInput(raw) {
-    const result = this.resolveCategoryFromSearchInput(raw);
-    if (result.status === "resolved" && result.cat) {
-      this.applyCategorySelection(result.cat, { source: "user" });
-      this.hideCategoryDropdown();
-      return result;
-    }
-    return result;
-  }
-
-  escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
   filterCategoriesForSearch(raw, limit = 100) {
     const parsed = this.parseCategorySearchQuery(raw);
-    if (parsed.mode === "empty") {
+    if (!parsed.text && parsed.mode !== "id") {
       return this.getDefaultCategorySlice(Math.min(limit, 50));
     }
 
@@ -1493,176 +1443,6 @@ Please share payment details and license key.`;
     return (this.allCategories || [])
       .filter((cat) => this.categoryMatchesQuery(cat, query))
       .slice(0, limit);
-  }
-
-  hideCategoryDropdown() {
-    const dropdown = document.getElementById("category-dropdown");
-    if (!dropdown) return;
-    dropdown.style.display = "none";
-    dropdown.innerHTML = "";
-  }
-
-  resetCategorySelection() {
-    this._categoryUserPicked = false;
-    this._categorySelectionSource = null;
-    clearTimeout(this._categoryEditingTimer);
-    const select = document.getElementById("category-select");
-    if (select) select.value = "";
-    const selectedDiv = document.getElementById("selected-category");
-    if (selectedDiv) selectedDiv.style.display = "none";
-    const selDetail = document.getElementById("selected-category-detail");
-    if (selDetail) selDetail.textContent = "";
-    const apiPreview = document.getElementById("category-api-preview");
-    if (apiPreview) {
-      apiPreview.style.display = "none";
-      apiPreview.textContent = "";
-    }
-    if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-  }
-
-  updateCategorySearchResults(query) {
-    const dropdown = document.getElementById("category-dropdown");
-    if (!dropdown) return;
-
-    const q = String(query || "").trim();
-    if (!q) {
-      this.hideCategoryDropdown();
-      return;
-    }
-
-    const hits = this.filterCategoriesForSearch(q, 50);
-    if (!hits.length) {
-      dropdown.innerHTML = `<div class="category-empty">No match for "<strong>${this.escapeHtml(q)}</strong>" — try a shorter name or numeric ID</div>`;
-    } else {
-      dropdown.innerHTML = hits
-        .map((cat) => {
-          const path = cat.path || cat.parentName || "";
-          return `<div class="cat-item" data-id="${cat.id}" data-name="${this.escapeHtml(cat.name)}">
-            <div class="cat-item-name">
-              <span>${this.escapeHtml(cat.name)}</span>
-              <span class="cat-item-id">ID ${cat.id}</span>
-            </div>
-            ${path ? `<div class="cat-item-path">${this.escapeHtml(path)}</div>` : ""}
-          </div>`;
-        })
-        .join("");
-    }
-    dropdown.style.display = "block";
-  }
-
-  wireCategorySearchHandlers() {
-    if (this._categorySearchWired) return;
-    const search = document.getElementById("category-search");
-    const dropdown = document.getElementById("category-dropdown");
-    const clearBtn =
-      document.getElementById("category-clear-btn") ||
-      document.getElementById("category-clear");
-    if (!search || !dropdown) return;
-
-    this._categorySearchWired = true;
-
-    const showClear = (show) => {
-      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
-    };
-
-    search.addEventListener("focus", () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-    });
-
-    search.addEventListener("blur", () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== search) {
-          this._categoryUserEditing = false;
-        }
-      }, 250);
-    });
-
-    let inputTimer = null;
-    search.addEventListener("input", () => {
-      this._categoryUserEditing = true;
-      const q = search.value;
-      showClear(!!q.trim());
-      if (this._categorySelectionSource && q.trim()) {
-        this.resetCategorySelection();
-      }
-      clearTimeout(inputTimer);
-      inputTimer = setTimeout(() => this.updateCategorySearchResults(q.trim()), 120);
-    });
-
-    search.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        this.hideCategoryDropdown();
-        search.blur();
-        return;
-      }
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      const q = search.value.trim();
-      if (!q) return;
-      const result = this.applyCategoryFromSearchInput(q);
-      if (result?.status === "resolved" || result?.status === "ambiguous") {
-        const cat = result.cat || result.hits?.[0];
-        if (cat) {
-          this.applyCategorySelection(cat, { source: "user" });
-          this.hideCategoryDropdown();
-        }
-      } else {
-        OptimizerUtils.showNotification(`No category found for "${q}"`, "error");
-      }
-    });
-
-    if (clearBtn) {
-      clearBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        search.value = "";
-        showClear(false);
-        this.hideCategoryDropdown();
-        this.resetCategorySelection();
-        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
-        if (!window.WEB_OPTIMIZER_MODE) {
-          this.applyPageCategoryIfAvailable();
-        }
-        search.focus();
-      });
-    }
-
-    dropdown.addEventListener("click", (e) => {
-      const item = e.target?.closest?.(".cat-item");
-      if (!item) return;
-      e.preventDefault();
-      const id = parseInt(item.dataset.id, 10);
-      const cat = this.findCategoryById(id) || {
-        id,
-        name: item.dataset.name || `ID ${id}`,
-      };
-      this.applyCategorySelection(cat, { source: "user" });
-      this._categoryUserPicked = true;
-      this.hideCategoryDropdown();
-      showClear(true);
-    });
-
-    if (!window.WEB_OPTIMIZER_MODE && !this._categoryOutsideBound) {
-      this._categoryOutsideBound = true;
-      document.addEventListener(
-        "pointerdown",
-        (e) => {
-          const t = e.target;
-          if (
-            t === search ||
-            t === clearBtn ||
-            dropdown.contains(t) ||
-            t?.closest?.(".category-search-wrap")
-          ) {
-            return;
-          }
-          this.hideCategoryDropdown();
-        },
-        true,
-      );
-    }
   }
 
   applyPageCategoryIfAvailable(options = {}) {
@@ -1709,7 +1489,11 @@ Please share payment details and license key.`;
         if (attempts < maxAttempts) setTimeout(tick, delayMs);
         return;
       }
-      if (this._categoryUserEditing && searchEl && document.activeElement !== searchEl) {
+      if (
+        this._categoryUserEditing &&
+        searchEl &&
+        document.activeElement !== searchEl
+      ) {
         this._categoryUserEditing = false;
       }
 
@@ -1729,7 +1513,11 @@ Please share payment details and license key.`;
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
     const searchEl = document.getElementById("category-search");
-    if (this._categoryUserEditing && searchEl && document.activeElement === searchEl) {
+    if (
+      this._categoryUserEditing &&
+      searchEl &&
+      document.activeElement === searchEl
+    ) {
       return;
     }
     if (typeof MeeshoAPI !== "undefined") {
@@ -1979,41 +1767,131 @@ Please share payment details and license key.`;
 
   // Load categories into dropdown
   bindCategoryUI(categories) {
-    const search = document.getElementById("category-search");
-    const dropdown = document.getElementById("category-dropdown");
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
     const refreshBtn = document.getElementById("refresh-categories");
-    const errorDiv = document.getElementById("category-error");
-    const countHint = document.getElementById("category-count-hint");
+    const categoryError = document.getElementById("category-error");
 
-    if (!search || !dropdown || !categories?.length) return false;
+    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
     this.allCategories = categories;
-    if (typeof MeeshoCategories !== "undefined") {
-      MeeshoCategories._list = categories;
-      if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
-        MeeshoCategories.LIST = categories;
-      }
-    }
-
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    const n = categories.length;
-    search.placeholder =
-      n >= 3000
-        ? `🔍 Search ${n} categories by name or ID`
-        : `🔍 Search ${n} categories`;
+    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
+    const countHint = document.getElementById("category-count-hint");
     if (countHint) {
-      countHint.textContent = `${n} categories loaded — type to search`;
+      countHint.textContent =
+        categories.length >= 3000
+          ? `${categories.length} leaf categories loaded — type to search all`
+          : `${categories.length} categories loaded`;
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
-    if (errorDiv) errorDiv.style.display = "none";
+    if (categoryError) categoryError.style.display = "none";
 
-    this.wireCategorySearchHandlers();
+    categorySearch.onfocus = () => {
+      this._categoryUserEditing = true;
+      clearTimeout(this._categoryEditingTimer);
+    };
 
-    console.log("✅ Loaded", n, "categories");
-    if (!window.WEB_OPTIMIZER_MODE) {
-      if (!this._categoryUserEditing) {
-        this.applyDefaultCategoryIfNeeded();
+    categorySearch.onblur = () => {
+      clearTimeout(this._categoryEditingTimer);
+      this._categoryEditingTimer = setTimeout(() => {
+        if (document.activeElement !== categorySearch) {
+          this._categoryUserEditing = false;
+        }
+      }, 200);
+    };
+
+    categorySearch.onkeydown = (e) => {
+      if (e.key === "Escape") {
+        categoryDropdown.style.display = "none";
+        return;
       }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const raw = categorySearch.value.trim();
+        if (!raw) return;
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
+        if (result.status === "resolved" && result.cat) {
+          this.applyCategorySelection(result.cat, { source: "user" });
+          categoryDropdown.style.display = "none";
+        } else if (result.status === "ambiguous" && result.hits?.[0]) {
+          this.applyCategorySelection(result.hits[0], { source: "user" });
+          categoryDropdown.style.display = "none";
+        } else {
+          OptimizerUtils.showNotification(
+            `No category found for "${raw}"`,
+            "error",
+          );
+        }
+        return;
+      }
+      if (
+        this._categorySearchCommittedValue &&
+        categorySearch.value === this._categorySearchCommittedValue &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        categorySearch.value = e.key;
+        this._categorySearchCommittedValue = "";
+        e.preventDefault();
+        categorySearch.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    };
+
+    categorySearch.oninput = () => {
+      this._categoryUserEditing = true;
+      const raw = categorySearch.value.trim();
+      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
+
+      if (!raw) {
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+      } else {
+        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
+      }
+      categoryDropdown.style.display = "block";
+    };
+
+    if (categoryClear) {
+      categoryClear.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        categorySearch.value = "";
+        categoryClear.style.display = "none";
+        this._categorySearchCommittedValue = "";
+        this._categoryUserEditing = true;
+        if (categorySelect) categorySelect.value = "";
+        if (selectedCategory) selectedCategory.style.display = "none";
+        const selectedCategoryDetail = document.getElementById("selected-category-detail");
+        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
+        this._categoryUserPicked = false;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+        this.refreshCategoryApiPreview();
+        this.applyPageCategoryIfAvailable();
+        categorySearch.focus();
+      };
+    }
+
+    if (!this._categoryClickBound) {
+      this._categoryClickBound = true;
+      document.addEventListener("click", (e) => {
+        if (
+          !e.target.closest("#category-search") &&
+          !e.target.closest("#category-dropdown")
+        ) {
+          categoryDropdown.style.display = "none";
+        }
+      });
+    }
+
+    console.log("✅ Loaded", categories.length, "categories");
+    if (!window.WEB_OPTIMIZER_MODE) {
+      this.applyDefaultCategoryIfNeeded();
       this.scheduleMeeshoPageSync();
     } else {
       this.refreshCategoryApiPreview();
@@ -2021,18 +1899,86 @@ Please share payment details and license key.`;
     return true;
   }
 
-  async loadCategoryDropdown() {
-    const search = document.getElementById("category-search");
+  renderCategoryDropdown(categories) {
     const dropdown = document.getElementById("category-dropdown");
+    if (!dropdown) return;
+
+    if (!categories?.length) {
+      dropdown.innerHTML =
+        '<div class="category-empty">No matching categories — try name or ID</div>';
+      dropdown.style.display = "block";
+      return;
+    }
+
+    let html = "";
+    categories.forEach((cat) => {
+      const path = cat.path || cat.parentName || "";
+      const safeName = String(cat.name || "").replace(/"/g, "&quot;");
+      const safePath = String(path).replace(/"/g, "&quot;");
+      html += `
+                <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}">
+                    <div class="cat-item-name">
+                      <span>${cat.name}</span>
+                      <span class="cat-item-id">ID ${cat.id}</span>
+                    </div>
+                    <div class="cat-item-path">${path || "Leaf category (sscat_id)"}</div>
+                </div>
+            `;
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = "block";
+
+    dropdown.querySelectorAll(".cat-item").forEach((item) => {
+      item.onmouseenter = () => {
+        item.style.background = "rgba(102,126,234,0.12)";
+      };
+      item.onmouseleave = () => {
+        item.style.background = "transparent";
+      };
+      item.onclick = () => {
+        const id = parseInt(item.dataset.id, 10);
+        const cat =
+          this.allCategories?.find((c) => c.id === id) ||
+          this.findCategoryById(id) || {
+            id,
+            name: item.dataset.name,
+            path: item.dataset.path,
+            parentName: item.dataset.path,
+          };
+        this.applyCategorySelection(cat, { source: "user" });
+        this._categoryUserPicked = true;
+        const categoryDropdown = document.getElementById("category-dropdown");
+        if (categoryDropdown) categoryDropdown.style.display = "none";
+      };
+    });
+  }
+
+  async loadCategoryDropdown() {
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
+    const selectedCategoryName = document.getElementById(
+      "selected-category-name"
+    );
     const refreshBtn = document.getElementById("refresh-categories");
-    const errorDiv = document.getElementById("category-error");
+    const categoryError = document.getElementById("category-error");
 
-    if (!search || !dropdown) return;
+    if (!categorySearch || !categoryDropdown) return;
 
+    if (typeof MeeshoAPI === "undefined") {
+      categorySearch.placeholder = "API not available";
+      if (refreshBtn) refreshBtn.style.display = "block";
+      if (categoryError) categoryError.style.display = "block";
+      return;
+    }
+
+    // Refresh button handler
     if (refreshBtn) {
       refreshBtn.onclick = async () => {
-        refreshBtn.textContent = "⏳";
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.cache.categories = null;
+        refreshBtn.textContent = "⏳...";
+        MeeshoAPI.cache.categories = null;
         try {
           const categories = await MeeshoAPI.fetchCategories(true);
           if (categories?.length && this.bindCategoryUI(categories)) {
@@ -2047,44 +1993,33 @@ Please share payment details and license key.`;
       };
     }
 
-    if (typeof MeeshoAPI === "undefined" && !window.WEB_OPTIMIZER_MODE) {
-      search.placeholder = "API not available";
-      if (refreshBtn) refreshBtn.style.display = "block";
-      if (errorDiv) errorDiv.style.display = "block";
-      return;
-    }
-
-    if (this.allCategories?.length) {
-      this.bindCategoryUI(this.allCategories);
-      return;
-    }
-
-    search.placeholder = "Loading…";
+    categorySearch.placeholder = "Loading categories...";
 
     try {
       const categories = await this.ensureFullCategories();
+
       if (categories?.length && this.bindCategoryUI(categories)) {
         return;
       }
 
       if (window.WEB_OPTIMIZER_MODE) {
-        search.placeholder = "Optional — skip to generate variants";
-        if (errorDiv) errorDiv.style.display = "none";
+        categorySearch.placeholder = "Optional — skip to generate variants";
+        if (categoryError) categoryError.style.display = "none";
         if (refreshBtn) refreshBtn.style.display = "block";
         return;
       }
 
-      search.placeholder = "Tap 🔄 Refresh to load categories";
+      categorySearch.placeholder = "Not loaded — click Refresh";
       if (refreshBtn) refreshBtn.style.display = "block";
-      if (errorDiv) errorDiv.style.display = "block";
+      if (categoryError) categoryError.style.display = "block";
     } catch (error) {
       console.error("Failed to load categories:", error);
       if (window.WEB_OPTIMIZER_MODE) {
-        search.placeholder = "Optional — skip to generate variants";
-        if (errorDiv) errorDiv.style.display = "none";
+        categorySearch.placeholder = "Optional — skip to generate variants";
+        if (categoryError) categoryError.style.display = "none";
       } else {
-        search.placeholder = "Load failed — tap 🔄 Refresh";
-        if (errorDiv) errorDiv.style.display = "block";
+        categorySearch.placeholder = "Failed - Click Refresh";
+        if (categoryError) categoryError.style.display = "block";
       }
       if (refreshBtn) refreshBtn.style.display = "block";
     }
@@ -2108,13 +2043,15 @@ Please share payment details and license key.`;
     if (options.source === "user") {
       this._categoryUserPicked = true;
     }
-    this._categorySelectionSource = options.source || "user";
+
     this._categoryUserEditing = false;
     clearTimeout(this._categoryEditingTimer);
 
     if (categorySelect) categorySelect.value = String(cat.id);
     if (categorySearch) {
-      categorySearch.value = `${cat.name} (${cat.id})`;
+      const displayValue = `${cat.name} (${cat.id})`;
+      categorySearch.value = displayValue;
+      this._categorySearchCommittedValue = displayValue;
     }
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
@@ -2145,12 +2082,15 @@ Please share payment details and license key.`;
 
     const display = this.formatCategoryIdUi(parsed, { source: options.source });
 
-    this._categorySelectionSource = options.source || "page";
     this._categoryUserEditing = false;
     clearTimeout(this._categoryEditingTimer);
 
     if (categorySelect) categorySelect.value = String(parsed);
-    if (categorySearch) categorySearch.value = `ID ${parsed}`;
+    if (categorySearch) {
+      const displayValue = `ID ${parsed}`;
+      categorySearch.value = displayValue;
+      this._categorySearchCommittedValue = displayValue;
+    }
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
@@ -2195,7 +2135,7 @@ Please share payment details and license key.`;
       if (result.status === "not_found") {
         return {
           error: true,
-          message: `No category found for "${raw}" — try name or numeric ID (e.g. 10253)`,
+          message: `No category found for "${raw}" — try name or numeric ID`,
         };
       }
     }
@@ -2238,13 +2178,7 @@ Please share payment details and license key.`;
       return;
     }
 
-    if (this._categoryUserPicked || this._categoryUserEditing) {
-      this.refreshCategoryApiPreview();
-      return;
-    }
-
-    const searchEl = document.getElementById("category-search");
-    if (searchEl && document.activeElement === searchEl) {
+    if (this._categoryUserPicked) {
       this.refreshCategoryApiPreview();
       return;
     }
@@ -2643,7 +2577,7 @@ Please share payment details and license key.`;
     if (resolved.error) {
       OptimizerUtils.showNotification(
         resolved.message || "Select a category for live Meesho shipping checks",
-        "error"
+        "error",
       );
       return;
     }
@@ -2871,7 +2805,7 @@ Please share payment details and license key.`;
     if (resolved.error) {
       OptimizerUtils.showNotification(
         resolved.message || "Select a category for live Meesho shipping checks",
-        "error"
+        "error",
       );
       return;
     }
