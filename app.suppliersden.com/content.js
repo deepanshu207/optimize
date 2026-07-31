@@ -2046,15 +2046,19 @@ Please share payment details and license key.`;
     categorySearch.onblur = () => {
       setTimeout(() => {
         const active = document.activeElement;
-        if (active?.closest?.("#category-dropdown")) return;
-        const raw = categorySearch.value.trim();
-        if (!raw) {
-          if (active !== categorySearch) categoryDropdown.style.display = "none";
+        if (
+          active === categorySearch ||
+          active?.closest?.("#category-dropdown")
+        ) {
           return;
         }
+        const raw = categorySearch.value.trim();
+        if (!raw) return;
         const selected = parseInt(categorySelect?.value, 10);
+        const parsed = this.parseCategorySearchQuery(raw);
+        if (parsed.mode !== "id" || selected === parsed.id) return;
         const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat?.id && selected !== result.cat.id) {
+        if (result.status === "resolved" && result.cat?.id) {
           this.applyCategoryFromSearchInput(raw);
         }
       }, 200);
@@ -2095,7 +2099,16 @@ Please share payment details and license key.`;
         const target = e.target;
         const currentDropdown = document.getElementById("category-dropdown");
         if (!currentDropdown) return;
+        const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+        const isInsideCategoryUi = path.some(
+          (node) =>
+            node?.id === "category-search" ||
+            node?.id === "category-dropdown" ||
+            node?.id === "category-clear" ||
+            node?.classList?.contains?.("cat-item"),
+        );
         if (
+          isInsideCategoryUi ||
           target?.closest?.("#category-search") ||
           target?.closest?.("#category-dropdown") ||
           target?.closest?.("#category-clear")
