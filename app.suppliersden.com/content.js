@@ -51,15 +51,6 @@ class MeeshoShippingOptimizer {
     this._categoryUserEditing = false;
     this._categoryEditingTimer = null;
     this._categorySearchCommittedValue = "";
-    this._categorySearchWired = false;
-    this._categoryQuickWired = false;
-    this._quickCategories = [];
-    this._catLiteWired = false;
-    this._catLitePool = [];
-    this._catLiteInteractionAt = 0;
-    this._staticCatWired = false;
-    this._catAzWired = false;
-    this._clothesCategories = [];
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -936,54 +927,37 @@ class MeeshoShippingOptimizer {
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
-    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
-
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
-    // pointer-events:none on shell lets inputs receive focus on mobile (Kiwi/Android).
+    const isNarrow = window.matchMedia("(max-width: 640px)").matches;
     this.modal.style.cssText = `
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
             z-index: 99999;
             display: flex;
             justify-content: ${isNarrow ? "stretch" : "center"};
             align-items: ${isNarrow ? "stretch" : "center"};
-            pointer-events: none;
+            backdrop-filter: blur(5px);
         `;
-
-    const backdrop = document.createElement("div");
-    backdrop.className = "opt-modal-backdrop";
-    backdrop.style.cssText = `
-            position: absolute;
-            inset: 0;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: ${isNarrow ? "none" : "blur(5px)"};
-            pointer-events: auto;
-        `;
-    backdrop.onclick = () => this.closeModal();
 
     const content = document.createElement("div");
-    content.className = "opt-modal-content";
     content.style.cssText = isNarrow
-      ? "position:relative;z-index:1;width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;pointer-events:auto;-webkit-overflow-scrolling:touch;"
-      : "position:relative;z-index:1;max-width:480px;width:95%;max-height:90vh;overflow-y:auto;pointer-events:auto;";
+      ? "width:100%;height:100%;max-width:100%;max-height:100%;overflow-y:auto;"
+      : "max-width:480px;width:95%;max-height:90vh;overflow-y:auto;";
     content.innerHTML = OptimizerUI.createModalHTML();
 
-    this.modal.appendChild(backdrop);
     this.modal.appendChild(content);
     document.body.appendChild(this.modal);
 
-    const fab = document.getElementById("meesho-optimizer-fab");
-    if (fab) fab.style.display = "none";
-
-    this._categorySearchWired = false;
-    this._categoryQuickWired = false;
-    this._catLiteWired = false;
-    this._catLiteInteractionAt = 0;
-    this._staticCatWired = false;
-    this._catAzWired = false;
-
     this.setupMainEvents();
+
+    this.modal.onclick = (e) => {
+      if (e.target === this.modal) this.closeModal();
+    };
 
     setTimeout(() => {
       this.detectShipping();
@@ -991,11 +965,7 @@ class MeeshoShippingOptimizer {
       if (el && this.currentShippingCost) {
         el.textContent = "₹" + this.currentShippingCost;
       }
-      if (!window.WEB_OPTIMIZER_MODE) {
-        this.applyPageCategoryIfAvailable();
-      } else {
-        this.scheduleMeeshoPageSync();
-      }
+      this.scheduleMeeshoPageSync();
     }, 100);
   }
 
@@ -1008,8 +978,6 @@ class MeeshoShippingOptimizer {
       this.modal.remove();
       this.modal = null;
     }
-    const fab = document.getElementById("meesho-optimizer-fab");
-    if (fab) fab.style.display = "";
   }
 
   setupLicenseEvents() {
@@ -1371,12 +1339,6 @@ Please share payment details and license key.`;
       WebSession.wireForm();
     }
     this.loadCategoryDropdown();
-    if (window.WEB_OPTIMIZER_MODE) {
-      this.wireCatLiteSearch();
-      this.wireCategorySearchHandlers();
-    } else {
-      this.wireCategoryAzDropdown();
-    }
 
     // Live vs Test Lab tabs (web + extension modal)
     if (this.isTabbedOptimizerUI()) {
@@ -1395,9 +1357,6 @@ Please share payment details and license key.`;
     }
 
     this.wireClearUploadButton();
-    if (window.WEB_OPTIMIZER_MODE) {
-      this.bindCategoryDropdownOutsideClose();
-    }
   }
 
   categoryMatchesQuery(cat, query) {
@@ -1486,43 +1445,9 @@ Please share payment details and license key.`;
       .slice(0, limit);
   }
 
-  catLiteHasDraftSearch() {
-    const lite = document.getElementById("cat-lite-input");
-    if (!lite) return false;
-    const val = lite.value.trim();
-    if (!val) return false;
-    const committed = String(this._categorySearchCommittedValue || "").trim();
-    return val !== committed;
-  }
-
-  catLiteRecentlyActive() {
-    return Date.now() - (this._catLiteInteractionAt || 0) < 3000;
-  }
-
-  markCatLiteInteraction() {
-    this._catLiteInteractionAt = Date.now();
-    this._categoryUserEditing = true;
-    clearTimeout(this._categoryEditingTimer);
-  }
-
   applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
     if (this._categoryUserEditing && !options.force) return false;
-    if (!options.force && this.catLiteHasDraftSearch()) return false;
-    if (!options.force && this.catLiteRecentlyActive()) return false;
-
-    const liteEl = document.getElementById("cat-lite-input");
-    if (liteEl && document.activeElement === liteEl && !options.force) return false;
-
-    const staticFilter = document.getElementById("cat-static-filter");
-    if (staticFilter && document.activeElement === staticFilter && !options.force) {
-      return false;
-    }
-
-    const azSelect = document.getElementById("cat-az-select");
-    if (azSelect && document.activeElement === azSelect && !options.force) {
-      return false;
-    }
 
     const searchEl = document.getElementById("category-search");
     if (searchEl && document.activeElement === searchEl && !options.force) return false;
@@ -1555,25 +1480,7 @@ Please share payment details and license key.`;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
 
-      if (!this._categoryUserPicked && this.catLiteHasDraftSearch()) {
-        if (attempts < maxAttempts) setTimeout(tick, delayMs);
-        return;
-      }
-      if (!this._categoryUserPicked && this.catLiteRecentlyActive()) {
-        if (attempts < maxAttempts) setTimeout(tick, delayMs);
-        return;
-      }
-
-      const liteEl = document.getElementById("cat-lite-input");
       const searchEl = document.getElementById("category-search");
-      if (
-        this._categoryUserEditing &&
-        liteEl &&
-        document.activeElement === liteEl
-      ) {
-        if (attempts < maxAttempts) setTimeout(tick, delayMs);
-        return;
-      }
       if (
         this._categoryUserEditing &&
         searchEl &&
@@ -1584,12 +1491,8 @@ Please share payment details and license key.`;
       }
       if (
         this._categoryUserEditing &&
-        liteEl &&
-        document.activeElement !== liteEl &&
         searchEl &&
-        document.activeElement !== searchEl &&
-        !this.catLiteHasDraftSearch() &&
-        !this.catLiteRecentlyActive()
+        document.activeElement !== searchEl
       ) {
         this._categoryUserEditing = false;
       }
@@ -1609,18 +1512,7 @@ Please share payment details and license key.`;
 
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
-    const liteEl = document.getElementById("cat-lite-input");
     const searchEl = document.getElementById("category-search");
-    if (this.catLiteHasDraftSearch() || this.catLiteRecentlyActive()) {
-      return;
-    }
-    if (
-      this._categoryUserEditing &&
-      liteEl &&
-      document.activeElement === liteEl
-    ) {
-      return;
-    }
     if (
       this._categoryUserEditing &&
       searchEl &&
@@ -1873,579 +1765,61 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
-  static CATEGORY_UI_LIMIT = 10;
+  // Load categories into dropdown
+  bindCategoryUI(categories) {
+    const categorySearch = document.getElementById("category-search");
+    const categoryDropdown = document.getElementById("category-dropdown");
+    const categorySelect = document.getElementById("category-select");
+    const categoryClear = document.getElementById("category-clear");
+    const selectedCategory = document.getElementById("selected-category");
+    const refreshBtn = document.getElementById("refresh-categories");
+    const categoryError = document.getElementById("category-error");
 
-  isInsideCategorySearchUI(target) {
-    return !!target?.closest?.(
-      ".cat-az-box, .cat-lite-box, .category-search-wrap, .category-quick-wrap, .category-quick-section, #category-dropdown, #category-quick-dropdown, #category-clear-btn, #category-quick-clear-btn, #cat-lite-clear, #cat-az-clear, #cat-az-select",
-    );
-  }
+    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
-  closeCategoryDropdowns() {
-    const main = document.getElementById("category-dropdown");
-    const quick = document.getElementById("category-quick-dropdown");
-    const lite = document.getElementById("cat-lite-results");
-    if (main) {
-      main.style.display = "none";
-      main.innerHTML = "";
+    this.allCategories = categories;
+    const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
+    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
+    const countHint = document.getElementById("category-count-hint");
+    if (countHint) {
+      countHint.textContent =
+        categories.length >= 3000
+          ? `${categories.length} leaf categories loaded — type to search all`
+          : `${categories.length} categories loaded`;
     }
-    if (quick) {
-      quick.style.display = "none";
-      quick.innerHTML = "";
-    }
-    if (lite) {
-      lite.style.display = "none";
-      lite.innerHTML = "";
-    }
-  }
+    if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
+    if (categoryError) categoryError.style.display = "none";
 
-  isClothesCategory(cat) {
-    if (!cat?.name) return false;
-    const root = cat.rootName || String(cat.path || "").split("›")[0]?.trim() || "";
-    if (root === "Women Fashion" || root === "Men Fashion") return true;
-    if (root === "Bags, Luggage & Travel Accessories") return true;
-    const hay = [cat.name, cat.parentName, cat.sectionName, cat.path, root]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    const apparelRx =
-      /wear|dress|shirt|kurta|jean|frock|top|bottom|ethnic|western|cloth|apparel|uniform|night|sock|inner|lingerie|sweater|jacket|coat|hoodie|short|skirt|legging|saree|kurti|lehenga|blouse|gown|dungaree|romper|onesie|vest|blazer|tracksuit|sportswear|gym|swim|maternity|tshirt|jegging|palazzo|salwar|dupatta|shawl|cardigan|trouser|pant|suit|camisole|jumpsuit|overalls|raincoat|thermal|brief|boxer|bra|panty|nightwear|sleepwear|loungewear|activewear|footwear|sandal|shoe|slipper|boot|sneaker|belt|handbag|backpack|clutch|tote|scarf|cap|hat|glove|stole|tie|hair band|hair clip|jewel|watch|sunglass|wallet|bag|luggage/i;
-    if (root === "Kids & Toys" || root === "Kids") return apparelRx.test(hay);
-    if (root === "Sports & Fitness") return apparelRx.test(hay);
-    return false;
-  }
-
-  filterClothesCategories(categories) {
-    const list = categories || this.allCategories || [];
-    return list
-      .filter((c) => this.isClothesCategory(c))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  getClothesCategoryPool() {
-    if (this._clothesCategories?.length) return this._clothesCategories;
-    const filtered = this.filterClothesCategories(this.allCategories);
-    if (filtered.length) return filtered;
-    return this.filterClothesCategories(this.getCatLiteFallbackPool());
-  }
-
-  updateCategoryAzHint() {
-    const hint = document.getElementById("category-az-hint");
-    if (!hint) return;
-    const pool = this.getClothesCategoryPool();
-    const total = this.allCategories?.length || 3777;
-    hint.textContent = `${pool.length} clothes & fashion categories (from ${total} total) — tap A–Z, then pick from dropdown`;
-  }
-
-  /** Extension: A–Z letters + native dropdown — no keyboard typing. */
-  wireCategoryAzDropdown() {
-    const lettersRoot = document.getElementById("cat-az-letters");
-    const select = document.getElementById("cat-az-select");
-    if (!lettersRoot || !select) return;
-
-    if (!this._catAzWired) {
-      this._catAzWired = true;
-
-      lettersRoot.addEventListener("click", (e) => {
-        const btn = e.target.closest(".cat-az-letter");
-        if (!btn || btn.disabled) return;
-        const letter = btn.dataset.letter;
-        lettersRoot.querySelectorAll(".cat-az-letter").forEach((b) => {
-          b.classList.remove("active");
-        });
-        btn.classList.add("active");
-        const pool = this.getClothesCategoryPool();
-        const items = pool
-          .filter((c) => c.name?.toUpperCase().startsWith(letter))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        select.innerHTML =
-          `<option value="">— Tap letter above, then pick —</option>` +
-          items
-            .map(
-              (c) =>
-                `<option value="${c.id}">${this.escapeHtmlLite(c.name)} (ID ${c.id})</option>`,
-            )
-            .join("");
-      });
-
-      select.addEventListener("change", () => {
-        const id = parseInt(select.value, 10);
-        if (!id) return;
-        const pool = this.getClothesCategoryPool();
-        const cat =
-          pool.find((c) => c.id === id) ||
-          this.findCategoryById(id) || { id, name: select.options[select.selectedIndex]?.text || `ID ${id}` };
-        this.applyCategorySelection(cat, { source: "user" });
-      });
-
-      const clearBtn = document.getElementById("cat-az-clear");
-      if (clearBtn) {
-        clearBtn.addEventListener("click", () => {
-          select.value = "";
-          lettersRoot.querySelectorAll(".cat-az-letter").forEach((b) => {
-            b.classList.remove("active");
-          });
-          this._categoryUserPicked = false;
-          this._categorySearchCommittedValue = "";
-          const categorySelect = document.getElementById("category-select");
-          if (categorySelect) categorySelect.value = "";
-          const selectedDiv = document.getElementById("selected-category");
-          if (selectedDiv) selectedDiv.style.display = "none";
-          const selDetail = document.getElementById("selected-category-detail");
-          if (selDetail) selDetail.textContent = "";
-          const categorySearch = document.getElementById("category-search");
-          if (categorySearch) categorySearch.value = "";
-          if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-          this.refreshCategoryApiPreview();
-          this.applyPageCategoryIfAvailable();
-        });
-      }
-    }
-
-    this.refreshCategoryAzDropdown();
-  }
-
-  refreshCategoryAzDropdown(preferredLetter = "K") {
-    const lettersRoot = document.getElementById("cat-az-letters");
-    const select = document.getElementById("cat-az-select");
-    if (!lettersRoot || !select) return;
-
-    const pool = this.getClothesCategoryPool();
-    this.updateCategoryAzHint();
-
-    const available = new Set(
-      pool
-        .map((c) => (c.name?.[0] || "").toUpperCase())
-        .filter((ch) => /[A-Z]/.test(ch)),
-    );
-
-    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-    lettersRoot.innerHTML = letters
-      .map((l) => {
-        const has = available.has(l);
-        return `<button type="button" class="cat-az-letter" data-letter="${l}" ${has ? "" : "disabled"}>${l}</button>`;
-      })
-      .join("");
-
-    const pickLetter =
-      available.has(preferredLetter)
-        ? preferredLetter
-        : [...available].sort()[0];
-    if (pickLetter) {
-      const btn = lettersRoot.querySelector(`[data-letter="${pickLetter}"]`);
-      if (btn && !btn.disabled) btn.click();
-    } else {
-      select.innerHTML = '<option value="">No clothes categories loaded</option>';
-    }
-
-    const selectedId = parseInt(
-      document.getElementById("category-select")?.value,
-      10,
-    );
-    if (Number.isFinite(selectedId) && selectedId > 0) {
-      select.value = String(selectedId);
-    }
-  }
-
-  getStaticCategoryList() {
-    return this.getCatLiteFallbackPool();
-  }
-
-  getCatLiteFallbackPool() {
-    return [
-      { id: 10004, name: "Kurtis", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
-      { id: 10011, name: "Jeans", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
-      { id: 10012, name: "Jeggings", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
-      { id: 10003, name: "Sarees", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
-      { id: 10000, name: "Tshirts", rootName: "Men Fashion", path: "Men Fashion › Mens Clothing" },
-      { id: 10001, name: "Shirts", rootName: "Men Fashion", path: "Men Fashion › Mens Clothing" },
-      { id: 10005, name: "Suits", rootName: "Women Fashion", path: "Women Fashion › Ethnic Wear" },
-      { id: 10006, name: "Leggings", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
-      { id: 10007, name: "Dresses", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
-      { id: 10008, name: "Tops", rootName: "Women Fashion", path: "Women Fashion › Western Wear" },
-    ];
-  }
-
-  /** Minimal category search — 10 items, no heavy handlers (mobile keyboard safe). */
-  wireCatLiteSearch() {
-    if (this._catLiteWired) return;
-    const input = document.getElementById("cat-lite-input");
-    const results = document.getElementById("cat-lite-results");
-    const box = input?.closest(".cat-lite-box");
-    if (!input || !results) return;
-
-    this._catLiteWired = true;
-
-    const pool = () =>
-      this._catLitePool?.length
-        ? this._catLitePool
-        : this.getCatLiteFallbackPool();
-
-    const hideResults = () => {
-      const r = document.getElementById("cat-lite-results");
-      if (!r) return;
-      r.style.display = "none";
-      r.innerHTML = "";
-    };
-
-    const showResults = (items) => {
-      const r = document.getElementById("cat-lite-results");
-      if (!r) return;
-      if (!items.length) {
-        r.innerHTML =
-          '<div class="cat-lite-empty">No match — try another word or ID</div>';
-        r.style.display = "block";
-        return;
-      }
-      r.innerHTML = items
-        .map(
-          (c) =>
-            `<button type="button" class="cat-lite-item" data-id="${c.id}">${this.escapeHtmlLite(c.name)}<span class="cat-lite-id">ID ${c.id}</span></button>`,
-        )
-        .join("");
-      r.style.display = "block";
-    };
-
-    this.prepareSearchInput(input);
-
-    const focusLiteInput = () => {
-      this.markCatLiteInteraction();
-      try {
-        input.focus({ preventScroll: true });
-      } catch {
-        input.focus();
-      }
-    };
-
-    if (box) {
-      box.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!e.target.closest("#cat-lite-input, #cat-lite-clear, .cat-lite-item")) {
-            return;
-          }
-          this.markCatLiteInteraction();
-        },
-        { passive: true },
-      );
-      box.addEventListener("mousedown", () => {
-        this.markCatLiteInteraction();
-      });
-    }
-
-    input.addEventListener(
-      "touchstart",
-      () => {
-        this.markCatLiteInteraction();
-      },
-      { passive: true },
-    );
-
-    input.addEventListener("touchend", (e) => {
-      this.markCatLiteInteraction();
-      if (document.activeElement !== input) {
-        e.preventDefault();
-        focusLiteInput();
-      }
-    });
-
-    input.addEventListener("focus", () => {
-      this.markCatLiteInteraction();
-      const committed = this._categorySearchCommittedValue;
-      if (committed && input.value === committed) {
-        requestAnimationFrame(() => {
-          try {
-            input.setSelectionRange(0, input.value.length);
-          } catch {
-            /* ignore */
-          }
-        });
-      }
-    });
-
-    input.addEventListener("keydown", (e) => {
-      this.markCatLiteInteraction();
-      const committed = this._categorySearchCommittedValue;
-      if (
-        committed &&
-        input.value === committed &&
-        e.key.length === 1 &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey
-      ) {
-        input.value = e.key;
-        this._categorySearchCommittedValue = "";
-        e.preventDefault();
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    });
-
-    input.addEventListener("input", () => {
-      this.markCatLiteInteraction();
-      const q = input.value.trim().toLowerCase();
-      if (!q) {
-        hideResults();
-        return;
-      }
-      const hits = pool()
-        .filter((c) => {
-          const hay = `${c.name} ${c.id} ${c.path || ""}`.toLowerCase();
-          return hay.includes(q) || String(c.id) === q;
-        })
-        .slice(0, 10);
-      showResults(hits);
-    });
-
-    input.addEventListener("blur", () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement === input) return;
-        if (this.catLiteHasDraftSearch() || this.catLiteRecentlyActive()) {
-          this._categoryUserEditing = true;
-          return;
-        }
-        this._categoryUserEditing = false;
-      }, 600);
-    });
-
-    results.addEventListener("click", (e) => {
-      const btn = e.target.closest(".cat-lite-item");
-      if (!btn) return;
-      const id = parseInt(btn.dataset.id, 10);
-      const cat =
-        pool().find((c) => c.id === id) ||
-        this.findCategoryById(id) || { id, name: btn.textContent.trim() };
-      this.applyCategorySelection(cat, { source: "user" });
-      input.value = `${cat.name} (${cat.id})`;
-      this._categorySearchCommittedValue = input.value;
-      hideResults();
-    });
-
-    const liteClear = document.getElementById("cat-lite-clear");
-    if (liteClear) {
-      liteClear.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        input.value = "";
-        hideResults();
-        this._categorySearchCommittedValue = "";
-        this.markCatLiteInteraction();
-        this._categoryUserPicked = false;
-        const select = document.getElementById("category-select");
-        if (select) select.value = "";
-        const selectedDiv = document.getElementById("selected-category");
-        if (selectedDiv) selectedDiv.style.display = "none";
-        const selDetail = document.getElementById("selected-category-detail");
-        if (selDetail) selDetail.textContent = "";
-        const categorySearch = document.getElementById("category-search");
-        if (categorySearch) categorySearch.value = "";
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.refreshCategoryApiPreview();
-        if (!window.WEB_OPTIMIZER_MODE) {
-          this.applyPageCategoryIfAvailable();
-        }
-        focusLiteInput();
-      });
-    }
-
-    const root =
-      document.getElementById("opt-modal") ||
-      document.getElementById("optimizer-app");
-    if (root && !root._catLiteOutsideClose) {
-      root._catLiteOutsideClose = true;
-      root.addEventListener("click", (e) => {
-        if (e.target.closest(".cat-lite-box")) return;
-        hideResults();
-      });
-    }
-  }
-
-  escapeHtmlLite(text) {
-    return String(text ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  }
-
-  bindCategoryDropdownOutsideClose() {
-    const modal = document.getElementById("opt-modal");
-    const root = modal || document.getElementById("optimizer-app");
-    if (!root) return;
-
-    if (root._categoryOutsideHandler) {
-      root.removeEventListener("click", root._categoryOutsideHandler);
-      root.removeEventListener("touchend", root._categoryOutsideHandler);
-    }
-
-    const onOutside = (e) => {
-      if (this.isInsideCategorySearchUI(e.target)) return;
-      this.closeCategoryDropdowns();
-    };
-
-    root._categoryOutsideHandler = onOutside;
-    root.addEventListener("click", onOutside);
-  }
-
-  showCategoryBrowseDropdown(limit = MeeshoShippingOptimizer.CATEGORY_UI_LIMIT) {
-    const dropdown = document.getElementById("category-dropdown");
-    if (!dropdown) return;
-    this.renderCategoryDropdown(
-      this.getDefaultCategorySlice(limit),
-      "category-dropdown",
-    );
-    dropdown.style.display = "block";
-  }
-
-  filterQuickCategories(raw) {
-    const q = String(raw || "").trim().toLowerCase();
-    const pool = this._quickCategories || [];
-    if (!q) return pool.slice();
-    return pool.filter((cat) => {
-      const hay = [cat.id, cat.name, cat.path, cat.parentName]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q) || String(cat.id) === q;
-    });
-  }
-
-  prepareSearchInput(search) {
-    if (!search) return;
-    search.readOnly = false;
-    search.disabled = false;
-    search.setAttribute("autocomplete", "off");
-    search.setAttribute("autocorrect", "off");
-    search.setAttribute("autocapitalize", "none");
-    search.setAttribute("spellcheck", "false");
-    if (!search.getAttribute("inputmode")) {
-      search.setAttribute("inputmode", "search");
-    }
-  }
-
-  focusSearchInput(search) {
-    if (!search) return;
-    this.prepareSearchInput(search);
-    try {
-      search.focus({ preventScroll: false });
-    } catch {
-      search.focus();
-    }
-    setTimeout(() => {
-      try {
-        search.focus({ preventScroll: false });
-      } catch {
-        search.focus();
-      }
-    }, 50);
-  }
-
-  handleCategoryItemPick(item, { closeDropdownId = "category-dropdown" } = {}) {
-    const id = parseInt(item.dataset.id, 10);
-    const cat =
-      this.allCategories?.find((c) => c.id === id) ||
-      this.findCategoryById(id) ||
-      this._quickCategories?.find((c) => c.id === id) || {
-        id,
-        name: item.dataset.name,
-        path: item.dataset.path,
-        parentName: item.dataset.path,
-      };
-    this.applyCategorySelection(cat, { source: "user" });
-    this._categoryUserPicked = true;
-    this.closeCategoryDropdowns();
-    const clearBtn =
-      document.getElementById("category-clear-btn") ||
-      document.getElementById("category-clear");
-    if (clearBtn) clearBtn.style.display = "block";
-    const quickClear = document.getElementById("category-quick-clear-btn");
-    if (quickClear) quickClear.style.display = "block";
-  }
-
-  /** Wire category search once — safe for mobile (Kiwi) keyboard focus. */
-  wireCategorySearchHandlers() {
-    if (this._categorySearchWired) return;
-    const search = document.getElementById("category-search");
-    const dropdown = document.getElementById("category-dropdown");
-    if (!search || !dropdown) return;
-
-    this._categorySearchWired = true;
-
-    const clearBtn =
-      document.getElementById("category-clear-btn") ||
-      document.getElementById("category-clear");
-    const select = document.getElementById("category-select");
-    const selectedDiv = document.getElementById("selected-category");
-    const limit = MeeshoShippingOptimizer.CATEGORY_UI_LIMIT;
-
-    const showClear = (show) => {
-      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
-    };
-
-    this.prepareSearchInput(search);
-
-    search.addEventListener(
-      "touchstart",
-      () => {
-        this._categoryUserEditing = true;
-        clearTimeout(this._categoryEditingTimer);
-      },
-      { passive: true },
-    );
-
-    search.addEventListener("focus", () => {
+    categorySearch.onfocus = () => {
       this._categoryUserEditing = true;
       clearTimeout(this._categoryEditingTimer);
-      this.prepareSearchInput(search);
-      const committed = this._categorySearchCommittedValue;
-      if (committed && search.value === committed) {
-        requestAnimationFrame(() => {
-          try {
-            search.setSelectionRange(0, search.value.length);
-          } catch {
-            /* ignore */
-          }
-        });
-      }
-      setTimeout(() => {
-        search.scrollIntoView({ block: "center", behavior: "smooth" });
-      }, 80);
-      if (!search.value.trim()) {
-        setTimeout(() => {
-          if (document.activeElement !== search || search.value.trim()) return;
-          this.renderCategoryDropdown(
-            this.getDefaultCategorySlice(limit),
-            "category-dropdown",
-          );
-        }, 280);
-      }
-    });
+    };
 
-    search.addEventListener("blur", () => {
+    categorySearch.onblur = () => {
       clearTimeout(this._categoryEditingTimer);
       this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== search) {
+        if (document.activeElement !== categorySearch) {
           this._categoryUserEditing = false;
         }
-      }, 250);
-    });
+      }, 200);
+    };
 
-    search.addEventListener("keydown", (e) => {
+    categorySearch.onkeydown = (e) => {
       if (e.key === "Escape") {
-        this.closeCategoryDropdowns();
+        categoryDropdown.style.display = "none";
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const raw = search.value.trim();
+        const raw = categorySearch.value.trim();
         if (!raw) return;
-        const result = this.resolveCategoryFromSearchInput(raw, limit);
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
         if (result.status === "resolved" && result.cat) {
           this.applyCategorySelection(result.cat, { source: "user" });
-          this.closeCategoryDropdowns();
+          categoryDropdown.style.display = "none";
         } else if (result.status === "ambiguous" && result.hits?.[0]) {
           this.applyCategorySelection(result.hits[0], { source: "user" });
-          this.closeCategoryDropdowns();
+          categoryDropdown.style.display = "none";
         } else {
           OptimizerUtils.showNotification(
             `No category found for "${raw}"`,
@@ -2454,246 +1828,79 @@ Please share payment details and license key.`;
         }
         return;
       }
-      const committed = this._categorySearchCommittedValue;
       if (
-        committed &&
-        search.value === committed &&
+        this._categorySearchCommittedValue &&
+        categorySearch.value === this._categorySearchCommittedValue &&
         e.key.length === 1 &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey
       ) {
-        search.value = e.key;
+        categorySearch.value = e.key;
         this._categorySearchCommittedValue = "";
         e.preventDefault();
-        search.dispatchEvent(new Event("input", { bubbles: true }));
+        categorySearch.dispatchEvent(new Event("input", { bubbles: true }));
       }
-    });
+    };
 
-    search.addEventListener("input", () => {
+    categorySearch.oninput = () => {
       this._categoryUserEditing = true;
-      const committed = this._categorySearchCommittedValue;
-      let val = search.value;
-      if (committed && val !== committed) {
-        if (val.startsWith(committed) && val.length > committed.length) {
-          val = val.slice(committed.length);
-          search.value = val;
-          this._categorySearchCommittedValue = "";
-        } else {
-          this._categorySearchCommittedValue = "";
-        }
-      }
-
-      const raw = val.trim();
-      showClear(!!raw);
+      const raw = categorySearch.value.trim();
+      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
 
       if (!raw) {
-        this.closeCategoryDropdowns();
-        return;
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+      } else {
+        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
       }
+      categoryDropdown.style.display = "block";
+    };
 
-      this.renderCategoryDropdown(
-        this.filterCategoriesForSearch(raw, limit),
-        "category-dropdown",
-      );
-    });
-
-    if (clearBtn) {
-      clearBtn.addEventListener("click", (e) => {
+    if (categoryClear) {
+      categoryClear.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        search.value = "";
-        showClear(false);
+        categorySearch.value = "";
+        categoryClear.style.display = "none";
         this._categorySearchCommittedValue = "";
         this._categoryUserEditing = true;
-        if (select) select.value = "";
-        if (selectedDiv) selectedDiv.style.display = "none";
-        const selDetail = document.getElementById("selected-category-detail");
-        if (selDetail) selDetail.textContent = "";
+        if (categorySelect) categorySelect.value = "";
+        if (selectedCategory) selectedCategory.style.display = "none";
+        const selectedCategoryDetail = document.getElementById("selected-category-detail");
+        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
         this._categoryUserPicked = false;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.showCategoryBrowseDropdown(limit);
+        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
         this.refreshCategoryApiPreview();
-        if (!window.WEB_OPTIMIZER_MODE) {
-          this.applyPageCategoryIfAvailable();
+        this.applyPageCategoryIfAvailable();
+        categorySearch.focus();
+      };
+    }
+
+    if (!this._categoryClickBound) {
+      this._categoryClickBound = true;
+      document.addEventListener("click", (e) => {
+        if (
+          !e.target.closest("#category-search") &&
+          !e.target.closest("#category-dropdown")
+        ) {
+          categoryDropdown.style.display = "none";
         }
-        this.focusSearchInput(search);
       });
-    }
-
-    dropdown.addEventListener("click", (e) => {
-      const item = e.target?.closest?.(".cat-item");
-      if (!item) return;
-      e.preventDefault();
-      this.handleCategoryItemPick(item);
-    });
-
-    this.bindCategoryDropdownOutsideClose();
-  }
-
-  /** Isolated quick search — 10 categories only (keyboard / load diagnostic). */
-  wireCategoryQuickSearchHandlers() {
-    if (this._categoryQuickWired) return;
-    const search = document.getElementById("category-quick-search");
-    const dropdown = document.getElementById("category-quick-dropdown");
-    if (!search || !dropdown) return;
-
-    this._categoryQuickWired = true;
-
-    const clearBtn = document.getElementById("category-quick-clear-btn");
-    const limit = MeeshoShippingOptimizer.CATEGORY_UI_LIMIT;
-
-    const showClear = (show) => {
-      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
-    };
-
-    const showQuickResults = (raw) => {
-      const hits = this.filterQuickCategories(raw).slice(0, limit);
-      this.renderCategoryDropdown(hits, "category-quick-dropdown");
-    };
-
-    this.prepareSearchInput(search);
-
-    search.addEventListener(
-      "touchstart",
-      () => {
-        this._categoryUserEditing = true;
-        clearTimeout(this._categoryEditingTimer);
-      },
-      { passive: true },
-    );
-
-    search.addEventListener("focus", () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-      this.prepareSearchInput(search);
-      setTimeout(() => {
-        search.scrollIntoView({ block: "center", behavior: "smooth" });
-      }, 80);
-      showQuickResults(search.value.trim());
-    });
-
-    search.addEventListener("blur", () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== search) {
-          this._categoryUserEditing = false;
-        }
-      }, 250);
-    });
-
-    search.addEventListener("input", () => {
-      this._categoryUserEditing = true;
-      const raw = search.value.trim();
-      showClear(!!raw);
-      if (!raw) {
-        const quickDd = document.getElementById("category-quick-dropdown");
-        if (quickDd) {
-          quickDd.style.display = "none";
-          quickDd.innerHTML = "";
-        }
-        return;
-      }
-      showQuickResults(raw);
-    });
-
-    search.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        this.closeCategoryDropdowns();
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const hits = this.filterQuickCategories(search.value.trim()).slice(0, limit);
-        if (hits[0]) {
-          this.applyCategorySelection(hits[0], { source: "user" });
-          this.closeCategoryDropdowns();
-        }
-      }
-    });
-
-    if (clearBtn) {
-      clearBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        search.value = "";
-        showClear(false);
-        showQuickResults("");
-        this.focusSearchInput(search);
-      });
-    }
-
-    dropdown.addEventListener("click", (e) => {
-      const item = e.target?.closest?.(".cat-item");
-      if (!item) return;
-      e.preventDefault();
-      this.handleCategoryItemPick(item);
-      const quickSearch = document.getElementById("category-quick-search");
-      const cat = this.findCategoryById(parseInt(item.dataset.id, 10));
-      if (quickSearch && cat) {
-        quickSearch.value = `${cat.name} (${cat.id})`;
-      }
-    });
-
-    this.bindCategoryDropdownOutsideClose();
-  }
-
-  // Load categories into dropdown
-  bindCategoryUI(categories) {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
-    const refreshBtn = document.getElementById("refresh-categories");
-    const categoryError = document.getElementById("category-error");
-
-    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
-
-    this.allCategories = categories;
-    this._clothesCategories = this.filterClothesCategories(categories);
-    this._catLitePool = this.getDefaultCategorySlice(10);
-    if (!this._catLitePool?.length) {
-      this._catLitePool = this.getCatLiteFallbackPool();
-    }
-    this._quickCategories = this._catLitePool.slice();
-    const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
-    const countHint = document.getElementById("category-count-hint");
-    if (countHint) {
-      countHint.textContent =
-        categories.length >= 3000
-          ? `${categories.length} leaf categories loaded — type to search (shows ${MeeshoShippingOptimizer.CATEGORY_UI_LIMIT} matches)`
-          : `${categories.length} categories loaded`;
-    }
-    const quickHint = document.getElementById("category-quick-hint");
-    const liteHint = document.getElementById("cat-lite-hint");
-    if (liteHint && this._catLitePool?.length) {
-      liteHint.textContent = `Type to search ${this._catLitePool.length} categories — tap outside to close`;
-    }
-    if (quickHint && this._quickCategories?.length) {
-      const names = this._quickCategories.map((c) => c.name).join(", ");
-      quickHint.textContent = `${this._quickCategories.length} test categories: ${names} — tap outside to close list`;
-    }
-    if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
-    if (categoryError) categoryError.style.display = "none";
-
-    if (window.WEB_OPTIMIZER_MODE) {
-      this.wireCatLiteSearch();
-      this.wireCategorySearchHandlers();
-      this.wireCategoryQuickSearchHandlers();
-    } else {
-      this.wireCategoryAzDropdown();
     }
 
     console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
       this.applyDefaultCategoryIfNeeded();
+      this.scheduleMeeshoPageSync();
     } else {
       this.refreshCategoryApiPreview();
     }
     return true;
   }
 
-  renderCategoryDropdown(categories, dropdownId = "category-dropdown") {
-    const dropdown = document.getElementById(dropdownId);
+  renderCategoryDropdown(categories) {
+    const dropdown = document.getElementById("category-dropdown");
     if (!dropdown) return;
 
     if (!categories?.length) {
@@ -2720,6 +1927,30 @@ Please share payment details and license key.`;
     });
     dropdown.innerHTML = html;
     dropdown.style.display = "block";
+
+    dropdown.querySelectorAll(".cat-item").forEach((item) => {
+      item.onmouseenter = () => {
+        item.style.background = "rgba(102,126,234,0.12)";
+      };
+      item.onmouseleave = () => {
+        item.style.background = "transparent";
+      };
+      item.onclick = () => {
+        const id = parseInt(item.dataset.id, 10);
+        const cat =
+          this.allCategories?.find((c) => c.id === id) ||
+          this.findCategoryById(id) || {
+            id,
+            name: item.dataset.name,
+            path: item.dataset.path,
+            parentName: item.dataset.path,
+          };
+        this.applyCategorySelection(cat, { source: "user" });
+        this._categoryUserPicked = true;
+        const categoryDropdown = document.getElementById("category-dropdown");
+        if (categoryDropdown) categoryDropdown.style.display = "none";
+      };
+    });
   }
 
   async loadCategoryDropdown() {
@@ -2822,25 +2053,6 @@ Please share payment details and license key.`;
       categorySearch.value = displayValue;
       this._categorySearchCommittedValue = displayValue;
     }
-    const quickSearch = document.getElementById("category-quick-search");
-    if (quickSearch) {
-      quickSearch.value = `${cat.name} (${cat.id})`;
-    }
-    const liteInput = document.getElementById("cat-lite-input");
-    if (liteInput) {
-      liteInput.value = `${cat.name} (${cat.id})`;
-    }
-    const azSelect = document.getElementById("cat-az-select");
-    if (azSelect) {
-      let opt = azSelect.querySelector(`option[value="${cat.id}"]`);
-      if (!opt) {
-        opt = document.createElement("option");
-        opt.value = String(cat.id);
-        opt.textContent = `${cat.name} (ID ${cat.id})`;
-        azSelect.appendChild(opt);
-      }
-      azSelect.value = String(cat.id);
-    }
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
@@ -2879,10 +2091,6 @@ Please share payment details and license key.`;
       categorySearch.value = displayValue;
       this._categorySearchCommittedValue = displayValue;
     }
-    const liteInput = document.getElementById("cat-lite-input");
-    if (liteInput) liteInput.value = `ID ${parsed}`;
-    const azSelect = document.getElementById("cat-az-select");
-    if (azSelect) azSelect.value = String(parsed);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {

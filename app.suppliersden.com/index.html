@@ -130,131 +130,24 @@
     .session-status.ok { background: #ecfdf5; color: #047857; }
     .session-status.warn { background: #fffbeb; color: #b45309; }
     .session-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.4; }
-    .category-search-wrap { position: relative; }
-    #category-clear-btn {
-      position: absolute; right: 8px; top: 50%;
-      transform: translateY(-50%);
-      background: none; border: none;
-      color: #888; font-size: 20px; line-height: 1;
-      cursor: pointer; padding: 4px 8px;
-      display: none; z-index: 2;
-      touch-action: manipulation;
-    }
-    #category-dropdown, #category-quick-dropdown {
-      display: none;
-      max-height: 220px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      margin-top: 4px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-    }
-    .category-quick-section {
-      margin-top: 10px;
-      padding: 10px;
-      background: #f0fdf4;
-      border-radius: 8px;
-      border: 1px solid #a7f3d0;
-    }
-    #category-clear-btn, #category-quick-clear-btn {
-      position: absolute; right: 8px; top: 50%;
-      transform: translateY(-50%);
-      background: none; border: none;
-      color: #888; font-size: 20px; line-height: 1;
-      cursor: pointer; padding: 4px 8px;
-      display: none; z-index: 2;
-      touch-action: manipulation;
-    }
-    #category-search, #category-quick-search {
-      display: block;
-      width: 100%;
-      pointer-events: auto;
-      touch-action: manipulation;
-      -webkit-user-select: text; user-select: text;
-      font-size: 16px !important;
-      min-height: 48px;
-      padding-right: 44px !important;
-      cursor: text;
-    }
-    .cat-lite-box {
-      margin-top: 4px;
-      padding: 10px;
-      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-      border: 1px solid #C9A227;
-      border-radius: 10px;
-    }
-    .cat-lite-label {
-      font-size: 11px;
-      font-weight: 700;
-      color: #047857;
-      margin-bottom: 6px;
-      display: block;
-    }
-    #cat-lite-input {
-      display: block;
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px 14px;
-      font-size: 16px;
-      line-height: 1.3;
-      min-height: 48px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: #fff;
-      color: #111827;
-      pointer-events: auto;
-      touch-action: manipulation;
-      -webkit-user-select: text;
-      user-select: text;
-      cursor: text;
-    }
-    #cat-lite-input:focus {
-      outline: none;
-      border-color: #C9A227;
-      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.25);
-    }
-    #cat-lite-results {
+    .category-dropdown {
       display: none;
       max-height: 200px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      margin-top: 2px;
-      margin-bottom: 0;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border: 1px solid #ddd;
+      border-radius: 0 0 8px 8px;
+      margin-top: -1px;
+      position: relative;
+      z-index: 10001;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.12);
     }
-    #cat-lite-results:empty { display: none !important; margin: 0; padding: 0; border: none; }
-    .cat-lite-item {
-      display: block;
-      width: 100%;
-      padding: 12px 14px;
-      border: none;
-      border-bottom: 1px solid #f3f4f6;
-      background: #fff;
-      text-align: left;
-      font-size: 14px;
-      color: #111827;
-      cursor: pointer;
+    #category-search {
       touch-action: manipulation;
-    }
-    .cat-lite-item:active { background: #fef3c7; }
-    .cat-lite-id { font-size: 10px; color: #6b7280; margin-left: 8px; }
-    .cat-lite-empty { padding: 12px; font-size: 12px; color: #6b7280; }
-    .cat-lite-hint { font-size: 10px; color: #6b7280; margin-top: 6px; line-height: 1.4; }
-    .cat-lite-clear-row { margin-top: 6px; text-align: right; }
-    #cat-lite-clear {
-      background: none;
-      border: none;
-      color: #b45309;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      padding: 4px 8px;
-      touch-action: manipulation;
+      -webkit-user-select: text; user-select: text;
+      font-size: 16px !important;
+      min-height: 44px;
     }
     .smart-mode-note {
       font-size: 11px;
@@ -401,25 +294,13 @@
               <span>📁 Category <span style="font-size:10px;font-weight:normal;color:#6b7280;">(optional)</span></span>
               <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
             </div>
-            <div class="cat-lite-box">
-              <label class="cat-lite-label" for="cat-lite-input">🔍 Quick search (10 categories)</label>
-              <input type="text" id="cat-lite-input" name="cat-lite-input"
-                placeholder="Type name or ID — e.g. Jeans or 10011"
-                autocomplete="off" autocorrect="off" autocapitalize="none"
-                spellcheck="false" inputmode="text">
-              <div id="cat-lite-results" role="listbox"></div>
-              <div class="cat-lite-clear-row">
-                <button type="button" id="cat-lite-clear">Clear</button>
-              </div>
-              <p id="cat-lite-hint" class="cat-lite-hint">Type to search 10 categories — tap outside to close</p>
+            <div style="position:relative;z-index:10000;">
+              <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" autocomplete="off">
+              <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888;display:none;">✕</span>
             </div>
-            <div class="category-search-wrap" style="margin-top:10px;">
-              <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search all categories by name or ID" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="search">
-              <button type="button" id="category-clear-btn" aria-label="Clear category" tabindex="-1">✕</button>
-            </div>
-            <div id="category-dropdown"></div>
-            <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:6px;line-height:1.4;">Loading categories…</p>
-            <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Full search above uses all loaded categories — quick box uses 10 for mobile testing.</p>
+            <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:4px;line-height:1.4;">Loading categories…</p>
+            <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+            <div id="category-dropdown" class="category-dropdown"></div>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
               <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>
