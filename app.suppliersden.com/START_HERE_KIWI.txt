@@ -21,16 +21,9 @@ There must be NO file named _headers (Chrome/Kiwi block names starting with _).
 
 --- ON ANDROID (KIWI) ---
 
-1. Remove the OLD extension first (Kiwi → Extensions → remove old Meesho Optimizer).
-2. Copy the NEW zip to phone → unzip (must be v1.7.2+ with inline category results).
-3. Kiwi → Extensions → Developer mode → Load unpacked
-4. Select the folder with manifest.json
-5. Open supplier.meesho.com → AI Optimizer button
-
-You should see the same category search as browser web:
-  - Tap the search box → green-bordered list appears below
-  - Type name or ID (gown, 10253) → results filter in the green box
-  - Tap a result or press Enter
-  - Version badge like v1.7.2 in the yellow header
+1. Copy zip to phone → unzip
+2. Kiwi → Extensions → Developer mode → Load unpacked
+3. Select the folder with manifest.json
+4. Open supplier.meesho.com → AI Optimizer button
 
 No license key needed — opens directly to Live / Test Lab.

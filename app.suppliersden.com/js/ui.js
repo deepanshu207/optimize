@@ -65,20 +65,6 @@ const OptimizerUI = {
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
                 .category-search-wrap { position: relative; z-index: 10000; }
-                #category-search {
-                    font-size: 16px;
-                    min-height: 44px;
-                    padding-right: 34px;
-                    color: #111827;
-                    background: #fff;
-                    -webkit-text-fill-color: #111827;
-                    touch-action: manipulation;
-                }
-                #category-search:focus {
-                    border-color: #047857;
-                    box-shadow: 0 0 0 3px rgba(4,120,87,0.2);
-                    outline: none;
-                }
                 .category-dropdown {
                     display: none;
                     position: absolute;
@@ -95,66 +81,6 @@ const OptimizerUI = {
                     z-index: 10050;
                     box-shadow: 0 10px 28px rgba(0,0,0,0.15);
                 }
-                .category-dropdown-ext {
-                    position: static;
-                    margin-top: 8px;
-                    max-height: 200px;
-                    border-radius: 8px;
-                    box-shadow: none;
-                }
-                .category-dropdown-portal {
-                    position: fixed;
-                    z-index: 2147483646;
-                    background: #fff;
-                    border: 1px solid #d1d5db;
-                    border-radius: 8px;
-                    box-shadow: 0 12px 32px rgba(0,0,0,0.22);
-                    max-height: min(240px, 50vh);
-                    overflow-y: auto;
-                    -webkit-overflow-scrolling: touch;
-                }
-                .category-results-inline {
-                    display: none;
-                    margin-top: 8px;
-                    max-height: min(260px, 42vh);
-                    overflow-y: auto;
-                    -webkit-overflow-scrolling: touch;
-                    background: #fff;
-                    border: 2px solid #047857;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 16px rgba(4,120,87,0.15);
-                }
-                .category-results-inline .cat-item {
-                    padding: 14px 12px;
-                    font-size: 14px;
-                    min-height: 48px;
-                }
-                .category-results-inline .cat-item:active {
-                    background: rgba(4,120,87,0.14);
-                }
-                #category-search-status {
-                    color: #047857;
-                    font-weight: 600;
-                    margin-top: 6px;
-                }
-                #category-search-wrap.category-search-active {
-                    outline: 2px solid rgba(4,120,87,0.35);
-                    border-radius: 8px;
-                }
-                .cat-item-ext {
-                    display: block;
-                    width: 100%;
-                    text-align: left;
-                    padding: 12px;
-                    border: none;
-                    border-bottom: 1px solid #eee;
-                    background: #fff;
-                    color: #111827;
-                    font-size: 14px;
-                    line-height: 1.35;
-                    cursor: pointer;
-                }
-                .cat-item-ext:active { background: rgba(4,120,87,0.12); }
                 .cat-item {
                     padding: 10px 12px;
                     cursor: pointer;
@@ -370,7 +296,7 @@ const OptimizerUI = {
     return `
             <div class="opt-modal opt-modal-ext">
                 <div class="opt-header">
-                    <h2><span>🚀</span> Meesho Shipping Cost AI Optimizer <span id="ext-version-badge" style="font-size:10px;font-weight:600;opacity:0.9;"></span></h2>
+                    <h2><span>🚀</span> Meesho Shipping Cost AI Optimizer</h2>
                     <button class="opt-close" id="close-modal">&times;</button>
                 </div>
                 <div class="opt-tabs" id="optimizer-tabs" role="tablist">
@@ -379,19 +305,22 @@ const OptimizerUI = {
                 </div>
                 <div class="opt-body">
                     <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
+                    <div class="opt-shipping">
+                        <div style="font-size:11px;color:#9ca3af;">Current Shipping</div>
+                        <div class="opt-shipping-value" id="current-shipping">Detecting...</div>
+                    </div>
+
                     <div class="opt-section" style="padding:12px;">
                         <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <label class="category-search-wrap" id="category-search-wrap" for="category-search">
-                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Tap here — search by name or ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search">
-                            <span id="category-clear" role="button" aria-label="Clear category" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;font-size:18px;line-height:1;padding:4px 8px;z-index:2;">✕</span>
-                            <div id="category-dropdown" class="category-dropdown" aria-hidden="true"></div>
-                        </label>
-                        <div id="category-results-inline" class="category-results-inline" role="listbox" aria-label="Category search results"></div>
+                        <div class="category-search-wrap">
+                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
+                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
+                            <div id="category-dropdown" class="category-dropdown"></div>
+                        </div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
-                        <p id="category-search-status" class="category-search-hint" style="display:none;"></p>
                         <p class="category-search-hint">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
@@ -403,11 +332,6 @@ const OptimizerUI = {
                         </div>
                         <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.4;display:none;"></div>
                         <input type="hidden" id="category-select" value="">
-                    </div>
-
-                    <div class="opt-shipping">
-                        <div style="font-size:11px;color:#9ca3af;">Current Shipping</div>
-                        <div class="opt-shipping-value" id="current-shipping">Detecting...</div>
                     </div>
 
                     <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, #FFD700, #C9A227),rgba(102,126,234,0.1));border:1px solid rgba(16,185,129,0.3);">
@@ -461,13 +385,6 @@ const OptimizerUI = {
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
                             <button type="button" id="clear-upload-btn" style="margin-top:8px;padding:8px 14px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">Cancel &amp; upload again</button>
                         </div>
-                    </div>
-
-                    <div class="local-price-actions" id="local-price-actions" style="display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0;">
-                        <input type="file" id="local-report-input" accept=".csv,text/csv" multiple style="display:none;">
-                        <button type="button" id="import-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:11px;font-size:12px;">📥 Add Report CSVs</button>
-                        <button type="button" id="local-price-btn" class="generate-btn" disabled style="background:linear-gradient(135deg,#10b981,#047857);font-size:14px;">🧮 Generate Local Price</button>
-                        <div id="local-price-status" style="font-size:10px;color:#6b7280;line-height:1.35;text-align:center;">Learns from imported/saved reports. No live API used.</div>
                     </div>
 
                     <div class="generate-sticky" id="generate-sticky">
@@ -540,9 +457,7 @@ const OptimizerUI = {
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const estInr = frozenEst;
     const priceLabel =
-      r.localPrice && frozenShip > 0
-      ? "local ₹" + frozenShip
-      : testLabMode || analysisMode
+      testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
         : "est ₹" + estInr
