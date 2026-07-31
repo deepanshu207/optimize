@@ -10,7 +10,7 @@ import {
   getSmartPlan,
   generatePathRefinements,
 } from "./lib/strategies.js?v=32";
-import { loadImage } from "./lib/canvas-utils.js?v=98";
+import { loadImage } from "./lib/canvas-utils.js?v=97";
 import { blobToDataUrl } from "./lib/encoder.js?v=32";
 import {
   CATEGORIES,
