@@ -83,51 +83,10 @@ const MeeshoAPI = {
     supplierId: null,
     supplierTag: null,
     categoryId: null,
-    categorySource: null,
     catalogImageUrl: null,
     browserId: null,
     price: 100,
     categories: null,
-  },
-
-  /** Frozen sscat for an in-flight live pricing run (prevents page/default drift). */
-  _pricingRun: null,
-
-  beginPricingRun: function (meta = {}) {
-    const sscatId = this.parseCategoryId(meta.sscatId);
-    if (!sscatId) return null;
-    this._pricingRun = {
-      sscatId,
-      categoryName: meta.categoryName || "",
-      categorySource: meta.categorySource || "",
-      locked: true,
-    };
-    this.cache.categoryId = sscatId;
-    this.cache.categorySource = "pricing";
-    console.log(
-      `📁 Live pricing locked to sscat_id ${sscatId}${
-        meta.categoryName ? ` (${meta.categoryName})` : ""
-      }`,
-    );
-    return this._pricingRun;
-  },
-
-  endPricingRun: function () {
-    this._pricingRun = null;
-  },
-
-  getPricingSscatId: function (fallback) {
-    if (this._pricingRun?.sscatId) return this._pricingRun.sscatId;
-    const cached = this.parseCategoryId(this.cache.categoryId);
-    if (cached) return cached;
-    return fallback ?? 18044;
-  },
-
-  getPricingRunMeta: function () {
-    if (this._pricingRun) return { ...this._pricingRun };
-    const id = this.parseCategoryId(this.cache.categoryId);
-    if (!id) return null;
-    return { sscatId: id, categorySource: "cache" };
   },
 
   syncFromSession: function () {
@@ -237,11 +196,7 @@ const MeeshoAPI = {
     }
 
     if (!this.cache.categoryId) {
-      const detectedCategory = this.detectCategoryId();
-      if (detectedCategory) {
-        this.cache.categoryId = detectedCategory;
-        this.cache.categorySource = "page";
-      }
+      this.cache.categoryId = this.detectCategoryId();
     }
 
     console.log("🔍 Auto-detected:", this.cache);
@@ -280,64 +235,6 @@ const MeeshoAPI = {
     return Number.isFinite(id) && id > 0 ? id : null;
   },
 
-  isOptimizerNode: function (el) {
-    return !!el?.closest?.("#opt-modal, #meesho-optimizer-fab, .shipping-optimizer-btn");
-  },
-
-  isKnownLeafCategoryId: function (id) {
-    const parsed = this.parseCategoryId(id);
-    if (!parsed) return null;
-    if (typeof MeeshoCategories === "undefined" || !MeeshoCategories.findById) {
-      return parsed;
-    }
-    return MeeshoCategories.findById(parsed) ? parsed : null;
-  },
-
-  normalizeCategoryLabel: function (text) {
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText) {
-      return MeeshoCategories.normalizeSearchText(text);
-    }
-    return String(text || "")
-      .toLowerCase()
-      .replace(/&/g, " and ")
-      .replace(/[^a-z0-9]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  },
-
-  exactCategoryIdFromText: function (text) {
-    if (typeof MeeshoCategories === "undefined") return null;
-    const raw = String(text || "").trim();
-    if (!raw) return null;
-
-    const parsedId = MeeshoCategories.parseQueryId?.(raw);
-    const knownId = this.isKnownLeafCategoryId(parsedId);
-    if (knownId) return knownId;
-
-    const candidates = raw
-      .split(/[\n\r|,;]+/)
-      .map((line) =>
-        line
-          .replace(/\b(sub\s*-?\s*sub\s*-?\s*category|sub\s*-?\s*category|category|sscat)\b\s*[:\-]?\s*/gi, "")
-          .replace(/\b(selected|current|leaf)\b\s*[:\-]?\s*/gi, "")
-          .trim(),
-      )
-      .filter((line) => line.length >= 2 && line.length <= 80 && !line.includes("₹"));
-
-    for (const label of candidates) {
-      const parsedLabelId = MeeshoCategories.parseQueryId?.(label);
-      const labelKnownId = this.isKnownLeafCategoryId(parsedLabelId);
-      if (labelKnownId) return labelKnownId;
-
-      const hits = MeeshoCategories.search?.(label, 5) || [];
-      const labelNorm = this.normalizeCategoryLabel(label);
-      const exact = hits.find((cat) => this.normalizeCategoryLabel(cat.name) === labelNorm);
-      if (exact?.id) return exact.id;
-    }
-
-    return null;
-  },
-
   /** Read sscat_id from the open Meesho catalog form (edit/add listing). */
   detectCategoryIdFromDom: function () {
     const pick = (raw) => this.parseCategoryId(raw);
@@ -353,17 +250,15 @@ const MeeshoAPI = {
       '[data-sscat-id]',
     ];
     for (const sel of selectors) {
-      for (const el of document.querySelectorAll(sel)) {
-        if (!el || this.isOptimizerNode(el)) continue;
-        const fromVal = el.value ?? el.getAttribute?.("value");
-        const id = this.isKnownLeafCategoryId(pick(fromVal));
-        if (id) return id;
-        const dataId = pick(
-          el.dataset?.sscatId ?? el.getAttribute?.("data-sscat-id"),
-        );
-        const knownDataId = this.isKnownLeafCategoryId(dataId);
-        if (knownDataId) return knownDataId;
-      }
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const fromVal = el.value ?? el.getAttribute?.("value");
+      const id = pick(fromVal);
+      if (id) return id;
+      const dataId = pick(
+        el.dataset?.sscatId ?? el.getAttribute?.("data-sscat-id"),
+      );
+      if (dataId) return dataId;
     }
 
     try {
@@ -375,24 +270,24 @@ const MeeshoAPI = {
     } catch (e) {}
 
     for (const inp of document.querySelectorAll('input[type="hidden"]')) {
-      if (this.isOptimizerNode(inp)) continue;
       const name = (inp.name || "").toLowerCase();
       if (
         name.includes("sscat") ||
         name.includes("sub_sub") ||
         (name.includes("category") && name.includes("id"))
       ) {
-        const id = this.isKnownLeafCategoryId(pick(inp.value));
+        const id = pick(inp.value);
         if (id) return id;
       }
     }
 
     for (const inp of document.querySelectorAll("input, textarea")) {
-      if (this.isOptimizerNode(inp)) continue;
       const val = (inp.value || "").trim();
       if (/^\d{4,6}$/.test(val)) {
-        const id = this.isKnownLeafCategoryId(pick(val));
-        if (id) return id;
+        const id = pick(val);
+        if (id && typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
+          if (MeeshoCategories.findById(id)) return id;
+        }
       }
     }
 
@@ -408,7 +303,7 @@ const MeeshoAPI = {
       document.querySelectorAll(
         'input[role="combobox"], input.MuiInputBase-input, input.MuiOutlinedInput-input, input[type="text"]',
       ),
-    ).filter((inp) => !this.isOptimizerNode(inp));
+    );
 
     const categoryInputs = inputs.filter((inp) => {
       const block =
@@ -426,11 +321,9 @@ const MeeshoAPI = {
       const val = (categoryInputs[i].value || "").trim();
       if (val.length < 2 || val.length > 80) continue;
       if (/^\d{4,6}$/.test(val)) {
-        const id = this.isKnownLeafCategoryId(val);
+        const id = this.parseCategoryId(val);
         if (id) return id;
       }
-      const exactId = this.exactCategoryIdFromText(val);
-      if (exactId) return exactId;
       const id = MeeshoCategories.findByLabel(val);
       if (id) return id;
     }
@@ -439,110 +332,12 @@ const MeeshoAPI = {
       const val = (inputs[i].value || "").trim();
       if (val.length < 2 || val.length > 60 || val.includes("₹")) continue;
       if (/^\d{4,6}$/.test(val)) {
-        const id = this.isKnownLeafCategoryId(val);
-        if (id) return id;
+        const id = this.parseCategoryId(val);
+        if (id && MeeshoCategories.findById(id)) return id;
         continue;
       }
-      const exactId = this.exactCategoryIdFromText(val);
-      if (exactId) return exactId;
       const id = MeeshoCategories.findByLabel(val);
       if (id) return id;
-    }
-
-    return null;
-  },
-
-  detectCategoryIdFromVisibleText: function () {
-    const selectors = [
-      "[aria-label]",
-      "[placeholder]",
-      "[data-testid]",
-      "[class]",
-      "label",
-      "[role='combobox']",
-      "[contenteditable='true']",
-    ];
-    const nodes = Array.from(document.querySelectorAll(selectors.join(","))).filter(
-      (el) => !this.isOptimizerNode(el),
-    );
-
-    for (const el of nodes) {
-      const hint = [
-        el.getAttribute?.("aria-label"),
-        el.getAttribute?.("placeholder"),
-        el.getAttribute?.("data-testid"),
-        el.className,
-        el.id,
-        el.name,
-        el.textContent,
-        el.value,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .slice(0, 800);
-      if (!/categor|sscat|sub\s*-?\s*sub/i.test(hint)) continue;
-      const id = this.exactCategoryIdFromText(hint);
-      if (id) return id;
-    }
-
-    return null;
-  },
-
-  detectCategoryIdFromStorage: function () {
-    const stores = [window.sessionStorage, window.localStorage].filter(Boolean);
-    const keyRe = /(catalog|listing|product|draft|supplier|meesho|sscat|subsub|sub_sub|category)/i;
-    const skipKeyRe = /(imported_categories|category_tree|category-tree|optimizer|shipping_cost_optimizer)/i;
-    const idKeyRe = /^(sscat_?id|sscatId|sub_sub_category_id|subSubCategoryId|sub_sub_category|subSubCategory)$/i;
-
-    const scan = (value, depth = 0) => {
-      if (depth > 5 || value == null) return null;
-      if (Array.isArray(value)) {
-        for (const row of value.slice(0, 80)) {
-          const id = scan(row, depth + 1);
-          if (id) return id;
-        }
-        return null;
-      }
-      if (typeof value !== "object") return null;
-
-      for (const [key, child] of Object.entries(value)) {
-        if (idKeyRe.test(key)) {
-          const id = this.isKnownLeafCategoryId(child);
-          if (id) return id;
-        }
-      }
-      for (const child of Object.values(value)) {
-        const id = scan(child, depth + 1);
-        if (id) return id;
-      }
-      return null;
-    };
-
-    const textPatterns = [
-      /"sscat_?id"\s*:\s*"?(\d{4,6})"?/i,
-      /"sub_sub_category_id"\s*:\s*"?(\d{4,6})"?/i,
-      /"subSubCategoryId"\s*:\s*"?(\d{4,6})"?/i,
-    ];
-
-    for (const store of stores) {
-      for (let i = 0; i < store.length; i++) {
-        const key = store.key(i) || "";
-        if (!keyRe.test(key) || skipKeyRe.test(key)) continue;
-        const raw = store.getItem(key) || "";
-        if (!raw || raw.length > 50000) continue;
-
-        try {
-          const parsed = JSON.parse(raw);
-          const id = scan(parsed);
-          if (id) return id;
-        } catch (e) {}
-
-        for (const re of textPatterns) {
-          const match = raw.match(re);
-          const id = this.isKnownLeafCategoryId(match?.[1]);
-          if (id) return id;
-        }
-      }
     }
 
     return null;
@@ -563,7 +358,7 @@ const MeeshoAPI = {
         re.lastIndex = 0;
         let match;
         while ((match = re.exec(text))) {
-          const id = this.isKnownLeafCategoryId(pick(match[1]));
+          const id = pick(match[1]);
           if (id) return id;
         }
       }
@@ -575,8 +370,6 @@ const MeeshoAPI = {
     const methods = [
       () => this.detectCategoryIdFromDom(),
       () => this.detectCategoryIdFromLabels(),
-      () => this.detectCategoryIdFromVisibleText(),
-      () => this.detectCategoryIdFromStorage(),
       () => this.detectCategoryIdFromScripts(),
     ];
 
@@ -869,13 +662,8 @@ const MeeshoAPI = {
       this.cache.price = formPrice;
     }
     const pageCategoryId = this.detectCategoryId();
-    if (
-      pageCategoryId &&
-      !this._pricingRun?.locked &&
-      this.cache.categorySource !== "user"
-    ) {
+    if (pageCategoryId && !this.cache.categoryId) {
       this.cache.categoryId = pageCategoryId;
-      this.cache.categorySource = "page";
     }
     this.detectCatalogImageUrl();
     return { ...catalog, priceUsed: this.cache.price || 100 };
@@ -921,22 +709,16 @@ const MeeshoAPI = {
     return this.cache.price || 100;
   },
 
-  setCategory: function (id, source) {
+  setCategory: function (id) {
     if (id == null || id === "" || id === false) {
       this.cache.categoryId = null;
-      this.cache.categorySource = null;
       console.log("📁 Category cleared");
       return;
     }
     const parsed = this.parseCategoryId(id);
     if (parsed) {
       this.cache.categoryId = parsed;
-      if (source) this.cache.categorySource = source;
-      console.log(
-        "📁 Category set to:",
-        parsed,
-        this.cache.categorySource ? `(${this.cache.categorySource})` : "",
-      );
+      console.log("📁 Category set to:", parsed);
     }
   },
 
@@ -1419,7 +1201,7 @@ const MeeshoAPI = {
 
   getShippingCharges: async function (imageUrl, options = {}) {
     this.syncCatalogPricing();
-    const sscatId = this.parseCategoryId(options.sscatId) || this.getPricingSscatId(18044);
+    const sscatId = options.sscatId || this.cache.categoryId || 18044;
     const supplierId = this.cache.supplierId;
     const primaryPrice =
       options.price ||
@@ -1517,9 +1299,7 @@ const MeeshoAPI = {
       const url = row.uploadedUrl || row.pricingImageUrl;
       if (!url || String(url).startsWith("data:")) continue;
       if (onProgress) onProgress(i + 1, results.length, row.name);
-      const priceData = await this.getShippingCharges(url, {
-        sscatId: this.getPricingSscatId(),
-      });
+      const priceData = await this.getShippingCharges(url);
       if (priceData?.shippingCharges == null) continue;
       row.shippingCost = priceData.shippingCharges;
       row.duplicatePid = priceData.duplicatePid || row.duplicatePid;
@@ -1543,21 +1323,10 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
-    pricingOptions = {},
   ) {
     console.log(
       `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
-    const pricingRun =
-      pricingOptions.sscatId &&
-      this.beginPricingRun({
-        sscatId: pricingOptions.sscatId,
-        categoryName: pricingOptions.categoryName,
-        categorySource: pricingOptions.categorySource,
-      });
-    const pricingSscat = () => this.getPricingSscatId(18044);
-
-    try {
     this.syncCatalogPricing();
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
@@ -1617,9 +1386,7 @@ const MeeshoAPI = {
         }
         uploadFailures = 0;
 
-        const priceData = await this.getShippingCharges(imageUrl, {
-          sscatId: pricingSscat(),
-        });
+        const priceData = await this.getShippingCharges(imageUrl);
         if (!priceData || priceData.shippingCharges == null) {
           const localResult = this.buildLocalSearchResult(variation, attempt, {
             pricingImageUrl: imageUrl,
@@ -1648,7 +1415,6 @@ const MeeshoAPI = {
           liveTotalPrice: priceData.totalPrice,
           meeshoPriceUsed: priceData.priceUsed,
           noPid: !pid,
-          pricingCategoryId: pricingSscat(),
         };
         results.push(result);
 
@@ -1702,13 +1468,7 @@ const MeeshoAPI = {
       attempts: attempt,
       noPidCount,
       verifiedCount: results.filter((r) => r.isVerified).length,
-      pricingCategoryId: pricingSscat(),
-      pricingCategoryName: pricingOptions.categoryName || "",
-      pricingCategorySource: pricingOptions.categorySource || "",
     };
-    } finally {
-      if (pricingRun) this.endPricingRun();
-    }
   },
 
   /**
@@ -1852,21 +1612,10 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
-    pricingOptions = {},
   ) {
     console.log(
       `🧪 Adaptive Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
     );
-    const pricingRun =
-      pricingOptions.sscatId &&
-      this.beginPricingRun({
-        sscatId: pricingOptions.sscatId,
-        categoryName: pricingOptions.categoryName,
-        categorySource: pricingOptions.categorySource,
-      });
-    const pricingSscat = () => this.getPricingSscatId(18044);
-
-    try {
     this.syncCatalogPricing();
 
     if (typeof ImageGenerator !== "undefined" && ImageGenerator.preloadBadges) {
@@ -2003,9 +1752,7 @@ const MeeshoAPI = {
         }
         uploadFailures = 0;
 
-        const priceData = await this.getShippingCharges(imageUrl, {
-          sscatId: pricingSscat(),
-        });
+        const priceData = await this.getShippingCharges(imageUrl);
         if (!priceData || priceData.shippingCharges == null) {
           const localResult = this.buildLocalSearchResult(variation, attempt, {
             pricingImageUrl: imageUrl,
@@ -2043,7 +1790,6 @@ const MeeshoAPI = {
           noPid: !pid,
           variantStyle: variation.variantStyle || "standard",
           meta: variation.meta || null,
-          pricingCategoryId: pricingSscat(),
         };
         results.push(result);
         pricedCount++;
@@ -2108,13 +1854,7 @@ const MeeshoAPI = {
       skipHigherCount,
       recoveryTriggered,
       verifiedCount: results.filter((r) => r.isVerified).length,
-      pricingCategoryId: pricingSscat(),
-      pricingCategoryName: pricingOptions.categoryName || "",
-      pricingCategorySource: pricingOptions.categorySource || "",
     };
-    } finally {
-      if (pricingRun) this.endPricingRun();
-    }
   },
 
   // Generate variation with random border 20-80px and badges 50-200px
