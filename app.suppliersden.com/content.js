@@ -1933,6 +1933,10 @@ Please share payment details and license key.`;
 
     if (!categorySearch || !categoryDropdown || !categories?.length) return false;
 
+    categorySearch.autocomplete = "off";
+    categorySearch.spellcheck = false;
+    categorySearch.setAttribute("enterkeyhint", "search");
+
     this.allCategories = categories;
     if (typeof MeeshoCategories !== "undefined") {
       MeeshoCategories._list = categories;
@@ -1952,46 +1956,64 @@ Please share payment details and license key.`;
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
+    const renderSearchDropdown = (raw, immediate = false) => {
+      const query = String(raw || "").trim();
+      const run = () => {
+        this._categorySearchFrame = null;
+        this.renderCategoryDropdown(
+          query
+            ? this.filterCategoriesForSearch(query, 60)
+            : this.getDefaultCategorySlice(40),
+          { query, showSearchHint: true },
+        );
+        categoryDropdown.style.display = "block";
+      };
+
+      if (this._categorySearchFrame && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(this._categorySearchFrame);
+        this._categorySearchFrame = null;
+      }
+
+      if (immediate || typeof requestAnimationFrame !== "function") {
+        run();
+        return;
+      }
+
+      this._categorySearchFrame = requestAnimationFrame(run);
+    };
+
     categorySearch.onfocus = () => {
       this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
       setTimeout(() => {
         try {
-          categorySearch.select();
+          if (raw && this._categorySelectionSource) categorySearch.select();
         } catch (e) {}
       }, 0);
-      this.renderCategoryDropdown(
-        raw
-          ? this.filterCategoriesForSearch(raw, 150)
-          : this.getDefaultCategorySlice(50),
-        { query: raw, showSearchHint: true },
-      );
-      categoryDropdown.style.display = "block";
+      renderSearchDropdown(raw, true);
     };
 
     categorySearch.oninput = () => {
       this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-      if (categorySelect) categorySelect.value = "";
-      if (selectedCategory) selectedCategory.style.display = "none";
-      this._categorySelectionSource = null;
-      if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-
-      if (!raw) {
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50), {
-          showSearchHint: true,
-        });
-      } else {
-        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150), {
-          query: raw,
-        });
+      if (categorySelect?.value || this._categorySelectionSource) {
+        if (categorySelect) categorySelect.value = "";
+        if (selectedCategory) selectedCategory.style.display = "none";
+        this._categorySelectionSource = null;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
       }
-      categoryDropdown.style.display = "block";
+
+      renderSearchDropdown(raw);
     };
 
     categorySearch.onkeydown = (e) => {
+      if (e.key === "Escape") {
+        categoryDropdown.style.display = "none";
+        categorySearch.blur();
+        return;
+      }
       if (e.key !== "Enter") return;
       e.preventDefault();
       const raw = categorySearch.value.trim();
@@ -2026,7 +2048,10 @@ Please share payment details and license key.`;
         const active = document.activeElement;
         if (active?.closest?.("#category-dropdown")) return;
         const raw = categorySearch.value.trim();
-        if (!raw) return;
+        if (!raw) {
+          if (active !== categorySearch) categoryDropdown.style.display = "none";
+          return;
+        }
         const selected = parseInt(categorySelect?.value, 10);
         const result = this.resolveCategoryFromSearchInput(raw, 12);
         if (result.status === "resolved" && result.cat?.id && selected !== result.cat.id) {
@@ -2049,11 +2074,8 @@ Please share payment details and license key.`;
         this._categoryUserPicked = false;
         this._categorySelectionSource = null;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50), {
-          showSearchHint: true,
-        });
+        renderSearchDropdown("", true);
         this.refreshCategoryApiPreview();
-        categoryDropdown.style.display = "block";
         setTimeout(() => {
           try {
             categorySearch.focus({ preventScroll: true });
@@ -2067,16 +2089,23 @@ Please share payment details and license key.`;
       categoryClear.onclick = clearForTyping;
     }
 
-    if (!this._categoryClickBound) {
-      this._categoryClickBound = true;
-      document.addEventListener("click", (e) => {
+    if (!this._categoryOutsideBound) {
+      this._categoryOutsideBound = true;
+      this._handleCategoryOutsideTap = (e) => {
+        const target = e.target;
+        const currentDropdown = document.getElementById("category-dropdown");
+        if (!currentDropdown) return;
         if (
-          !e.target.closest("#category-search") &&
-          !e.target.closest("#category-dropdown")
+          target?.closest?.("#category-search") ||
+          target?.closest?.("#category-dropdown") ||
+          target?.closest?.("#category-clear")
         ) {
-          categoryDropdown.style.display = "none";
+          return;
         }
-      });
+        currentDropdown.style.display = "none";
+      };
+      document.addEventListener("pointerdown", this._handleCategoryOutsideTap, true);
+      document.addEventListener("click", this._handleCategoryOutsideTap, true);
     }
 
     console.log("✅ Loaded", categories.length, "categories");
