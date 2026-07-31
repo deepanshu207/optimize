@@ -51,7 +51,6 @@ class MeeshoShippingOptimizer {
     this._categoryUserEditing = false;
     this._categoryEditingTimer = null;
     this._categorySearchCommittedValue = "";
-    this._pageCategorySynced = false;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -928,8 +927,6 @@ class MeeshoShippingOptimizer {
     const existing = document.getElementById("opt-modal");
     if (existing) existing.remove();
 
-    this._pageCategorySynced = false;
-
     this.modal = document.createElement("div");
     this.modal.id = "opt-modal";
     const isNarrow = window.matchMedia("(max-width: 640px)").matches;
@@ -1465,7 +1462,6 @@ Please share payment details and license key.`;
 
     if (existing === pageId && cat) {
       this.refreshCategoryApiPreview({ id: pageId, source: "page", cat });
-      this._pageCategorySynced = true;
       return true;
     }
 
@@ -1474,7 +1470,6 @@ Please share payment details and license key.`;
     } else {
       this.applyCategoryByIdOnly(pageId, { source: "page" });
     }
-    this._pageCategorySynced = true;
     return true;
   }
 
@@ -1502,22 +1497,12 @@ Please share payment details and license key.`;
         this._categoryUserEditing = false;
       }
 
-      if (this._pageCategorySynced && !this._categoryUserPicked) {
-        void this.importPageImageIfNeeded();
-        return;
-      }
-
       attempts++;
       const gotCategory =
         !this._categoryUserPicked && this.applyPageCategoryIfAvailable();
       void this.importPageImageIfNeeded();
 
-      if (
-        attempts < maxAttempts &&
-        !gotCategory &&
-        !this._categoryUserPicked &&
-        !this._pageCategorySynced
-      ) {
+      if (attempts < maxAttempts && !gotCategory && !this._categoryUserPicked) {
         setTimeout(tick, delayMs);
       }
     };
@@ -1808,16 +1793,6 @@ Please share payment details and license key.`;
     categorySearch.onfocus = () => {
       this._categoryUserEditing = true;
       clearTimeout(this._categoryEditingTimer);
-      const committed = this._categorySearchCommittedValue;
-      if (committed && categorySearch.value === committed) {
-        requestAnimationFrame(() => {
-          try {
-            categorySearch.setSelectionRange(0, categorySearch.value.length);
-          } catch {
-            /* ignore */
-          }
-        });
-      }
     };
 
     categorySearch.onblur = () => {
@@ -1870,16 +1845,7 @@ Please share payment details and license key.`;
 
     categorySearch.oninput = () => {
       this._categoryUserEditing = true;
-      const committed = this._categorySearchCommittedValue;
-      let val = categorySearch.value;
-      if (committed && val !== committed) {
-        if (val.startsWith(committed) && val.length > committed.length) {
-          val = val.slice(committed.length);
-          categorySearch.value = val;
-        }
-        this._categorySearchCommittedValue = "";
-      }
-      const raw = val.trim();
+      const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
 
       if (!raw) {
@@ -2085,11 +2051,7 @@ Please share payment details and license key.`;
     if (categorySearch) {
       const displayValue = `${cat.name} (${cat.id})`;
       categorySearch.value = displayValue;
-      if (options.source === "user") {
-        this._categorySearchCommittedValue = displayValue;
-      } else {
-        this._categorySearchCommittedValue = "";
-      }
+      this._categorySearchCommittedValue = displayValue;
     }
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
@@ -2127,11 +2089,7 @@ Please share payment details and license key.`;
     if (categorySearch) {
       const displayValue = `ID ${parsed}`;
       categorySearch.value = displayValue;
-      if (options.source === "user") {
-        this._categorySearchCommittedValue = displayValue;
-      } else {
-        this._categorySearchCommittedValue = "";
-      }
+      this._categorySearchCommittedValue = displayValue;
     }
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
     if (categoryClear) categoryClear.style.display = "block";
