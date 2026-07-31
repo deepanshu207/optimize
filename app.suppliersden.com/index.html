@@ -140,7 +140,7 @@
       display: none; z-index: 2;
       touch-action: manipulation;
     }
-    #category-dropdown {
+    #category-dropdown, #category-quick-dropdown {
       display: none;
       max-height: 220px;
       overflow-y: auto;
@@ -151,7 +151,23 @@
       margin-top: 4px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
-    #category-search {
+    .category-quick-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f0fdf4;
+      border-radius: 8px;
+      border: 1px solid #a7f3d0;
+    }
+    #category-clear-btn, #category-quick-clear-btn {
+      position: absolute; right: 8px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      color: #888; font-size: 20px; line-height: 1;
+      cursor: pointer; padding: 4px 8px;
+      display: none; z-index: 2;
+      touch-action: manipulation;
+    }
+    #category-search, #category-quick-search {
       display: block;
       width: 100%;
       pointer-events: auto;
@@ -314,6 +330,17 @@
             <div id="category-dropdown"></div>
             <p class="category-search-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:6px;line-height:1.4;">Loading categories…</p>
             <p class="category-search-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+            <div class="category-quick-section">
+              <p class="category-search-hint" style="font-size:10px;color:#047857;margin-bottom:8px;line-height:1.4;">
+                🧪 <strong>Quick test search</strong> — only 10 categories (keyboard debug)
+              </p>
+              <div class="category-quick-wrap category-search-wrap">
+                <input type="text" id="category-quick-search" class="opt-input" placeholder="Tap to search 10 test categories" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="search">
+                <button type="button" id="category-quick-clear-btn" aria-label="Clear quick search" tabindex="-1">✕</button>
+              </div>
+              <div id="category-quick-dropdown"></div>
+              <p id="category-quick-hint" class="category-search-hint" style="font-size:10px;margin-top:4px;line-height:1.4;">10 test categories — tap outside to close list</p>
+            </div>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
               <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>

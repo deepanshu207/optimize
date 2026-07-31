@@ -65,7 +65,7 @@ const OptimizerUI = {
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
                 .category-search-wrap { position: relative; }
-                #category-clear-btn {
+                #category-clear-btn, #category-quick-clear-btn {
                     position: absolute; right: 8px; top: 50%;
                     transform: translateY(-50%);
                     background: none; border: none;
@@ -74,7 +74,14 @@ const OptimizerUI = {
                     display: none; z-index: 2;
                     touch-action: manipulation;
                 }
-                #category-dropdown {
+                .category-quick-section {
+                    margin-top: 10px;
+                    padding: 10px;
+                    background: #f0fdf4;
+                    border-radius: 8px;
+                    border: 1px solid #a7f3d0;
+                }
+                #category-dropdown, #category-quick-dropdown {
                     display: none;
                     max-height: 220px;
                     overflow-y: auto;
@@ -104,7 +111,7 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; }
-                #category-search {
+                #category-search, #category-quick-search {
                     display: block;
                     width: 100%;
                     pointer-events: auto;
@@ -338,6 +345,21 @@ const OptimizerUI = {
                         <div id="category-dropdown"></div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
                         <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+                        <div class="category-quick-section">
+                            <p class="category-search-hint" style="color:#047857;margin-bottom:8px;line-height:1.4;">
+                                🧪 <strong>Quick test search</strong> — only 10 categories (keyboard debug, not all 3777)
+                            </p>
+                            <div class="category-quick-wrap category-search-wrap">
+                                <input type="text" id="category-quick-search" class="opt-input"
+                                    placeholder="Tap to search 10 test categories"
+                                    autocomplete="off" autocorrect="off" autocapitalize="none"
+                                    spellcheck="false" inputmode="search"
+                                    style="background:#fff;border-color:#a7f3d0;">
+                                <button type="button" id="category-quick-clear-btn" aria-label="Clear quick search" tabindex="-1">✕</button>
+                            </div>
+                            <div id="category-quick-dropdown"></div>
+                            <p id="category-quick-hint" class="category-search-hint" style="margin-top:4px;">10 test categories — tap outside to close list</p>
+                        </div>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
