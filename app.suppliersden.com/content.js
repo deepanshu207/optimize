@@ -51,6 +51,7 @@ class MeeshoShippingOptimizer {
     this._categoryUserEditing = false;
     this._categoryEditingTimer = null;
     this._categorySearchCommittedValue = "";
+    this._categorySearchWired = false;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -1339,6 +1340,7 @@ Please share payment details and license key.`;
       WebSession.wireForm();
     }
     this.loadCategoryDropdown();
+    this.wireCategorySearchHandlers();
 
     // Live vs Test Lab tabs (web + extension modal)
     if (this.isTabbedOptimizerUI()) {
@@ -1765,13 +1767,232 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
+  showCategoryBrowseDropdown() {
+    const dropdown = document.getElementById("category-dropdown");
+    if (!dropdown) return;
+    this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
+    dropdown.style.display = "block";
+  }
+
+  /** Wire category search once — safe for mobile (Kiwi) keyboard focus. */
+  wireCategorySearchHandlers() {
+    if (this._categorySearchWired) return;
+    const search = document.getElementById("category-search");
+    const dropdown = document.getElementById("category-dropdown");
+    if (!search || !dropdown) return;
+
+    this._categorySearchWired = true;
+
+    const clearBtn =
+      document.getElementById("category-clear-btn") ||
+      document.getElementById("category-clear");
+    const select = document.getElementById("category-select");
+    const selectedDiv = document.getElementById("selected-category");
+
+    const showClear = (show) => {
+      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
+    };
+
+    const focusSearchInput = () => {
+      search.readOnly = false;
+      search.disabled = false;
+      try {
+        search.focus({ preventScroll: false });
+      } catch {
+        search.focus();
+      }
+      setTimeout(() => {
+        try {
+          search.focus({ preventScroll: false });
+        } catch {
+          search.focus();
+        }
+      }, 50);
+    };
+
+    search.readOnly = false;
+    search.disabled = false;
+    search.setAttribute("autocomplete", "off");
+    search.setAttribute("autocorrect", "off");
+    search.setAttribute("autocapitalize", "none");
+    search.setAttribute("spellcheck", "false");
+    if (!search.getAttribute("inputmode")) {
+      search.setAttribute("inputmode", "search");
+    }
+
+    search.addEventListener(
+      "touchstart",
+      () => {
+        this._categoryUserEditing = true;
+        clearTimeout(this._categoryEditingTimer);
+      },
+      { passive: true },
+    );
+
+    search.addEventListener("focus", () => {
+      this._categoryUserEditing = true;
+      clearTimeout(this._categoryEditingTimer);
+      search.readOnly = false;
+      search.disabled = false;
+      const committed = this._categorySearchCommittedValue;
+      if (committed && search.value === committed) {
+        requestAnimationFrame(() => {
+          try {
+            search.setSelectionRange(0, search.value.length);
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+      setTimeout(() => {
+        search.scrollIntoView({ block: "center", behavior: "smooth" });
+      }, 80);
+    });
+
+    search.addEventListener("blur", () => {
+      clearTimeout(this._categoryEditingTimer);
+      this._categoryEditingTimer = setTimeout(() => {
+        if (document.activeElement !== search) {
+          this._categoryUserEditing = false;
+        }
+      }, 250);
+    });
+
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        dropdown.style.display = "none";
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const raw = search.value.trim();
+        if (!raw) return;
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
+        if (result.status === "resolved" && result.cat) {
+          this.applyCategorySelection(result.cat, { source: "user" });
+          dropdown.style.display = "none";
+        } else if (result.status === "ambiguous" && result.hits?.[0]) {
+          this.applyCategorySelection(result.hits[0], { source: "user" });
+          dropdown.style.display = "none";
+        } else {
+          OptimizerUtils.showNotification(
+            `No category found for "${raw}"`,
+            "error",
+          );
+        }
+        return;
+      }
+      const committed = this._categorySearchCommittedValue;
+      if (
+        committed &&
+        search.value === committed &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        search.value = e.key;
+        this._categorySearchCommittedValue = "";
+        e.preventDefault();
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+
+    search.addEventListener("input", () => {
+      this._categoryUserEditing = true;
+      const committed = this._categorySearchCommittedValue;
+      let val = search.value;
+      if (committed && val !== committed) {
+        if (val.startsWith(committed) && val.length > committed.length) {
+          val = val.slice(committed.length);
+          search.value = val;
+          this._categorySearchCommittedValue = "";
+        } else {
+          this._categorySearchCommittedValue = "";
+        }
+      }
+
+      const raw = val.trim();
+      showClear(!!raw);
+
+      if (!raw) {
+        dropdown.style.display = "none";
+        dropdown.innerHTML = "";
+        return;
+      }
+
+      this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
+      dropdown.style.display = "block";
+    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        search.value = "";
+        showClear(false);
+        this._categorySearchCommittedValue = "";
+        this._categoryUserEditing = true;
+        if (select) select.value = "";
+        if (selectedDiv) selectedDiv.style.display = "none";
+        const selDetail = document.getElementById("selected-category-detail");
+        if (selDetail) selDetail.textContent = "";
+        this._categoryUserPicked = false;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+        this.showCategoryBrowseDropdown();
+        this.refreshCategoryApiPreview();
+        if (!window.WEB_OPTIMIZER_MODE) {
+          this.applyPageCategoryIfAvailable();
+        }
+        focusSearchInput();
+      });
+    }
+
+    dropdown.addEventListener("click", (e) => {
+      const item = e.target?.closest?.(".cat-item");
+      if (!item) return;
+      e.preventDefault();
+      const id = parseInt(item.dataset.id, 10);
+      const cat =
+        this.allCategories?.find((c) => c.id === id) ||
+        this.findCategoryById(id) || {
+          id,
+          name: item.dataset.name,
+          path: item.dataset.path,
+          parentName: item.dataset.path,
+        };
+      this.applyCategorySelection(cat, { source: "user" });
+      this._categoryUserPicked = true;
+      dropdown.style.display = "none";
+      showClear(true);
+    });
+
+    if (!this._categoryOutsideBound) {
+      this._categoryOutsideBound = true;
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          const t = e.target;
+          if (
+            t === search ||
+            t === clearBtn ||
+            dropdown.contains(t) ||
+            t?.closest?.("#category-search") ||
+            t?.closest?.(".category-search-wrap")
+          ) {
+            return;
+          }
+          dropdown.style.display = "none";
+        },
+        true,
+      );
+    }
+  }
+
   // Load categories into dropdown
   bindCategoryUI(categories) {
     const categorySearch = document.getElementById("category-search");
     const categoryDropdown = document.getElementById("category-dropdown");
-    const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
     const refreshBtn = document.getElementById("refresh-categories");
     const categoryError = document.getElementById("category-error");
 
@@ -1790,104 +2011,7 @@ Please share payment details and license key.`;
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
-    categorySearch.onfocus = () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-    };
-
-    categorySearch.onblur = () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== categorySearch) {
-          this._categoryUserEditing = false;
-        }
-      }, 200);
-    };
-
-    categorySearch.onkeydown = (e) => {
-      if (e.key === "Escape") {
-        categoryDropdown.style.display = "none";
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const raw = categorySearch.value.trim();
-        if (!raw) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat) {
-          this.applyCategorySelection(result.cat, { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else if (result.status === "ambiguous" && result.hits?.[0]) {
-          this.applyCategorySelection(result.hits[0], { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else {
-          OptimizerUtils.showNotification(
-            `No category found for "${raw}"`,
-            "error",
-          );
-        }
-        return;
-      }
-      if (
-        this._categorySearchCommittedValue &&
-        categorySearch.value === this._categorySearchCommittedValue &&
-        e.key.length === 1 &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey
-      ) {
-        categorySearch.value = e.key;
-        this._categorySearchCommittedValue = "";
-        e.preventDefault();
-        categorySearch.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    };
-
-    categorySearch.oninput = () => {
-      this._categoryUserEditing = true;
-      const raw = categorySearch.value.trim();
-      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-
-      if (!raw) {
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
-      } else {
-        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
-      }
-      categoryDropdown.style.display = "block";
-    };
-
-    if (categoryClear) {
-      categoryClear.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        categorySearch.value = "";
-        categoryClear.style.display = "none";
-        this._categorySearchCommittedValue = "";
-        this._categoryUserEditing = true;
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        const selectedCategoryDetail = document.getElementById("selected-category-detail");
-        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
-        this._categoryUserPicked = false;
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
-        this.refreshCategoryApiPreview();
-        this.applyPageCategoryIfAvailable();
-        categorySearch.focus();
-      };
-    }
-
-    if (!this._categoryClickBound) {
-      this._categoryClickBound = true;
-      document.addEventListener("click", (e) => {
-        if (
-          !e.target.closest("#category-search") &&
-          !e.target.closest("#category-dropdown")
-        ) {
-          categoryDropdown.style.display = "none";
-        }
-      });
-    }
+    this.wireCategorySearchHandlers();
 
     console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
