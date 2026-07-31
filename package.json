@@ -12,6 +12,7 @@
     "verify:deploy": "node scripts/verify-deploy.mjs",
     "build:categories": "node scripts/build-meesho-categories.mjs",
     "test:live-report": "node scripts/test-live-variant-report.mjs",
+    "test:local-price": "node scripts/test-local-price-model.mjs",
     "test:category-pricing": "node scripts/test-category-generate-gate.mjs",
     "test:category-search": "node scripts/test-category-search.mjs"
   },
