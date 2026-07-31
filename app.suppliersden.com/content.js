@@ -1534,24 +1534,54 @@ Please share payment details and license key.`;
 
   categoryMatchesQuery(cat, query) {
     if (!query) return true;
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.search) {
-      const hits = MeeshoCategories.search(query, 200);
-      return hits.some((c) => c.id === cat.id);
+    const hay = this.categorySearchText(cat);
+    const q = this.normalizeCategorySearchText(query);
+    return q.split(" ").filter(Boolean).every((token) => hay.includes(token));
+  }
+
+  normalizeCategorySearchText(text) {
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.normalizeSearchText) {
+      return MeeshoCategories.normalizeSearchText(text);
     }
-    const hay = [
-      cat.id,
-      cat.name,
-      cat.parentName,
-      cat.sectionName,
-      cat.rootName,
-      cat.path,
-    ]
-      .filter(Boolean)
-      .join(" ")
+    return String(text || "")
       .toLowerCase()
-      .replace(/&/g, " and ");
-    const q = String(query).toLowerCase().replace(/&/g, " and ");
-    return hay.includes(q);
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  categorySearchText(cat) {
+    return this.normalizeCategorySearchText(
+      [cat?.id, cat?.name, cat?.parentName, cat?.sectionName, cat?.rootName, cat?.path]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+
+  ensureCategorySearchIndex(categories = this.allCategories || []) {
+    if (
+      this._categorySearchIndex &&
+      this._categorySearchIndexSource === categories &&
+      this._categorySearchIndex.length === categories.length
+    ) {
+      return this._categorySearchIndex;
+    }
+
+    const byId = new Map();
+    const index = (categories || []).map((cat) => {
+      byId.set(Number(cat.id), cat);
+      return {
+        cat,
+        idText: String(cat.id || ""),
+        nameText: this.normalizeCategorySearchText(cat.name),
+        hay: this.categorySearchText(cat),
+      };
+    });
+    this._categoryById = byId;
+    this._categorySearchIndex = index;
+    this._categorySearchIndexSource = categories;
+    return index;
   }
 
   parseCategorySearchQuery(raw) {
@@ -1644,14 +1674,32 @@ Please share payment details and license key.`;
       return cat ? [cat] : [];
     }
 
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.search) {
-      return MeeshoCategories.search(parsed.text, limit);
-    }
+    const query = this.normalizeCategorySearchText(parsed.text);
+    if (!query) return [];
 
-    const query = parsed.text.toLowerCase();
-    return (this.allCategories || [])
-      .filter((cat) => this.categoryMatchesQuery(cat, query))
-      .slice(0, limit);
+    const tokens = query.split(" ").filter(Boolean);
+    const buckets = [[], [], [], [], []];
+    const maxScanHits = Math.max(limit * 5, 40);
+    let collected = 0;
+    for (const row of this.ensureCategorySearchIndex()) {
+      if (!tokens.every((token) => row.hay.includes(token))) continue;
+      if (row.nameText === query || row.idText === parsed.text) {
+        buckets[0].push(row.cat);
+      } else if (row.nameText.startsWith(query)) {
+        buckets[1].push(row.cat);
+      } else if (row.nameText.includes(query)) {
+        buckets[2].push(row.cat);
+      } else if (row.hay.includes(query)) {
+        buckets[3].push(row.cat);
+      } else {
+        buckets[4].push(row.cat);
+      }
+      collected++;
+      if (collected >= maxScanHits && buckets[0].length + buckets[1].length >= limit) {
+        break;
+      }
+    }
+    return buckets.flat().slice(0, limit);
   }
 
   resolveCategorySelectionForGenerate(categorySelect) {
@@ -1939,6 +1987,7 @@ Please share payment details and license key.`;
   findCategoryById(id) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    if (this._categoryById?.has(parsed)) return this._categoryById.get(parsed);
     const fromAll = this.allCategories?.find((c) => c.id === parsed);
     if (fromAll) return fromAll;
     if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
@@ -2113,6 +2162,7 @@ Please share payment details and license key.`;
     categorySearch.setAttribute("enterkeyhint", "search");
 
     this.allCategories = categories;
+    this.ensureCategorySearchIndex(categories);
     if (typeof MeeshoCategories !== "undefined") {
       MeeshoCategories._list = categories;
       if (Array.isArray(MeeshoCategories.LIST) && !MeeshoCategories.LIST.length) {
@@ -2142,7 +2192,7 @@ Please share payment details and license key.`;
           return;
         }
         this.renderCategoryDropdown(
-          this.filterCategoriesForSearch(query, 60),
+          this.filterCategoriesForSearch(query, isExtensionCategoryUi ? 25 : 60),
           { query, showSearchHint: false },
         );
         categoryDropdown.style.display = "block";
@@ -2165,11 +2215,13 @@ Please share payment details and license key.`;
       this._categoryUserEditing = true;
       const raw = categorySearch.value.trim();
       if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-      setTimeout(() => {
-        try {
-          if (raw && this._categorySelectionSource) categorySearch.select();
-        } catch (e) {}
-      }, 0);
+      if (!isExtensionCategoryUi) {
+        setTimeout(() => {
+          try {
+            if (raw && this._categorySelectionSource) categorySearch.select();
+          } catch (e) {}
+        }, 0);
+      }
       if (raw) {
         renderSearchDropdown(raw, true);
       } else {
@@ -2182,16 +2234,22 @@ Please share payment details and license key.`;
       this._categoryUserEditing = true;
       categorySearch.readOnly = false;
       categorySearch.disabled = false;
+      if (document.activeElement === categorySearch) return;
       try {
         categorySearch.focus({ preventScroll: true });
       } catch (e) {
         categorySearch.focus();
       }
     };
-    categorySearch.onclick = focusCategorySearch;
-    categorySearch.ontouchstart = focusCategorySearch;
-    categorySearch.ontouchend = focusCategorySearch;
-    categorySearch.onpointerup = focusCategorySearch;
+    categorySearch.ontouchstart = null;
+    categorySearch.ontouchend = null;
+    if (isExtensionCategoryUi) {
+      categorySearch.onclick = typeof PointerEvent === "undefined" ? focusCategorySearch : null;
+      categorySearch.onpointerup = focusCategorySearch;
+    } else {
+      categorySearch.onclick = focusCategorySearch;
+      categorySearch.onpointerup = null;
+    }
 
     categorySearch.oninput = () => {
       this._categoryUserEditing = true;
@@ -2266,7 +2324,11 @@ Please share payment details and license key.`;
         };
 
     if (categoryClear) {
+      let lastClearAt = 0;
       const clearForTyping = (e) => {
+        const now = Date.now();
+        if (now - lastClearAt < 250) return;
+        lastClearAt = now;
         if (e && typeof e.stopPropagation === "function") {
           e.stopPropagation();
         }
@@ -2282,16 +2344,22 @@ Please share payment details and license key.`;
         if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
         categoryDropdown.style.display = "none";
         categoryDropdown.innerHTML = "";
-        this.refreshCategoryApiPreview();
-        focusCategorySearch();
-        setTimeout(() => {
-          focusCategorySearch();
-        }, 0);
+        this.refreshCategoryApiPreview({ id: null, source: "none", cat: null });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(focusCategorySearch);
+        } else {
+          setTimeout(focusCategorySearch, 0);
+        }
       };
-      categoryClear.onmousedown = clearForTyping;
-      categoryClear.ontouchend = clearForTyping;
-      categoryClear.onpointerup = clearForTyping;
-      categoryClear.onclick = clearForTyping;
+      categoryClear.onmousedown = isExtensionCategoryUi ? null : clearForTyping;
+      categoryClear.ontouchend = null;
+      categoryClear.onpointerup = isExtensionCategoryUi ? clearForTyping : null;
+      categoryClear.onclick = isExtensionCategoryUi
+        ? (e) => {
+            if (typeof PointerEvent === "undefined") clearForTyping(e);
+            else if (e?.stopPropagation) e.stopPropagation();
+          }
+        : clearForTyping;
     }
 
     if (!isExtensionCategoryUi && !this._categoryOutsideBound) {
