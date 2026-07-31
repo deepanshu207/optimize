@@ -64,32 +64,39 @@ const OptimizerUI = {
                 .session-status.ok { color: #047857; }
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
-                .category-search-wrap { position: relative; z-index: 10000; }
-                .category-dropdown {
+                /* category-search-wrap: no overflow, no stacking context — results flow inline */
+                .category-search-wrap { position: relative; }
+                #category-clear-btn {
+                    position: absolute; right: 8px; top: 50%;
+                    transform: translateY(-50%);
+                    background: none; border: none;
+                    color: #9ca3af; font-size: 20px; line-height: 1;
+                    cursor: pointer; padding: 4px 6px;
+                    display: none; z-index: 1;
+                }
+                /* Results list is in NORMAL DOCUMENT FLOW — not position:absolute.
+                   This means overflow-y:auto on the modal container scrolls through it
+                   rather than clipping it. Works on every mobile browser. */
+                #category-dropdown {
                     display: none;
-                    position: absolute;
-                    top: calc(100% + 2px);
-                    left: 0;
-                    right: 0;
-                    max-height: min(220px, 45vh);
+                    max-height: 220px;
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
-                    border: 1px solid #d1d5db;
-                    border-radius: 0 0 8px 8px;
-                    margin-top: 0;
-                    z-index: 10050;
-                    box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+                    border: 2px solid #047857;
+                    border-radius: 8px;
+                    margin-top: 4px;
+                    box-shadow: 0 4px 16px rgba(4,120,87,0.15);
                 }
                 .cat-item {
-                    padding: 10px 12px;
+                    padding: 13px 12px;
                     cursor: pointer;
-                    border-bottom: 1px solid #eee;
-                    font-size: 12px;
+                    border-bottom: 1px solid #f3f4f6;
+                    font-size: 13px;
                     line-height: 1.35;
-                    transition: background 0.15s;
+                    -webkit-tap-highlight-color: rgba(4,120,87,0.12);
                 }
-                .cat-item:hover, .cat-item:focus { background: rgba(102,126,234,0.12); }
+                .cat-item:active { background: rgba(4,120,87,0.12); }
                 .cat-item-name {
                     display: flex;
                     justify-content: space-between;
@@ -102,7 +109,12 @@ const OptimizerUI = {
                 .cat-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
                 .category-search-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
                 .category-empty { padding: 12px; color: #6b7280; font-size: 12px; line-height: 1.4; }
-                #category-search { touch-action: manipulation; -webkit-user-select: text; user-select: text; }
+                #category-search {
+                    touch-action: manipulation;
+                    -webkit-user-select: text; user-select: text;
+                    font-size: 16px !important; /* 16px stops iOS zoom-in on focus */
+                    min-height: 48px;
+                }
                 .local-price-section { background: linear-gradient(135deg,rgba(16,185,129,0.08),rgba(4,120,87,0.04)); border: 1px solid rgba(4,120,87,0.25); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
                 .local-price-section .opt-section-title { color: #047857; }
                 .local-price-card { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
@@ -335,26 +347,31 @@ const OptimizerUI = {
                     </div>
 
                     <div class="opt-section" style="padding:12px;">
-                        <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;">
-                            <span>📁 Category (Required)</span>
-                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
+                        <div class="opt-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <span>📁 Category <span style="font-size:10px;font-weight:400;color:#6b7280;">(Optional)</span></span>
+                            <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄 Refresh</button>
                         </div>
+                        <!-- Wrap only input+clear in position:relative; dropdown is OUTSIDE this wrapper so it flows in the document and is never clipped by overflow:auto -->
                         <div class="category-search-wrap">
-                            <input type="text" id="category-search" class="opt-input" placeholder="🔍 Search by name or ID (e.g. Kurtis or 10004)" style="font-size:12px;padding-right:30px;background:#fff;border-color:#d1d5db;">
-                            <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
-                            <div id="category-dropdown" class="category-dropdown"></div>
+                            <input type="text" id="category-search" class="opt-input"
+                                placeholder="🔍 Tap to search categories"
+                                autocomplete="off" autocorrect="off" autocapitalize="none"
+                                spellcheck="false" inputmode="search"
+                                style="padding-right:40px;background:#fff;border-color:#d1d5db;">
+                            <button type="button" id="category-clear-btn" aria-label="Clear category">✕</button>
                         </div>
-                        <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-search-hint">Type name or ID (e.g. <strong>gown</strong>, <strong>10253</strong>, <strong>id:10123</strong>) — pick from list or press <strong>Enter</strong></p>
-                        <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
-                            <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
+                        <!-- Results in NORMAL FLOW — not absolute, never clipped -->
+                        <div id="category-dropdown"></div>
+                        <p id="category-count-hint" class="category-search-hint" style="margin-top:6px;">Loading categories…</p>
+                        <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.1);border-radius:6px;">
+                            <span style="font-size:11px;color:#ef4444;">⚠️ Not loaded — tap 🔄 Refresh</span>
                         </div>
-                        <div id="selected-category" style="margin-top:8px;padding:8px;background:rgba(102,126,234,0.15);border-radius:6px;display:none;">
-                            <span style="font-size:11px;color:#a78bfa;">✓ </span>
-                            <span id="selected-category-name" style="font-size:12px;color:black;font-weight:600;"></span>
-                            <div id="selected-category-detail" style="font-size:10px;color:#4b5563;margin-top:4px;line-height:1.4;"></div>
+                        <div id="selected-category" style="margin-top:8px;padding:8px;background:rgba(4,120,87,0.1);border-radius:6px;display:none;">
+                            <span style="font-size:11px;color:#047857;font-weight:700;">✓ </span>
+                            <span id="selected-category-name" style="font-size:12px;color:#111827;font-weight:600;"></span>
+                            <div id="selected-category-detail" style="font-size:10px;color:#4b5563;margin-top:2px;"></div>
                         </div>
-                        <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.4;display:none;"></div>
+                        <div id="category-api-preview" style="font-size:10px;color:#9ca3af;margin-top:4px;line-height:1.4;display:none;"></div>
                         <input type="hidden" id="category-select" value="">
                     </div>
 
