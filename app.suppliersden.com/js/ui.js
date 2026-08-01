@@ -475,25 +475,28 @@ const OptimizerUI = {
     const isLocalPick = !!r.localRecommended;
     const isBest = isLocalPick || !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
-    const frozenEst =
+    const staticEst =
+      r.meta?.staticEst ??
       r._frozenPricing?.estShipping ??
       r._frozenPricing?.metaEstInr ??
       r.meta?.estInr ??
       r.estShipping ??
       0;
+    const liveTier = r.localEstShipping || r.meta?.localTier || 0;
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
-    const estInr = frozenEst;
     const priceLabel =
-      localPriceMode && estInr > 0
-      ? "local ₹" + estInr
-      : testLabMode || analysisMode
+      localPriceMode && staticEst > 0 && liveTier > 0
+        ? `est ₹${staticEst} → live ₹${liveTier}`
+        : localPriceMode && staticEst > 0
+        ? "est ₹" + staticEst
+        : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
-        : "est ₹" + estInr
+        : "est ₹" + staticEst
       : frozenShip > 0
       ? "₹" + frozenShip
-      : estInr > 0
-      ? "est ₹" + estInr
+      : staticEst > 0
+      ? "est ₹" + staticEst
       : manualMode
       ? "—"
       : "Ready";
@@ -1021,19 +1024,21 @@ const OptimizerUI = {
 
     if (localPriceMode && results.length > 0) {
       const best = results[0];
-      const bestEst = best.localEstShipping || best.estShipping || "—";
+      const bestStatic = best.meta?.staticEst ?? best.estShipping ?? "—";
+      const bestLive = best.localEstShipping || localProfile?.recommendedPrices?.[0] || "—";
       const recPrices = localProfile?.recommendedPrices || [];
       const tierText = localProfile?.tiers?.length
-        ? `tiers ₹${localProfile.tiers.join(", ")}`
-        : "est from image analysis";
+        ? `learned tiers ₹${localProfile.tiers.join(", ")}`
+        : "static analysis only";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local Price Mode (no live check)</div>
-                <div style="font-size:26px;font-weight:700;color:#047857;">est ₹${bestEst}</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · ${tierText}</div>
+                <div style="font-size:11px;color:#047857;">📍 Local Price (no live API check)</div>
+                <div style="font-size:22px;font-weight:700;color:#047857;">est ₹${bestStatic} → live ₹${bestLive}</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} picks · ${tierText}</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Static est varies by file KB, frame & badges. Learned live tier is same for category.</div>
                 ${
                   recPrices.length
-                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Recommend: ₹${recPrices.join(" + ₹")}</div>`
+                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Upload on Meesho at ₹${recPrices.join(" + ₹")}</div>`
                     : ""
                 }
                 ${

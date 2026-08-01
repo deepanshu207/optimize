@@ -273,13 +273,14 @@ const LocalPriceDB = {
     };
   },
 
-  /** Tag a variant with a local tier estimate (no live price). */
+  /** Tag a variant with learned live tier — keeps static analysis est separate. */
   _tagLocalVariant(v, tierPrice, recommended) {
-    return {
+    const staticEst = this.estOf(v);
+    const tagged = {
       ...v,
       localEstShipping: tierPrice,
       localRecommended: recommended,
-      estShipping: tierPrice,
+      estShipping: staticEst,
       shippingCost: 0,
       isVerified: false,
       localOnly: true,
@@ -288,9 +289,20 @@ const LocalPriceDB = {
         localPrice: true,
         localTier: tierPrice,
         localEstimated: true,
-        staticEst: this.estOf(v),
+        staticEst,
+        estInr: staticEst,
       },
     };
+    if (tagged._frozenPricing) {
+      tagged._frozenPricing = {
+        ...tagged._frozenPricing,
+        estShipping: staticEst,
+        metaEstInr: staticEst,
+        shippingCost: 0,
+        localTier: tierPrice,
+      };
+    }
+    return tagged;
   },
 
   PICK_COUNT: 2,
@@ -383,6 +395,10 @@ const LocalPriceDB = {
     meta(
       "pool_variant_ids",
       sortedPool.map((v) => v.variantId).join("|"),
+    );
+    meta(
+      "pricing_note",
+      "est_inr=static analysis from file KB/frame; shipping_inr=learned live tier for category",
     );
 
     let pickRank = 0;
@@ -4013,15 +4029,23 @@ Please share payment details and license key.`;
       rawResults = LocalPriceDB.sortVariantsStable(rawResults);
       this.localPricePoolResults = rawResults;
       const display = LocalPriceDB.buildLocalPicks(rawResults, catId);
+      display.forEach((row) => this.freezeRowPricing(row, {
+        estShipping: row.meta?.staticEst ?? row.estShipping,
+        shippingCost: 0,
+        pricingImageUrl: row.pricingImageUrl,
+        dataUrl: row.dataUrl,
+        meta: row.meta,
+      }));
 
       this.currentResults = display;
 
       const recPrices = profile.recommendedPrices || [];
-      const bestEst = display[0]?.localEstShipping || display[0]?.estShipping || "—";
+      const bestStatic = display[0]?.meta?.staticEst ?? display[0]?.estShipping ?? "—";
+      const bestLive = display[0]?.localEstShipping || recPrices[0] || "—";
       OptimizerUtils.showNotification(
         profile.hasData
-          ? `📍 ${display.length} picks for lowest shipping · recommend ₹${recPrices.join(" + ₹")} · est ₹${bestEst}`
-          : `📍 ${display.length} picks (est only — import CSV for tier mapping)`,
+          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ₹${bestLive}`
+          : `📍 ${display.length} picks (static est only — import CSV for live tier)`,
         "success",
         8000,
       );
