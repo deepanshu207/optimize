@@ -536,11 +536,9 @@ const OptimizerUI = {
       (r.blob?.size ? Math.ceil(r.blob.size / 1024) : null);
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const priceLabel = localPriceMode
-      ? kbLabel
-        ? `${kbLabel} KB`
-        : isLocalPick
-          ? "Local pick"
-          : "Local"
+      ? isLocalPick
+        ? "★ Local pick"
+        : r.name || "Variant"
       : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
@@ -1076,6 +1074,7 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     const localPriceMode = !!options.localPriceMode;
     const localProfile = options.localPriceProfile || null;
+    const livePricedResults = options.livePricedResults || [];
     let html = "";
 
     if (localPriceMode && results.length > 0) {
@@ -1331,6 +1330,11 @@ const OptimizerUI = {
     const livePricedCount = hasLive
       ? results.filter((r) => r.shippingCost > 0).length
       : 0;
+    const cachedLivePricedCount = (livePricedResults || []).filter(
+      (r) => Number(r.shippingCost) > 0,
+    ).length;
+    const canCreateReport =
+      livePricedCount > 0 || cachedLivePricedCount > 0;
     const localCsvBtn =
       localPriceMode && results.length > 0
         ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
@@ -1339,9 +1343,8 @@ const OptimizerUI = {
       localPriceMode && results.length > 0
         ? `<button id="generate-live-from-results-btn" class="opt-btn opt-btn-primary" style="width:100%;padding:12px;margin-bottom:8px;font-size:13px;font-weight:700;">🚀 Generate Live Variants (learn for local)</button>`
         : "";
-    const reportBtn =
-      hasLive && livePricedCount > 0 && !localPriceMode
-        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
+    const reportBtn = canCreateReport
+        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report (from live ₹)</button>`
         : "";
 
     html += `
@@ -1350,7 +1353,9 @@ const OptimizerUI = {
             ${reportBtn}
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  bestLive
+                  localPriceMode
+                    ? "Download Best Local Pick"
+                    : bestLive
                     ? "Download Best ₹" + bestLive
                     : bestEst
                     ? "Download Best est ₹" + bestEst

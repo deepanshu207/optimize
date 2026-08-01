@@ -1404,6 +1404,7 @@ class MeeshoShippingOptimizer {
     this.localPriceProfile = null;
     this.localPricePoolResults = [];
     this._liveLearnResults = [];
+    this.lastLivePricedResults = [];
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -1476,12 +1477,12 @@ class MeeshoShippingOptimizer {
 
   getLiveVariantReportModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/liveVariantReport.mjs?v=2";
+      return "/js/liveVariantReport.mjs?v=3";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=2");
+      return chrome.runtime.getURL("js/liveVariantReport.mjs?v=3");
     }
-    return "/js/liveVariantReport.mjs?v=2";
+    return "/js/liveVariantReport.mjs?v=3";
   }
 
   getStaticComposeModuleUrl() {
@@ -1544,7 +1545,11 @@ class MeeshoShippingOptimizer {
   async preloadLiveVariantReportModule() {
     return this.importOptimizerModule(
       () => this.getLiveVariantReportModuleUrl(),
-      () => !!window.LiveVariantReport?.createAndDownloadReport,
+      () =>
+        !!(
+          window.LiveVariantReport?.analyzeLiveVariants &&
+          window.LiveVariantReport?.exportReportCsv
+        ),
       "__liveVariantReportModulePromise",
     );
   }
@@ -2921,11 +2926,16 @@ Please share payment details and license key.`;
     const hint = document.getElementById("local-price-hint");
     if (!hint) return;
     const categorySelect = document.getElementById("category-select");
-    const catId = categorySelect?.value || "";
-    const cap = catId ? LocalPriceDB.syncTargetShippingSelect(catId) : null;
-    const summary = LocalPriceDB.summary(catId);
-    const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
-    const learned = catId ? LocalPriceDB.getLowestTierLearnedStats(catId) : null;
+    const catId = String(categorySelect?.value || "").trim();
+    const effectiveCatId = catId || "10004";
+    const cap = effectiveCatId
+      ? LocalPriceDB.syncTargetShippingSelect(effectiveCatId)
+      : null;
+    const summary = LocalPriceDB.summary(effectiveCatId);
+    const profile = LocalPriceDB.getCategoryProfile(effectiveCatId);
+    const learned = effectiveCatId
+      ? LocalPriceDB.getLowestTierLearnedStats(effectiveCatId)
+      : null;
 
     if (summary) {
       const tierText =
@@ -2948,7 +2958,7 @@ Please share payment details and license key.`;
       hint.style.color = "#047857";
     } else {
       hint.textContent =
-        "Auto-loads public seed from /data/seed-reports (no CSV) · live refines tiers";
+        "Auto-loads seed + live learn · Clear history if picks look wrong · Live = real ₹";
       hint.style.color = "#6b7280";
     }
   }
@@ -4991,6 +5001,7 @@ Please share payment details and license key.`;
           );
           const policy = LocalPriceDB.applyLiveResultPolicy(mapped, liveCatId);
           this._liveLearnResults = policy.allPriced;
+          this.lastLivePricedResults = [...policy.allPriced];
           this.currentResults = policy.display;
           this.framedExtraResults = framedMapped;
           this.showFramedExtras = false;
@@ -5135,6 +5146,7 @@ Please share payment details and license key.`;
     this.showFramedExtras = false;
     this.showAnalysisExtras = false;
     this.liveAnalysis = null;
+    // Keep lastLivePricedResults / _liveLearnResults from prior live run for report + picks
 
     if (uploadArea) uploadArea.style.display = "none";
     if (generateBtn) generateBtn.disabled = true;
@@ -5187,10 +5199,12 @@ Please share payment details and license key.`;
       await this.ensureOriginalImageUrl(file);
       this.gatherSettings();
 
-      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
-        console.warn("Live analysis parallel failed:", e);
-        return null;
-      });
+      const analysisPromise = profile.hasData
+        ? Promise.resolve(null)
+        : this.runLiveStaticAnalysis(file).catch((e) => {
+            console.warn("Live analysis parallel failed:", e);
+            return null;
+          });
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5220,6 +5234,14 @@ Please share payment details and license key.`;
                 variantOptions: (i) => {
                   if (!profile.hasData) {
                     return i % 2 === 0 ? { lowBias: true } : null;
+                  }
+                  const low59 =
+                    profile.recommendedPrices?.[0] === 59 ||
+                    profile.recommendedPrices?.includes(59);
+                  if (low59) {
+                    if (i % 3 === 0) return { ultraLow: true };
+                    if (i % 3 === 1) return { lowBias: true };
+                    return { lowBias: true };
                   }
                   if (
                     profile.strategy === "rupee_pair" &&
@@ -5712,25 +5734,51 @@ Please share payment details and license key.`;
     };
   }
 
+  getPricedResultsForReport() {
+    const learn = (this._liveLearnResults || []).filter(
+      (r) => Number(r.shippingCost) > 0,
+    );
+    if (learn.length) return learn;
+    const cached = (this.lastLivePricedResults || []).filter(
+      (r) => Number(r.shippingCost) > 0,
+    );
+    if (cached.length) return cached;
+    return [...(this.currentResults || []), ...(this.framedExtraResults || [])]
+      .filter(
+        (r) =>
+          Number(r.shippingCost) > 0 &&
+          !r.localOnly &&
+          !r.meta?.localPrice &&
+          (r.liveVerified || r.isVerified),
+      );
+  }
+
   async createLiveVariantReport() {
-    const priced = this.currentResults.filter((r) => r.shippingCost > 0);
+    const priced = this.getPricedResultsForReport();
     if (!priced.length) {
       OptimizerUtils.showNotification(
-        "Add live shipping prices first, then create report",
+        "Run Live generate first (need Meesho ₹ on variants), then create report",
         "error",
       );
       return null;
     }
 
     const ready = await this.preloadLiveVariantReportModule();
-    if (!ready || !window.LiveVariantReport?.createAndDownloadReport) {
+    if (
+      !ready ||
+      !window.LiveVariantReport?.analyzeLiveVariants ||
+      !window.LiveVariantReport?.exportReportCsv
+    ) {
       OptimizerUtils.showNotification("Report module failed to load", "error");
       return null;
     }
 
     try {
       const context = this.buildLiveReportContext();
-      const variants = [...this.currentResults, ...this.framedExtraResults];
+      const framed = (this.framedExtraResults || []).filter(
+        (r) => Number(r.shippingCost) > 0,
+      );
+      const variants = [...priced, ...framed];
       const analysis = window.LiveVariantReport.analyzeLiveVariants(
         variants,
         context,
@@ -5893,9 +5941,9 @@ Please share payment details and license key.`;
       baselineShipping: this.getBaselineShipping(),
       framedExtras: this.framedExtraResults,
       showFramedExtras: this.showFramedExtras,
-      liveAnalysis: this.liveAnalysis,
-      analysisPrimary: this.analysisPrimaryResults,
-      analysisExtras: this.analysisExtraResults,
+      liveAnalysis: this.localPriceMode ? null : this.liveAnalysis,
+      analysisPrimary: this.localPriceMode ? [] : this.analysisPrimaryResults,
+      analysisExtras: this.localPriceMode ? [] : this.analysisExtraResults,
       showAnalysisExtras: this.showAnalysisExtras,
       showcaseResults: this.showcaseResults,
       showShowcaseResults: this.showShowcaseResults,
@@ -5916,6 +5964,10 @@ Please share payment details and license key.`;
       staticPromoHubActive: this.shouldShowStaticPromoWorkspace(),
       localPriceMode: this.localPriceMode,
       localPriceProfile: this.localPriceProfile,
+      livePricedResults:
+        this.lastLivePricedResults?.length
+          ? this.lastLivePricedResults
+          : this._liveLearnResults,
     };
   }
 
