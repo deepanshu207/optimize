@@ -219,18 +219,24 @@ const LocalPriceDB = {
   getLowestTierLearnedStats(catId) {
     const profile = this.getCategoryProfile(catId);
     if (!profile.hasData) return null;
-
     const lowest =
       profile.recommendedPrices?.[0] || profile.tiers?.[0] || null;
     if (!lowest) return null;
+    return this.getTierLearnedStats(catId, lowest);
+  },
+
+  /** Fingerprints + KB/est stats for one live shipping tier (e.g. ₹59 vs ₹60). */
+  getTierLearnedStats(catId, tierPrice) {
+    const tier = Number(tierPrice);
+    if (!tier || !catId) return null;
 
     const fps = this._readFingerprints().filter(
       (f) =>
         f.cat === String(catId) &&
-        (Number(f.shipping) === Number(lowest) || f.recommended),
+        Number(f.shipping) === tier,
     );
     const entries = this._read().filter(
-      (e) => e.cat === String(catId) && Number(e.price) === Number(lowest),
+      (e) => e.cat === String(catId) && Number(e.price) === tier,
     );
 
     const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
@@ -254,8 +260,11 @@ const LocalPriceDB = {
       ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)]
       : null;
 
+    if (!fps.length && !entries.length) return null;
+
     return {
-      lowestShipping: lowest,
+      tierShipping: tier,
+      lowestShipping: tier,
       fingerprintCount: fps.length,
       historyCount: entries.length,
       minEst,
@@ -287,6 +296,13 @@ const LocalPriceDB = {
 
     this.saveFingerprints(priced, catId, "live", 0);
 
+    priced.forEach((v) => {
+      const ship = Number(v.shippingCost);
+      if (ship > 0) {
+        this.saveFingerprints([v], catId, `live_tier_${ship}`, ship);
+      }
+    });
+
     const atLowest = priced.filter(
       (v) => Number(v.shippingCost) === Number(lowest),
     );
@@ -297,6 +313,21 @@ const LocalPriceDB = {
     const uniquePrices = [...new Set(priced.map((v) => Number(v.shippingCost)))]
       .filter((p) => p > 0)
       .sort((a, b) => a - b);
+
+    const mergedTiers = [...new Set([
+      ...(this.getCategoryProfile(catId).tiers || []),
+      ...uniquePrices,
+    ])]
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    const strategyPick = pickLocalStrategy(mergedTiers);
+
+    strategyPick.recommendedPrices.forEach((tier) => {
+      const atTier = priced.filter((v) => Number(v.shippingCost) === Number(tier));
+      if (atTier.length) {
+        this.saveFingerprints(atTier, catId, `live_rec_${tier}`, tier);
+      }
+    });
     const reports = this._readReports();
     reports.push({
       ts: Date.now(),
@@ -304,15 +335,14 @@ const LocalPriceDB = {
       categoryName: context.categoryName || "",
       categoryPath: context.categoryPath || "",
       source: "live_learn",
-      strategy: profile.strategy || pickLocalStrategy(uniquePrices).strategy,
+      strategy: strategyPick.strategy,
       strategyReason:
         context.learnNote ||
-        `Learned from ${priced.length} live variants (${atLowest.length} at ₹${lowest}).`,
+        `Learned from ${priced.length} live variants (${atLowest.length} at ₹${lowest}). ${strategyPick.reason}`,
       uniquePrices,
-      recommendedPrices:
-        profile.recommendedPrices?.length
-          ? profile.recommendedPrices
-          : [lowest],
+      recommendedPrices: strategyPick.recommendedPrices.length
+        ? strategyPick.recommendedPrices
+        : [lowest],
       variantCount: priced.length,
       variantSnapshots: priced.map((v) => ({
         shippingCost: v.shippingCost,
@@ -350,7 +380,7 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
-  scoreVariantForLocalPick(v, catId, profile) {
+  scoreVariantForLocalPick(v, catId, profile, tierPrice = null) {
     const est = this.estOf(v);
     const kb =
       Number(v.meta?.kb || 0) ||
@@ -360,7 +390,9 @@ const LocalPriceDB = {
     ).toLowerCase();
 
     let score = 1000 - est;
-    const stats = this.getLowestTierLearnedStats(catId);
+    const stats = tierPrice
+      ? this.getTierLearnedStats(catId, tierPrice)
+      : this.getLowestTierLearnedStats(catId);
 
     if (stats) {
       if (stats.minEst != null && est <= stats.minEst + stats.estTolerance) {
@@ -375,7 +407,9 @@ const LocalPriceDB = {
       if (Number(v.shippingCost) === Number(stats.lowestShipping)) {
         score += 25;
       }
-      if (this.matchesLiveLowestPattern(v, catId)) {
+      if (tierPrice && this.matchesTierPattern(v, catId, tierPrice)) {
+        score += 55;
+      } else if (!tierPrice && this.matchesLiveLowestPattern(v, catId)) {
         score += 45;
       }
     } else if (profile?.recommendedPrices?.length) {
@@ -383,6 +417,57 @@ const LocalPriceDB = {
     }
 
     return score;
+  },
+
+  matchesTierPattern(v, catId, tierPrice) {
+    const stats = this.getTierLearnedStats(catId, tierPrice);
+    if (!stats?.fingerprintCount) return false;
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+    const kbOk =
+      stats.medianKb && kb > 0 && Math.abs(kb - stats.medianKb) <= 18;
+    const styleOk =
+      stats.dominantStyle &&
+      style.includes(String(stats.dominantStyle).toLowerCase());
+    return kbOk && styleOk;
+  },
+
+  pickVariantForTier(variants, catId, tierPrice, excludeIds = new Set()) {
+    const profile = this.getCategoryProfile(catId);
+    const candidates = (variants || []).filter(
+      (v) => !excludeIds.has(String(v.variantId || "")),
+    );
+    if (!candidates.length) return null;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const v of candidates) {
+      const score = this.scoreVariantForLocalPick(v, catId, profile, tierPrice);
+      if (score > bestScore) {
+        bestScore = score;
+        best = v;
+      }
+    }
+    return best;
+  },
+
+  buildTierTargets(profile, count) {
+    const rec =
+      profile?.recommendedPrices?.length
+        ? profile.recommendedPrices
+        : profile?.tiers?.length
+          ? [profile.tiers[0]]
+          : [];
+    if (!rec.length) return [];
+    const targets = [];
+    for (let i = 0; i < count; i++) {
+      targets.push(rec[i % rec.length]);
+    }
+    return targets;
   },
 
   /**
@@ -436,7 +521,7 @@ const LocalPriceDB = {
 
   poolSizeForPickCount(pickCount) {
     const n = this.clampPickCount(pickCount);
-    return Math.min(20, Math.max(12, n * 3));
+    return Math.min(24, Math.max(16, n * 4));
   },
 
   /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
@@ -596,14 +681,12 @@ const LocalPriceDB = {
       categoryId: id,
       tiers,
       tierCounts,
-      strategy: latest?.strategy || strategyPick.strategy,
-      strategyReason: latest?.strategyReason || strategyPick.reason,
-      recommendedPrices:
-        latest?.recommendedPrices?.length
-          ? latest.recommendedPrices
-          : strategyPick.recommendedPrices,
+      strategy: strategyPick.strategy,
+      strategyReason: strategyPick.reason,
+      recommendedPrices: strategyPick.recommendedPrices,
       runCount: reports.length,
       hasData: tiers.length > 0,
+      latestReportTs: latest?.ts || 0,
     };
   },
 
@@ -798,7 +881,7 @@ const LocalPriceDB = {
   },
 
   /**
-   * Pick 2–10 variants matching saved lowest-shipping patterns + static est band.
+   * Pick 2–10 variants: one per recommended live tier (e.g. ₹59 + ₹60), learned from history.
    */
   buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT) {
     const profile = this.getCategoryProfile(catId);
@@ -807,42 +890,66 @@ const LocalPriceDB = {
 
     if (!sorted.length) return [];
 
-    const lowestTier =
-      profile.recommendedPrices?.[0] ||
-      profile.tiers?.[0] ||
-      this.estOf(sorted[0]);
+    const tierTargets = this.buildTierTargets(profile, count);
+    const recommendedSet = new Set(
+      (profile.recommendedPrices || []).map((p) => Number(p)),
+    );
+    const picked = [];
+    const seen = new Set();
 
-    if (
-      profile.strategy === "rupee_pair" &&
-      profile.recommendedPrices.length >= 2 &&
-      count >= 2
-    ) {
-      const [low, high] = profile.recommendedPrices;
-      const learned = this.pickLearnedVariants(variants, catId, count);
-      const picks = [];
-      const lowPick = learned[0];
-      if (lowPick) picks.push(this._tagLocalVariant(lowPick, low, true));
-      const highPick =
-        learned.find((v) => v.variantId !== lowPick?.variantId) || learned[1];
-      if (highPick && count > 1) {
-        picks.push(this._tagLocalVariant(highPick, high, true));
-      }
-      for (let i = 2; i < learned.length && picks.length < count; i++) {
-        const v = learned[i];
-        if (v.variantId === lowPick?.variantId || v.variantId === highPick?.variantId) {
-          continue;
+    if (tierTargets.length && profile.hasData) {
+      for (const tier of tierTargets) {
+        if (picked.length >= count) break;
+        let v = this.pickVariantForTier(sorted, catId, tier, seen);
+        if (!v) {
+          const pool = sorted.filter((x) => !seen.has(String(x.variantId || "")));
+          const fallback = this.pickLearnedVariants(pool, catId, 1);
+          v = fallback[0];
         }
-        picks.push(this._tagLocalVariant(v, low, true));
+        if (!v) continue;
+        const id = String(v.variantId || "");
+        if (id && seen.has(id)) continue;
+        const recommended = recommendedSet.has(Number(tier));
+        picked.push(this._tagLocalVariant(v, tier, recommended));
+        if (id) seen.add(id);
       }
-      return picks.slice(0, count);
     }
 
-    const learned = this.pickLearnedVariants(variants, catId, count);
-    if (!profile.hasData) {
-      return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
+    if (picked.length < count) {
+      const remaining = sorted.filter((x) => !seen.has(String(x.variantId || "")));
+      const learned = this.pickLearnedVariants(remaining, catId, count - picked.length);
+      const fallbackTier =
+        profile.recommendedPrices?.[0] ||
+        profile.tiers?.[0] ||
+        this.estOf(sorted[0]);
+      for (const v of learned) {
+        if (picked.length >= count) break;
+        const id = String(v.variantId || "");
+        if (id && seen.has(id)) continue;
+        picked.push(
+          this._tagLocalVariant(
+            v,
+            profile.hasData ? fallbackTier : this.estOf(v),
+            true,
+          ),
+        );
+        if (id) seen.add(id);
+      }
     }
 
-    return learned.map((v) => this._tagLocalVariant(v, lowestTier, true));
+    if (!picked.length) {
+      const learned = this.pickLearnedVariants(sorted, catId, count);
+      if (!profile.hasData) {
+        return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
+      }
+      const tier =
+        profile.recommendedPrices?.[0] ||
+        profile.tiers?.[0] ||
+        this.estOf(sorted[0]);
+      return learned.map((v) => this._tagLocalVariant(v, tier, true));
+    }
+
+    return picked.slice(0, count);
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -4802,7 +4909,23 @@ Please share payment details and license key.`;
             }
           },
           () => this.shouldStop,
-          { livePatternOnly: true },
+          {
+            livePatternOnly: true,
+            variantOptions: (i) => {
+              if (!profile.hasData) {
+                return i % 2 === 0 ? { lowBias: true } : null;
+              }
+              if (
+                profile.strategy === "rupee_pair" &&
+                profile.recommendedPrices.length >= 2
+              ) {
+                if (i % 3 === 0) return { ultraLow: true };
+                if (i % 3 === 1) return { lowBias: true };
+                return null;
+              }
+              return i % 2 === 0 ? { lowBias: true } : null;
+            },
+          },
         );
         if (result?.success) {
           rawResults = result.results || [];
@@ -4833,11 +4956,19 @@ Please share payment details and license key.`;
       this.currentResults = display;
 
       const recPrices = profile.recommendedPrices || [];
+      const pickedTiers = [...new Set(
+        display.map((d) => d.localEstShipping).filter((p) => Number(p) > 0),
+      )].sort((a, b) => a - b);
       const bestStatic = display[0]?.meta?.staticEst ?? display[0]?.estShipping ?? "—";
-      const bestLive = display[0]?.localEstShipping || recPrices[0] || "—";
+      const liveRec =
+        pickedTiers.length
+          ? pickedTiers.map((t) => `₹${t}`).join(" + ")
+          : recPrices.length
+            ? recPrices.map((t) => `₹${t}`).join(" + ")
+            : "—";
       OptimizerUtils.showNotification(
         profile.hasData
-          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ₹${bestLive}`
+          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ${liveRec}`
           : `📍 ${display.length} picks (static est only — import CSV for live tier)`,
         "success",
         8000,
