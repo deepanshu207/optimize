@@ -833,19 +833,30 @@ const LocalPriceDB = {
     };
   },
 
-  /** Tag a variant with learned live tier — keeps static analysis est separate. */
+  /** Lowest live-learned tier for category (never static file est). */
+  resolveLearnedTier(catId, profile = null) {
+    const p = profile || this.getCategoryProfile(catId);
+    if (p?.recommendedPrices?.length) {
+      return Math.min(...p.recommendedPrices.map((x) => Number(x)).filter((n) => n > 0));
+    }
+    if (p?.tiers?.length) {
+      return Math.min(...p.tiers.map((x) => Number(x)).filter((n) => n > 0));
+    }
+    return 0;
+  },
+
+  /** Tag local pick — no shipping ₹ on cards (not live-verified). */
   _tagLocalVariant(v, tierPrice, recommended) {
-    const tier = Number(tierPrice);
-    const staticEst = this.estOf(v);
+    const profileTier = Number(tierPrice);
     const learnedTier =
-      tier > 0 && tier < 900 ? tier : 0;
+      profileTier > 0 && profileTier < 900 ? profileTier : 0;
+    const staticEst = this.estOf(v);
     const tagged = {
       ...v,
       localEstShipping: learnedTier,
       localRecommended: recommended,
       estShipping: staticEst,
-      // Show learned category tier on cards (not static KB est).
-      shippingCost: learnedTier,
+      shippingCost: 0,
       isVerified: false,
       liveVerified: false,
       localOnly: true,
@@ -853,7 +864,7 @@ const LocalPriceDB = {
         ...(v.meta || {}),
         localPrice: true,
         localTier: learnedTier,
-        localEstimated: true,
+        localEstimated: false,
         staticEst,
         estInr: staticEst,
       },
@@ -863,8 +874,8 @@ const LocalPriceDB = {
         ...tagged._frozenPricing,
         estShipping: staticEst,
         metaEstInr: staticEst,
-        shippingCost: learnedTier,
-        localTier: learnedTier,
+        shippingCost: 0,
+        localTier: learnedTier > 0 ? learnedTier : undefined,
       };
     }
     return tagged;
@@ -1034,10 +1045,13 @@ const LocalPriceDB = {
   buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, analysisPrimary = null) {
     const profile = this.getCategoryProfile(catId);
     const count = this.clampPickCount(pickCount);
-    const sorted = this.sortVariantsStable(variants);
+    const sortedAll = this.sortVariantsStable(variants);
+    const lowBand = this.filterLowEstBand(sortedAll);
+    const sorted = lowBand.length ? lowBand : sortedAll;
 
     if (!sorted.length) return [];
 
+    const learnedTier = this.resolveLearnedTier(catId, profile);
     const tierTargets = this.buildTierTargets(profile, count);
     const recommendedSet = new Set(
       (profile.recommendedPrices || []).map((p) => Number(p)),
@@ -1077,10 +1091,6 @@ const LocalPriceDB = {
         count - picked.length,
         analysisPrimary,
       );
-      const fallbackTier =
-        profile.recommendedPrices?.[0] ||
-        profile.tiers?.[0] ||
-        this.estOf(sorted[0]);
       for (const v of learned) {
         if (picked.length >= count) break;
         const id = String(v.variantId || "");
@@ -1088,7 +1098,7 @@ const LocalPriceDB = {
         picked.push(
           this._tagLocalVariant(
             v,
-            profile.hasData ? fallbackTier : this.estOf(v),
+            learnedTier,
             true,
           ),
         );
@@ -1098,17 +1108,10 @@ const LocalPriceDB = {
 
     if (!picked.length) {
       const learned = this.pickLearnedVariants(sorted, catId, count, analysisPrimary);
-      if (!profile.hasData) {
-        return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
-      }
-      const tier =
-        profile.recommendedPrices?.[0] ||
-        profile.tiers?.[0] ||
-        this.estOf(sorted[0]);
-      return learned.map((v) => this._tagLocalVariant(v, tier, true));
+      return learned.map((v) => this._tagLocalVariant(v, learnedTier, true));
     }
 
-    return picked.slice(0, count);
+    return this.sortVariantsStable(picked).slice(0, count);
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -5270,7 +5273,7 @@ Please share payment details and license key.`;
       display.forEach((row) =>
         this.freezeRowPricing(row, {
           estShipping: row.meta?.staticEst ?? row.estShipping,
-          shippingCost: row.localEstShipping || row.meta?.localTier || 0,
+          shippingCost: 0,
           pricingImageUrl: row.pricingImageUrl,
           dataUrl: row.dataUrl,
           meta: row.meta,
@@ -5279,21 +5282,15 @@ Please share payment details and license key.`;
 
       this.currentResults = display;
 
-      const recPrices = profile.recommendedPrices || [];
-      const pickedTiers = [...new Set(
-        display.map((d) => d.localEstShipping).filter((p) => Number(p) > 0),
-      )].sort((a, b) => a - b);
-      const bestStatic = display[0]?.meta?.staticEst ?? display[0]?.estShipping ?? "—";
-      const liveRec =
-        pickedTiers.length
-          ? pickedTiers.map((t) => `₹${t}`).join(" + ")
-          : recPrices.length
-            ? recPrices.map((t) => `₹${t}`).join(" + ")
-            : "—";
+      const bestKb =
+        display[0]?.meta?.kb ||
+        (display[0]?.blob?.size
+          ? Math.ceil(display[0].blob.size / 1024)
+          : "—");
       OptimizerUtils.showNotification(
         profile.hasData
-          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ${liveRec}`
-          : `📍 ${display.length} picks (analysis est — run live once to lock tiers)`,
+          ? `📍 ${display.length} local picks (lowest file weight ~${bestKb}KB) — run Live to confirm Meesho shipping`
+          : `📍 ${display.length} local picks — run Live once on this category`,
         "success",
         8000,
       );
@@ -6089,12 +6086,12 @@ Please share payment details and license key.`;
   }
 
   getRowDisplayShipping(row) {
+    if (row?.localOnly || row?.meta?.localPrice) {
+      return { amount: 0, verified: false, localOnly: true };
+    }
     const localTier =
       Number(row?.localEstShipping || row?.meta?.localTier || 0) ||
       Number(row?._frozenPricing?.localTier || 0);
-    if (localTier > 0 && (row?.localOnly || row?.meta?.localPrice)) {
-      return { amount: localTier, verified: false, localTier: true };
-    }
     const frozen = row?._frozenPricing;
     if (frozen) {
       if (frozen.shippingCost > 0) {
