@@ -3076,6 +3076,60 @@ const MeeshoAPI = {
       }
     }
 
+    // KB cap too tight — fill pool with standard variants (no untested ultra modes).
+    if (results.length < targetPool && maxKb && livePatternOnly) {
+      let relaxAttempts = 0;
+      const relaxMax = Math.max(targetPool * 4, 12);
+      while (results.length < targetPool && relaxAttempts < relaxMax) {
+        relaxAttempts++;
+        if (shouldStopFn && shouldStopFn()) break;
+        if (onProgress) onProgress(results.length, targetPool, null, 0);
+        try {
+          const genOpts =
+            typeof options.variantOptions === "function"
+              ? options.variantOptions(relaxAttempts + attempts)
+              : options.variantOptions || null;
+          const variation = await this.generateVariation(
+            originalBlob,
+            attempts + relaxAttempts,
+            null,
+            genOpts,
+          );
+          if (!variation?.dataUrl) continue;
+          const kb = variation.blob?.size
+            ? Math.max(1, Math.ceil(variation.blob.size / 1024))
+            : 0;
+          const est = this.roughEstShippingFromBlob(variation.blob);
+          const rank = results.length + 1;
+          results.push({
+            name: "Var-" + rank,
+            dataUrl: variation.dataUrl,
+            layers: variation.layers,
+            pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
+            variantStyle: variation.variantStyle || "standard",
+            blob: variation.blob || null,
+            meta: {
+              ...(variation.meta || {}),
+              path: "standard",
+              style: "standard",
+              kb,
+              staticEst: est,
+              estInr: 0,
+              rank,
+              attempt: attempts + relaxAttempts,
+              kbRelaxed: true,
+            },
+            estShipping: 0,
+            shippingCost: 0,
+            isVerified: false,
+            localOnly: true,
+          });
+        } catch (e) {
+          console.error("Relaxed variation", relaxAttempts, "failed:", e);
+        }
+      }
+    }
+
     const framedExtras = [];
     if (
       !livePatternOnly &&

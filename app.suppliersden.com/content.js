@@ -152,7 +152,6 @@ const LocalPriceDB = {
     const anchorKb =
       stats.medianKb ||
       (kbs.length ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)] : null);
-    if (!anchorKb) return null;
 
     const borders = fps
       .map((f) => Number(f.borderPx))
@@ -162,12 +161,14 @@ const LocalPriceDB = {
       (borders.length
         ? borders.sort((a, b) => a - b)[Math.floor(borders.length / 2)]
         : null);
-    const maxKb = Math.min(Math.ceil(anchorKb * 1.12), anchorKb + 6);
+    const maxKb = anchorKb
+      ? Math.min(Math.ceil(anchorKb * 1.12), anchorKb + 6)
+      : null;
     const borderMax = medianBorder || null;
     const borderMin = borderMax ? Math.max(8, borderMax - 6) : null;
 
     return {
-      anchorKb,
+      anchorKb: anchorKb || null,
       maxKb,
       borderMin,
       borderMax,
@@ -176,8 +177,20 @@ const LocalPriceDB = {
     };
   },
 
+  /** Category has live-learned reports, history, or fingerprints (price tiers from Meesho). */
+  hasCategoryLiveLearn(catId) {
+    const id = String(catId || "");
+    if (!id) return false;
+    const profile = this.getCategoryProfile(id);
+    if (!profile.hasData) return false;
+    const fps = this._readFingerprints().filter((f) => f.cat === id);
+    if (fps.length) return true;
+    const entries = this._read().filter((e) => e.cat === id);
+    return entries.length > 0;
+  },
+
   hasLiveTierLearned(catId, tierPrice) {
-    return this.getEmpiricalTierProfile(catId, tierPrice) != null;
+    return this.getTierLearnedStats(catId, tierPrice) != null;
   },
 
   enrichVariantFromLiveTier(v, catId = "") {
@@ -603,6 +616,14 @@ const LocalPriceDB = {
       const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
       if (kbs.length) return Math.min(...kbs);
     }
+    const profile = this.getCategoryProfile(catId);
+    const rec = (profile.recommendedPrices || []).map((p) => Number(p)).filter((p) => p > 0);
+    const catFps = this._readFingerprints().filter((f) => f.cat === String(catId));
+    const recKbs = catFps
+      .filter((f) => !rec.length || rec.includes(Number(f.shipping)))
+      .map((f) => Number(f.kb))
+      .filter((k) => k > 0);
+    if (recKbs.length) return Math.min(...recKbs);
     const tierProf = this.getEmpiricalTierProfile(catId, tier);
     if (tierProf?.anchorKb) return tierProf.anchorKb;
     return null;
@@ -614,17 +635,24 @@ const LocalPriceDB = {
     const tier = this.resolveLearnedTier(id);
     if (!tier) return null;
     const stats = this.getTierLearnedStats(id, tier);
-    const tierProf = this.getEmpiricalTierProfile(id, tier);
-    if (!stats || !tierProf) return null;
+    if (!stats) return null;
 
+    const lowest = this.getLowestTierLearnedStats(id);
+    const tierProf = this.getEmpiricalTierProfile(id, tier);
     const anchorKb =
       stats.medianKb ||
-      tierProf.anchorKb ||
-      this.resolveLiveAnchorKb(id, null, tier);
-    const maxKb = tierProf.maxKb || (anchorKb ? anchorKb + 6 : null);
-    const borderMax = stats.medianBorder ?? tierProf.borderMax ?? null;
+      tierProf?.anchorKb ||
+      this.resolveLiveAnchorKb(id, null, tier) ||
+      lowest?.medianKb ||
+      null;
+    const maxKb =
+      anchorKb != null
+        ? tierProf?.maxKb || Math.min(Math.ceil(anchorKb * 1.12), anchorKb + 6)
+        : null;
+    const borderMax =
+      stats.medianBorder ?? tierProf?.borderMax ?? lowest?.medianBorder ?? null;
     const borderMin =
-      tierProf.borderMin ||
+      tierProf?.borderMin ||
       (borderMax ? Math.max(8, borderMax - 6) : null);
 
     return {
@@ -637,8 +665,8 @@ const LocalPriceDB = {
       lowBias: false,
       borderMin,
       borderMax,
-      badgeCount: tierProf.badgeCount ?? 0,
-      kbTolerance: 5,
+      badgeCount: tierProf?.badgeCount ?? 0,
+      kbTolerance: anchorKb != null ? 5 : null,
       liveTested: true,
     };
   },
@@ -5542,10 +5570,11 @@ Please share payment details and license key.`;
       const sessionLearned =
         targetTier &&
         LocalPriceDB.hasLiveTierLearned(effectiveCatId, targetTier);
+      const categoryLearned = LocalPriceDB.hasCategoryLiveLearn(effectiveCatId);
 
-      if (!sessionLearned && !sessionRefs.length) {
+      if (!sessionRefs.length && !sessionLearned && !categoryLearned) {
         OptimizerUtils.showNotification(
-          "Run Live generate first — local only copies Meesho-tested variants (no untested tiers)",
+          "Run Live generate first — local needs Meesho-tested tiers for this category",
           "error",
           8000,
         );
@@ -5585,7 +5614,14 @@ Please share payment details and license key.`;
               borderMax: refBorder || null,
               badgeCount: 0,
             }
-          : null;
+          : categoryLearned
+            ? {
+                maxKb: null,
+                borderMin: null,
+                borderMax: null,
+                badgeCount: 0,
+              }
+            : null;
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5615,11 +5651,12 @@ Please share payment details and license key.`;
                 maxKb: genHints?.maxKb ?? null,
                 variantOptions: () => {
                   if (!genHints) return {};
-                  return {
-                    borderMin: genHints.borderMin,
-                    borderMax: genHints.borderMax,
-                    badgeCount: genHints.badgeCount ?? 0,
-                  };
+                  const opts = { badgeCount: genHints.badgeCount ?? 0 };
+                  if (genHints.borderMin != null && genHints.borderMax != null) {
+                    opts.borderMin = genHints.borderMin;
+                    opts.borderMax = genHints.borderMax;
+                  }
+                  return opts;
                 },
               },
             ).catch((e) => {
