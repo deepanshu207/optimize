@@ -96,7 +96,17 @@ function isClothRelatedCategory(cat) {
   return false;
 }
 
+function isWomenClothRelatedCategory(cat) {
+  if (!cat) return false;
+  const root = String(cat.rootName || "");
+  const section = String(cat.sectionName || "");
+  if (root === "Women Fashion") return true;
+  if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+  return false;
+}
+
 const clothRelatedCount = categories.filter(isClothRelatedCategory).length;
+const womenClothRelatedCount = categories.filter(isWomenClothRelatedCategory).length;
 
 const SHARED_METHODS = `
   parseTree(raw) {
@@ -189,6 +199,48 @@ const SHARED_METHODS = `
 
   getClothRelatedList() {
     return this.getClothRelatedFromList(this.getList());
+  },
+
+  isWomenClothRelatedCategory(cat) {
+    if (!cat) return false;
+    const root = String(cat.rootName || "");
+    const section = String(cat.sectionName || "");
+    if (root === "Women Fashion") return true;
+    if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+    return false;
+  },
+
+  getWomenClothRelatedFromList(sourceList) {
+    const list = sourceList || this.getList();
+    const SECTION_ORDER = [
+      "Ethnic Wear",
+      "Western Wear",
+      "Women Ethnic Wear",
+      "Women Western Wear",
+      "Inner & Sleepwear",
+      "Women Inner & Sleep Wear",
+      "Footwear",
+      "Sports & Activewear",
+      "Accessories",
+      "Maternity",
+    ];
+    return list
+      .filter((c) => this.isWomenClothRelatedCategory(c))
+      .sort((a, b) => {
+        const sa = String(a.sectionName || "");
+        const sb = String(b.sectionName || "");
+        const ia = SECTION_ORDER.indexOf(sa);
+        const ib = SECTION_ORDER.indexOf(sb);
+        if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        const pa = String(a.parentName || "");
+        const pb = String(b.parentName || "");
+        if (pa !== pb) return pa.localeCompare(pb);
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  },
+
+  getWomenClothRelatedList() {
+    return this.getWomenClothRelatedFromList(this.getList());
   },
 
   getDefaultListFrom(sourceList, limit) {
@@ -332,6 +384,7 @@ const MeeshoCategories = {
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
   CLOTH_RELATED_COUNT: ${clothRelatedCount},
+  WOMEN_CLOTH_RELATED_COUNT: ${womenClothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: ${JSON.stringify(categories)},
   _list: null,
@@ -352,6 +405,7 @@ const MeeshoCategories = {
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
   CLOTH_RELATED_COUNT: ${clothRelatedCount},
+  WOMEN_CLOTH_RELATED_COUNT: ${womenClothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: [],
   _list: null,
