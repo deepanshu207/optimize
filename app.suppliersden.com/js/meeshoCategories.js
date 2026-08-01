@@ -76,14 +76,15 @@ const MeeshoCategories = {
     return false;
   },
 
-  getClothRelatedList() {
+  getClothRelatedFromList(sourceList) {
+    const list = sourceList || this.getList();
     const ROOT_ORDER = {
       "Women Fashion": 0,
       "Men Fashion": 1,
       Women: 2,
       "Kids & Toys": 3,
     };
-    return this.getList()
+    return list
       .filter((c) => this.isClothRelatedCategory(c))
       .sort((a, b) => {
         const ra = ROOT_ORDER[a.rootName] ?? 99;
@@ -99,10 +100,14 @@ const MeeshoCategories = {
       });
   },
 
-  getDefaultList(limit) {
-    const cloth = this.getClothRelatedList();
+  getClothRelatedList() {
+    return this.getClothRelatedFromList(this.getList());
+  },
+
+  getDefaultListFrom(sourceList, limit) {
+    const cloth = this.getClothRelatedFromList(sourceList);
     if (!cloth.length) {
-      const list = this.getList();
+      const list = sourceList || this.getList();
       const cap = limit && limit > 0 ? limit : 50;
       return list.slice(0, cap);
     }
@@ -110,6 +115,10 @@ const MeeshoCategories = {
       return cloth.slice(0, limit);
     }
     return cloth;
+  },
+
+  getDefaultList(limit) {
+    return this.getDefaultListFrom(this.getList(), limit);
   },
 
   getDefaultCategoryId() {
@@ -121,10 +130,15 @@ const MeeshoCategories = {
     return women?.id || list[0]?.id || null;
   },
 
-  findById(id) {
+  findByIdInList(id, sourceList) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return this.getList().find((c) => c.id === parsed) || null;
+    const list = sourceList || this.getList();
+    return list.find((c) => c.id === parsed) || null;
+  },
+
+  findById(id) {
+    return this.findByIdInList(id, this.getList());
   },
 
   normalizeSearchText(text) {
@@ -136,14 +150,14 @@ const MeeshoCategories = {
       .trim();
   },
 
-  search(query, limit = 100) {
+  searchInList(query, sourceList, limit = 100) {
     const raw = String(query || "").trim();
     if (!raw) return [];
 
-    const list = this.getList();
+    const list = sourceList || this.getList();
     const idOnly = raw.match(/^\d{3,6}$/);
     if (idOnly) {
-      const exact = this.findById(idOnly[0]);
+      const exact = this.findByIdInList(idOnly[0], list);
       return exact ? [exact] : [];
     }
 
@@ -173,6 +187,10 @@ const MeeshoCategories = {
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit).map((row) => row.cat);
+  },
+
+  search(query, limit = 100) {
+    return this.searchInList(query, this.getList(), limit);
   },
 
   findByLabel(label) {
