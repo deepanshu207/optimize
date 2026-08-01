@@ -531,14 +531,17 @@ const OptimizerUI = {
       r.meta?.estInr ??
       r.estShipping ??
       0;
-    const liveTier = r.localEstShipping || r.meta?.localTier || 0;
+    const kbLabel =
+      r.meta?.kb ||
+      (r.blob?.size ? Math.ceil(r.blob.size / 1024) : null);
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
-    const priceLabel =
-      localPriceMode && liveTier > 0
-        ? `₹${liveTier}`
-        : localPriceMode && staticEst > 0
-        ? "est ₹" + staticEst
-        : testLabMode || analysisMode
+    const priceLabel = localPriceMode
+      ? kbLabel
+        ? `${kbLabel} KB`
+        : isLocalPick
+          ? "Local pick"
+          : "Local"
+      : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
         : "est ₹" + staticEst
@@ -581,6 +584,8 @@ const OptimizerUI = {
       ? `<div style="font-size:8px;color:#047857;margin-bottom:2px;">product only · ${r.meta?.kb || "?"}KB</div>`
       : r.variantStyle === "analysis" || r.analysisMode
       ? `<div style="font-size:8px;color:#2563eb;margin-bottom:2px;">${r.meta?.path || "analysis"} · ${r.meta?.kb || "?"}KB</div>`
+      : localPriceMode
+      ? `<div style="font-size:8px;color:#047857;margin-bottom:2px;">${r.meta?.path || "standard"} · ${kbLabel || "?"}KB</div>`
       : r.noPid
       ? `<div style="font-size:8px;color:#b45309;margin-bottom:2px;">no PID · kept</div>`
       : "";
@@ -624,8 +629,8 @@ const OptimizerUI = {
                     ${
                       analysisMode
                         ? '<div style="font-size:8px;color:#2563eb;font-weight:600;">static est</div>'
-                        : localPriceMode && liveTier > 0
-                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">learned tier · verify on Meesho</div>'
+                        : localPriceMode
+                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">not live — verify on Meesho</div>'
                         : testLabMode && r.shippingCost > 0
                         ? '<div style="font-size:8px;color:#047857;font-weight:600;">✓ live Meesho</div>'
                         : testLabMode && r.liveChecked
@@ -633,16 +638,8 @@ const OptimizerUI = {
                         : ""
                     }
                     ${
-                      savings > 0
+                      savings > 0 && !localPriceMode
                         ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
-                        : ""
-                    }
-                    ${
-                      localPriceMode &&
-                      liveTier > 0 &&
-                      staticEst > 0 &&
-                      staticEst !== liveTier
-                        ? `<div style="font-size:8px;color:#6b7280;">file analysis est ₹${staticEst}</div>`
                         : ""
                     }
                     ${
@@ -1083,23 +1080,18 @@ const OptimizerUI = {
 
     if (localPriceMode && results.length > 0) {
       const best = results[0];
-      const bestStatic = best.meta?.staticEst ?? best.estShipping ?? "—";
-      const bestLive = best.localEstShipping || localProfile?.recommendedPrices?.[0] || "—";
-      const recPrices = localProfile?.recommendedPrices || [];
-      const tierText = localProfile?.tiers?.length
-        ? `learned tiers ₹${localProfile.tiers.join(", ")}`
-        : "static analysis only";
+      const bestKb =
+        best.meta?.kb ||
+        (best.blob?.size ? Math.ceil(best.blob.size / 1024) : "—");
+      const tierText = localProfile?.hasData
+        ? "matched to your live history for this category"
+        : "run Live once to learn this category";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local Price (no live API check)</div>
-                <div style="font-size:22px;font-weight:700;color:#047857;">₹${bestLive}${bestStatic !== "—" && bestStatic !== bestLive ? ` <span style="font-size:12px;color:#6b7280;">(file est ₹${bestStatic})</span>` : ""}</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} picks · ${tierText}</div>
-                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Static est varies by file KB, frame & badges. Learned live tier is same for category.</div>
-                ${
-                  recPrices.length
-                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Upload on Meesho at ₹${recPrices.join(" + ₹")}</div>`
-                    : ""
-                }
+                <div style="font-size:11px;color:#047857;">📍 Local variants (no live price check)</div>
+                <div style="font-size:22px;font-weight:700;color:#047857;">${results.length} picks · ~${bestKb} KB</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">Lowest file weight first · ${tierText}</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Shipping is not shown here — only Live generate returns real Meesho ₹.</div>
                 ${
                   localProfile?.strategyReason
                     ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`
