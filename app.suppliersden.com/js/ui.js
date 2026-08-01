@@ -124,7 +124,7 @@ const OptimizerUI = {
     return `
                     <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
-                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers</p>
+                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Run live generate first → auto-learns lowest shipping for better local picks</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <label style="font-size:10px;color:#047857;flex:1;">Variants to show</label>
                             <select id="local-price-pick-count" class="opt-select" style="flex:1;font-size:12px;padding:6px 8px;">
@@ -1296,12 +1296,17 @@ const OptimizerUI = {
       localPriceMode && results.length > 0
         ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
         : "";
+    const liveFromLocalBtn =
+      localPriceMode && results.length > 0
+        ? `<button id="generate-live-from-results-btn" class="opt-btn opt-btn-primary" style="width:100%;padding:12px;margin-bottom:8px;font-size:13px;font-weight:700;">🚀 Generate Live Variants (learn for local)</button>`
+        : "";
     const reportBtn =
       hasLive && livePricedCount > 0 && !localPriceMode
         ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
         : "";
 
     html += `
+            ${liveFromLocalBtn}
             ${localCsvBtn}
             ${reportBtn}
             <div style="display:flex;gap:8px;">

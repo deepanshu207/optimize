@@ -234,6 +234,10 @@ const LocalPriceDB = {
     );
 
     const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
+    entries.forEach((e) => {
+      const kb = Number(e.kb);
+      if (kb > 0) kbs.push(kb);
+    });
     const ests = fps.map((f) => Number(f.est)).filter((e) => e > 0 && e < 900);
     const styles = fps.map((f) => f.style).filter(Boolean);
     const dominantStyle = styles.length
@@ -265,6 +269,87 @@ const LocalPriceDB = {
     };
   },
 
+  /** Learn from a live generate run — tiers, KB/style fingerprints, report snapshot. */
+  learnFromLiveVariants(variants, context = {}) {
+    const catId = String(context.categoryId || "");
+    if (!catId || !variants?.length) return { learned: 0, lowest: 0, lowestCount: 0 };
+
+    const priced = variants.filter((v) => Number(v.shippingCost) > 0);
+    if (!priced.length) return { learned: 0, lowest: 0, lowestCount: 0 };
+
+    this.saveRun(priced, context);
+
+    const profile = this.getCategoryProfile(catId);
+    const lowest =
+      profile.recommendedPrices?.[0] ||
+      profile.tiers?.[0] ||
+      Math.min(...priced.map((v) => Number(v.shippingCost)));
+
+    this.saveFingerprints(priced, catId, "live", 0);
+
+    const atLowest = priced.filter(
+      (v) => Number(v.shippingCost) === Number(lowest),
+    );
+    if (atLowest.length && lowest) {
+      this.saveFingerprints(atLowest, catId, "live_lowest", lowest);
+    }
+
+    const uniquePrices = [...new Set(priced.map((v) => Number(v.shippingCost)))]
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    const reports = this._readReports();
+    reports.push({
+      ts: Date.now(),
+      categoryId: catId,
+      categoryName: context.categoryName || "",
+      categoryPath: context.categoryPath || "",
+      source: "live_learn",
+      strategy: profile.strategy || pickLocalStrategy(uniquePrices).strategy,
+      strategyReason:
+        context.learnNote ||
+        `Learned from ${priced.length} live variants (${atLowest.length} at ₹${lowest}).`,
+      uniquePrices,
+      recommendedPrices:
+        profile.recommendedPrices?.length
+          ? profile.recommendedPrices
+          : [lowest],
+      variantCount: priced.length,
+      variantSnapshots: priced.map((v) => ({
+        shippingCost: v.shippingCost,
+        estShipping: v.estShipping ?? v.meta?.estInr ?? v.meta?.staticEst,
+        name: v.name,
+        variantStyle: v.variantStyle,
+        path: v.meta?.path,
+        kb: v.meta?.kb,
+        recommended: Number(v.shippingCost) === Number(lowest),
+      })),
+    });
+    this._writeReports(reports);
+
+    return {
+      learned: priced.length,
+      lowest,
+      lowestCount: atLowest.length,
+    };
+  },
+
+  matchesLiveLowestPattern(v, catId) {
+    const stats = this.getLowestTierLearnedStats(catId);
+    if (!stats?.fingerprintCount) return false;
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+    const kbOk =
+      stats.medianKb && kb > 0 && Math.abs(kb - stats.medianKb) <= 18;
+    const styleOk =
+      stats.dominantStyle &&
+      style.includes(String(stats.dominantStyle).toLowerCase());
+    return kbOk && styleOk;
+  },
+
   scoreVariantForLocalPick(v, catId, profile) {
     const est = this.estOf(v);
     const kb =
@@ -289,6 +374,9 @@ const LocalPriceDB = {
       }
       if (Number(v.shippingCost) === Number(stats.lowestShipping)) {
         score += 25;
+      }
+      if (this.matchesLiveLowestPattern(v, catId)) {
+        score += 45;
       }
     } else if (profile?.recommendedPrices?.length) {
       score += 20;
@@ -4093,8 +4181,20 @@ Please share payment details and license key.`;
       OptimizerUtils.showNotification("Error: " + err.message, "error");
     }
 
-    // Auto-save priced results to local price DB
-    try { this.saveToLocalPriceDB(); } catch (e) { console.warn("LocalPriceDB save:", e); }
+    // Auto-save priced results to local price DB + learn fingerprints
+    try {
+      const learn = this.saveToLocalPriceDB();
+      if (learn?.learned > 0) {
+        OptimizerUtils.showNotification(
+          `📚 Learned ${learn.learned} live variants (${learn.lowestCount} at ₹${learn.lowest}) — local picks improved`,
+          "info",
+          6000,
+        );
+        this.refreshLocalPriceUI();
+      }
+    } catch (e) {
+      console.warn("LocalPriceDB save:", e);
+    }
 
     // Show results
     const resultsArea = document.getElementById("results-area");
@@ -4165,8 +4265,7 @@ Please share payment details and license key.`;
     this.liveAnalysis = null;
 
     if (uploadArea) uploadArea.style.display = "none";
-    sections.forEach((s) => (s.style.display = "none"));
-    if (generateBtn) generateBtn.style.display = "none";
+    if (generateBtn) generateBtn.disabled = true;
     if (localGenBtn) localGenBtn.disabled = true;
 
     const categorySelect = document.getElementById("category-select");
@@ -4317,11 +4416,12 @@ Please share payment details and license key.`;
         );
         this.setupResultsEvents();
       }
+      this.ensureGenerateChromeVisible();
     } else {
       if (resultsArea) resultsArea.style.display = "none";
       if (uploadArea) uploadArea.style.display = "block";
       sections.forEach((s) => (s.style.display = "block"));
-      if (generateBtn) generateBtn.style.display = "block";
+      this.ensureGenerateChromeVisible();
     }
 
     if (localGenBtn) localGenBtn.disabled = false;
@@ -4764,7 +4864,36 @@ Please share payment details and license key.`;
   saveToLocalPriceDB() {
     const all = [...(this.currentResults || []), ...(this.framedExtraResults || [])];
     const context = this.buildLiveReportContext();
-    LocalPriceDB.saveRun(all, context);
+    return LocalPriceDB.learnFromLiveVariants(all, {
+      ...context,
+      learnNote: "Auto-learned from live generate — improves local picks",
+    });
+  }
+
+  ensureGenerateChromeVisible() {
+    const generateSticky = document.getElementById("generate-sticky");
+    const generateBtn = document.getElementById("generate-btn");
+    const hasFile =
+      this._pendingFile ||
+      window.__webPendingFile ||
+      this.lastProcessedFile ||
+      document.getElementById("image-input")?.files?.[0];
+    if (generateSticky) generateSticky.style.display = "";
+    if (generateBtn) {
+      generateBtn.style.display = "block";
+      generateBtn.disabled = !hasFile || this.isProcessing;
+    }
+    const localGenBtn = document.getElementById("local-price-generate-btn");
+    if (localGenBtn) localGenBtn.disabled = !hasFile || this.isProcessing;
+  }
+
+  getImageFileForGenerate() {
+    if (this.lastProcessedFile) return this.lastProcessedFile;
+    const fileInput = document.getElementById("image-input");
+    if (fileInput?.files?.[0]) return fileInput.files[0];
+    if (this._pendingFile) return this._pendingFile;
+    if (window.__webPendingFile) return window.__webPendingFile;
+    return null;
   }
 
   showLocalPriceReport() {
@@ -8232,6 +8361,20 @@ Please share payment details and license key.`;
     );
     if (localPriceDownloadBtn) {
       localPriceDownloadBtn.onclick = () => this.downloadLocalPriceCsv();
+    }
+
+    const generateLiveFromResults = document.getElementById(
+      "generate-live-from-results-btn",
+    );
+    if (generateLiveFromResults) {
+      generateLiveFromResults.onclick = () => {
+        const file = this.getImageFileForGenerate();
+        if (!file) {
+          OptimizerUtils.showNotification("Choose an image first", "error");
+          return;
+        }
+        void this.processImage(file);
+      };
     }
 
     const restartBtn = document.getElementById("restart-btn");
