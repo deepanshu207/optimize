@@ -1072,6 +1072,8 @@ class MeeshoShippingOptimizer {
     this._categoryAcResults = [];
     this._categoryAcDebounce = null;
     this._categoryAcOutsideBound = false;
+    this._categoryAcIgnoreCloseUntil = 0;
+    this._categoryAcPointerInWrap = false;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -3034,6 +3036,7 @@ Please share payment details and license key.`;
     const listEl = document.getElementById("category-ac-list");
     const search = document.getElementById("category-search");
     if (!listEl) return;
+    this._categoryAcIgnoreCloseUntil = Date.now() + 400;
     listEl.classList.add("open");
     if (search) search.setAttribute("aria-expanded", "true");
   }
@@ -3087,8 +3090,15 @@ Please share payment details and license key.`;
 
     listEl.innerHTML = html;
     listEl.querySelectorAll(".category-ac-item").forEach((item) => {
-      item.addEventListener("mousedown", (e) => e.preventDefault());
-      item.addEventListener("click", () => {
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      item.addEventListener("touchstart", (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
         const id = parseInt(item.dataset.id, 10);
         const cat =
           this._categoryAcResults.find((c) => c.id === id) ||
@@ -3225,19 +3235,45 @@ Please share payment details and license key.`;
     const clearBtn = document.getElementById("category-clear");
     if (!wrap || !search) return;
 
+    const stopWrapPointer = (e) => {
+      this._categoryAcPointerInWrap = true;
+      e.stopPropagation();
+    };
+    const endWrapPointer = () => {
+      setTimeout(() => {
+        this._categoryAcPointerInWrap = false;
+      }, 0);
+    };
+    wrap.addEventListener("mousedown", stopWrapPointer, true);
+    wrap.addEventListener("touchstart", stopWrapPointer, { capture: true, passive: true });
+    wrap.addEventListener("mouseup", endWrapPointer, true);
+    wrap.addEventListener("touchend", endWrapPointer, true);
+
     if (!this._categoryAcOutsideBound) {
       this._categoryAcOutsideBound = true;
-      document.addEventListener("mousedown", (e) => {
-        if (!e.target.closest("#category-ac-wrap")) {
-          this.hideCategoryAutocomplete();
-        }
-      });
+      document.addEventListener(
+        "click",
+        (e) => {
+          const listEl = document.getElementById("category-ac-list");
+          if (!listEl?.classList.contains("open")) return;
+          if (Date.now() < this._categoryAcIgnoreCloseUntil) return;
+          if (this._categoryAcPointerInWrap) return;
+          if (!e.target.closest("#category-ac-wrap")) {
+            this.hideCategoryAutocomplete();
+          }
+        },
+        true,
+      );
     }
 
     search.onfocus = () => {
       this._categoryUserEditing = true;
       clearTimeout(this._categoryEditingTimer);
-      this.updateCategoryAutocompleteSuggestions();
+      clearTimeout(this._categoryAcOpenTimer);
+      this._categoryAcIgnoreCloseUntil = Date.now() + 400;
+      this._categoryAcOpenTimer = setTimeout(() => {
+        this.updateCategoryAutocompleteSuggestions();
+      }, 0);
     };
 
     search.oninput = () => {
@@ -3255,17 +3291,18 @@ Please share payment details and license key.`;
     search.onblur = () => {
       clearTimeout(this._categoryEditingTimer);
       this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== search && !wrap.contains(document.activeElement)) {
-          this._categoryUserEditing = false;
-          if (
-            this._categorySearchCommittedValue &&
-            search.value !== this._categorySearchCommittedValue
-          ) {
-            search.value = this._categorySearchCommittedValue;
-          }
-          this.hideCategoryAutocomplete();
+        if (this._categoryAcPointerInWrap) return;
+        if (document.activeElement === search) return;
+        if (wrap.contains(document.activeElement)) return;
+        this._categoryUserEditing = false;
+        if (
+          this._categorySearchCommittedValue &&
+          search.value !== this._categorySearchCommittedValue
+        ) {
+          search.value = this._categorySearchCommittedValue;
         }
-      }, 180);
+        this.hideCategoryAutocomplete();
+      }, 280);
     };
 
     if (clearBtn) {
@@ -3314,6 +3351,10 @@ Please share payment details and license key.`;
       search.disabled = false;
     }
     if (clearBtn) clearBtn.style.display = "block";
+    // Keep list open when syncing value during page/default apply (not user dismiss)
+    if (this._categoryUserEditing || document.activeElement === search) {
+      return;
+    }
     this.hideCategoryAutocomplete();
   }
 
