@@ -355,7 +355,7 @@ const OptimizerUI = {
                             <span id="category-clear" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;display:none;">✕</span>
                         </div>
                         <p class="category-search-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-search-hint">Type a category name or numeric ID — e.g. <strong>top and bottom sets</strong> or <strong>10253</strong></p>
+                        <p class="category-search-hint">Apparel categories listed on open — type to search all 3777 by name or ID</p>
                         <div id="category-dropdown" class="category-dropdown"></div>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>

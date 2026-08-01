@@ -2956,7 +2956,9 @@ const MeeshoAPI = {
     maxCount,
     onProgress,
     shouldStopFn,
+    options = {},
   ) {
+    const livePatternOnly = !!options.livePatternOnly;
     const count = Math.min(
       Math.max(parseInt(maxCount, 10) || 20, 1),
       this.MAX_RESULT_VARIANTS,
@@ -2984,7 +2986,11 @@ const MeeshoAPI = {
           layers: variation.layers,
           pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
           variantStyle: variation.variantStyle || "standard",
-          meta: variation.meta || null,
+          meta: {
+            ...(variation.meta || {}),
+            path: "standard",
+            style: "standard",
+          },
           shippingCost: 0,
           isVerified: false,
           localOnly: true,
@@ -2995,7 +3001,11 @@ const MeeshoAPI = {
     }
 
     const framedExtras = [];
-    if (typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE) {
+    if (
+      !livePatternOnly &&
+      typeof window !== "undefined" &&
+      window.WEB_OPTIMIZER_MODE
+    ) {
       const profiles = this.LOW_SHIPPING_FRAMED_PROFILES;
       for (let i = 0; i < profiles.length; i++) {
         if (shouldStopFn && shouldStopFn()) break;
@@ -3025,6 +3035,7 @@ const MeeshoAPI = {
     }
 
     if (
+      !livePatternOnly &&
       !results.length &&
       typeof ImageGenerator !== "undefined" &&
       ImageGenerator.generateVariations
