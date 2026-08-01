@@ -2201,6 +2201,7 @@ Please share payment details and license key.`;
         "generate-gown-static-btn",
         "local-price-generate-btn",
         "local-price-import-btn",
+        "local-price-import-btn",
       ].forEach((id) => {
         const btn = document.getElementById(id);
         if (btn) btn.disabled = false;
