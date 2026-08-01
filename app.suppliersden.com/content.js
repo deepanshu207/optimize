@@ -1,11 +1,131 @@
 // Meesho Shipping Optimizer v6.0.0 - Main Entry Point
 
 // ─── Local Price Database ───────────────────────────────────────────────────
-// Accumulates past report results in localStorage to estimate best local price
-// without a live Meesho API call.
+// Accumulates past report/CSV results in localStorage to estimate best local
+// shipping without a live Meesho API call.
+function parseReportCsvInline(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .filter((l) => l.trim());
+  if (!lines.length) return { variants: [], meta: {}, tiers: [] };
+
+  const parseCsvLine = (line) => {
+    const out = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  };
+
+  const header = parseCsvLine(lines[0]);
+  const idx = (name) => header.indexOf(name);
+  const variants = [];
+  const meta = {};
+  const tiers = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    const type = row[idx("record_type")];
+    if (type === "META") {
+      meta[row[idx("key")]] = row[idx("value")];
+    } else if (type === "VARIANT") {
+      variants.push({
+        variantId: row[idx("variant_id")],
+        name: row[idx("name")],
+        shippingCost: Number(row[idx("shipping_inr")]) || 0,
+        estShipping: Number(row[idx("est_inr")]) || 0,
+        isVerified: row[idx("verified")] === "true",
+        liveVerified: row[idx("live_verified")] === "true",
+        duplicatePid: row[idx("duplicate_pid")] || "",
+        noPid: row[idx("no_pid")] === "true",
+        variantStyle: row[idx("variant_style")],
+        meta: {
+          path: row[idx("path")],
+          kb: row[idx("kb")],
+          width: row[idx("width")],
+          height: row[idx("height")],
+        },
+      });
+    } else if (type === "PRICE_TIER") {
+      tiers.push({
+        variantId: row[idx("variant_id")],
+        name: row[idx("name")],
+        price: Number(row[idx("shipping_inr")]) || 0,
+        gapToNext: row[idx("gap_to_next")],
+        count: Number(row[idx("tier_count")]) || 0,
+      });
+    }
+  }
+
+  const uniquePrices = (meta.unique_prices || "")
+    .split("|")
+    .filter(Boolean)
+    .map(Number)
+    .filter((p) => p > 0);
+  const recommendedPrices = (meta.recommended_prices || "")
+    .split("|")
+    .filter(Boolean)
+    .map(Number)
+    .filter((p) => p > 0);
+
+  return {
+    variants,
+    meta,
+    tiers,
+    strategy: meta.strategy || "",
+    strategyReason: meta.strategy_reason || "",
+    uniquePrices,
+    recommendedPrices,
+  };
+}
+
+function pickLocalStrategy(prices) {
+  const sorted = [...new Set(prices.filter((p) => p > 0))].sort((a, b) => a - b);
+  if (!sorted.length) {
+    return { strategy: "none", recommendedPrices: [], reason: "No price data." };
+  }
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i + 1] - sorted[i] === 1) {
+      return {
+        strategy: "rupee_pair",
+        recommendedPrices: [sorted[i], sorted[i + 1]],
+        reason: `₹1 pair at ₹${sorted[i]} & ₹${sorted[i + 1]} — test both.`,
+      };
+    }
+  }
+  return {
+    strategy: "single_lowest",
+    recommendedPrices: [sorted[0]],
+    reason: `No ₹1 gap (${sorted.join(", ")}) — recommend only ₹${sorted[0]}.`,
+  };
+}
+
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
+  REPORTS_KEY: "meesho_local_price_reports",
+  SEEDED_KEY: "meesho_local_price_seeded",
   MAX_ENTRIES: 200,
+  MAX_REPORTS: 50,
 
   _read() {
     try {
@@ -18,6 +138,23 @@ const LocalPriceDB = {
   _write(entries) {
     try {
       localStorage.setItem(this.KEY, JSON.stringify(entries.slice(-this.MAX_ENTRIES)));
+    } catch {}
+  },
+
+  _readReports() {
+    try {
+      return JSON.parse(localStorage.getItem(this.REPORTS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  },
+
+  _writeReports(reports) {
+    try {
+      localStorage.setItem(
+        this.REPORTS_KEY,
+        JSON.stringify(reports.slice(-this.MAX_REPORTS)),
+      );
     } catch {}
   },
 
@@ -46,6 +183,241 @@ const LocalPriceDB = {
     this._write(entries);
   },
 
+  /** Import a live report CSV (VARIANT + META + PRICE_TIER rows). */
+  importCsv(text) {
+    const parsed = parseReportCsvInline(text);
+    const catId = String(parsed.meta.category_id || "");
+    const priced = parsed.variants.filter((v) => Number(v.shippingCost) > 0);
+
+    if (!priced.length && !parsed.uniquePrices.length) {
+      return { ok: false, error: "No variant or tier data found in CSV." };
+    }
+
+    if (priced.length) {
+      this.saveRun(priced, { categoryId: catId });
+    }
+
+    const reports = this._readReports();
+    reports.push({
+      ts: Date.now(),
+      categoryId: catId,
+      categoryName: parsed.meta.category_name || "",
+      categoryPath: parsed.meta.category_path || "",
+      strategy: parsed.strategy || pickLocalStrategy(parsed.uniquePrices).strategy,
+      strategyReason:
+        parsed.strategyReason || pickLocalStrategy(parsed.uniquePrices).reason,
+      uniquePrices: parsed.uniquePrices,
+      recommendedPrices:
+        parsed.recommendedPrices.length
+          ? parsed.recommendedPrices
+          : pickLocalStrategy(parsed.uniquePrices).recommendedPrices,
+      tiers: parsed.tiers,
+      variantCount: parsed.variants.length,
+      baselineShipping: Number(parsed.meta.baseline_shipping_inr) || 0,
+    });
+    this._writeReports(reports);
+
+    return {
+      ok: true,
+      categoryId: catId,
+      categoryName: parsed.meta.category_name || "",
+      tiers: parsed.uniquePrices,
+      recommendedPrices:
+        parsed.recommendedPrices.length
+          ? parsed.recommendedPrices
+          : pickLocalStrategy(parsed.uniquePrices).recommendedPrices,
+      variantCount: priced.length,
+    };
+  },
+
+  /** Aggregated category profile from saved reports + variant history. */
+  getCategoryProfile(catId) {
+    const id = String(catId || "");
+    const reports = this._readReports().filter((r) => r.categoryId === id);
+    const tierSet = new Set();
+    const tierCounts = {};
+
+    reports.forEach((r) => {
+      (r.uniquePrices || []).forEach((p) => {
+        tierSet.add(p);
+        tierCounts[p] = (tierCounts[p] || 0) + 1;
+      });
+    });
+
+    this._read()
+      .filter((e) => e.cat === id)
+      .forEach((e) => {
+        const p = Number(e.price);
+        if (p > 0) {
+          tierSet.add(p);
+          tierCounts[p] = (tierCounts[p] || 0) + 1;
+        }
+      });
+
+    const tiers = [...tierSet].sort((a, b) => a - b);
+    const latest = reports[reports.length - 1];
+    const strategyPick = pickLocalStrategy(tiers);
+
+    return {
+      categoryId: id,
+      tiers,
+      tierCounts,
+      strategy: latest?.strategy || strategyPick.strategy,
+      strategyReason: latest?.strategyReason || strategyPick.reason,
+      recommendedPrices:
+        latest?.recommendedPrices?.length
+          ? latest.recommendedPrices
+          : strategyPick.recommendedPrices,
+      runCount: reports.length,
+      hasData: tiers.length > 0,
+    };
+  },
+
+  /** Tag a variant with a local tier estimate (no live price). */
+  _tagLocalVariant(v, tierPrice, recommended) {
+    return {
+      ...v,
+      localEstShipping: tierPrice,
+      localRecommended: recommended,
+      estShipping: tierPrice,
+      shippingCost: 0,
+      isVerified: false,
+      localOnly: true,
+      meta: {
+        ...(v.meta || {}),
+        localPrice: true,
+        localTier: tierPrice,
+        localEstimated: true,
+      },
+    };
+  },
+
+  /**
+   * Pick exactly 2–3 variants for local generate — lowest shipping focus.
+   * single_lowest (kurti): 3 picks all at lowest tier (e.g. ₹59).
+   * rupee_pair: exactly 2 picks at the ₹1-apart pair.
+   */
+  buildLocalPicks(variants, catId) {
+    const DISPLAY_MIN = 2;
+    const DISPLAY_MAX = 3;
+    const profile = this.getCategoryProfile(catId);
+
+    const sorted = [...(variants || [])].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+
+    if (!sorted.length) return [];
+
+    if (!profile.hasData) {
+      const count = Math.min(
+        DISPLAY_MAX,
+        Math.max(DISPLAY_MIN, sorted.length),
+      );
+      return sorted.slice(0, count).map((v, i) =>
+        this._tagLocalVariant(
+          v,
+          v.estShipping || v.meta?.estInr || 0,
+          i < count,
+        ),
+      );
+    }
+
+    const tiers = profile.tiers || [];
+    const lowestTier =
+      profile.recommendedPrices?.[0] || tiers[0] || sorted[0].estShipping || 0;
+
+    if (
+      profile.strategy === "rupee_pair" &&
+      profile.recommendedPrices.length >= 2
+    ) {
+      const [low, high] = profile.recommendedPrices;
+      const picks = [];
+      const lowPick = sorted[0];
+      if (lowPick) picks.push(this._tagLocalVariant(lowPick, low, true));
+      const highPick =
+        sorted.find((v) => v.variantId !== lowPick?.variantId) || sorted[1];
+      if (highPick) picks.push(this._tagLocalVariant(highPick, high, true));
+      return picks.slice(0, 2);
+    }
+
+    // single_lowest — e.g. kurti ₹59 only: 2–3 best est variants, all at lowest tier
+    const count = Math.min(
+      DISPLAY_MAX,
+      Math.max(DISPLAY_MIN, sorted.length),
+    );
+    return sorted.slice(0, count).map((v) =>
+      this._tagLocalVariant(v, lowestTier, true),
+    );
+  },
+
+  /** Map generated variants to local tier estimates from category history. */
+  assignLocalTiers(variants, catId) {
+    const profile = this.getCategoryProfile(catId);
+    const tiers = profile.tiers || [];
+    if (!variants?.length) return [];
+
+    const sorted = [...variants].sort(
+      (a, b) =>
+        (a.estShipping || a.meta?.estInr || 999) -
+        (b.estShipping || b.meta?.estInr || 999),
+    );
+
+    if (!tiers.length) {
+      return sorted.map((v) => ({
+        ...v,
+        localEstShipping: v.estShipping || 0,
+        localRecommended: false,
+      }));
+    }
+
+    const tierCount = tiers.length;
+    const recommendedSet = new Set();
+
+    profile.recommendedPrices.forEach((targetPrice) => {
+      let best = null;
+      let bestEst = 999;
+      sorted.forEach((v, i) => {
+        const tierIdx = Math.min(
+          Math.floor((i / sorted.length) * tierCount),
+          tierCount - 1,
+        );
+        if (tiers[tierIdx] === targetPrice) {
+          const est = v.estShipping || v.meta?.estInr || 999;
+          if (est < bestEst) {
+            bestEst = est;
+            best = v;
+          }
+        }
+      });
+      if (best) recommendedSet.add(best.variantId);
+    });
+
+    return sorted.map((v, i) => {
+      const tierIdx = Math.min(
+        Math.floor((i / sorted.length) * tierCount),
+        tierCount - 1,
+      );
+      const localTier = tiers[tierIdx];
+      return {
+        ...v,
+        localEstShipping: localTier,
+        localRecommended: recommendedSet.has(v.variantId),
+        estShipping: localTier,
+        shippingCost: 0,
+        isVerified: false,
+        localOnly: true,
+        meta: {
+          ...(v.meta || {}),
+          localPrice: true,
+          localTier,
+          localEstimated: true,
+        },
+      };
+    });
+  },
+
   /** Return all unique prices seen across all saved runs, sorted ascending. */
   allPrices(catFilter = "") {
     const entries = this._read();
@@ -53,11 +425,20 @@ const LocalPriceDB = {
       ? entries.filter((e) => e.cat === String(catFilter))
       : entries;
     const prices = [...new Set(rows.map((e) => Number(e.price)).filter((p) => p > 0))];
-    return prices.sort((a, b) => a - b);
+    const profile = catFilter ? this.getCategoryProfile(catFilter) : null;
+    if (profile?.tiers?.length) {
+      profile.tiers.forEach((p) => prices.push(p));
+    }
+    return [...new Set(prices)].sort((a, b) => a - b);
   },
 
   /** Best local price estimate: lowest price seen ≥ 2 times, or overall lowest. */
   bestLocalPrice(catFilter = "") {
+    const profile = catFilter ? this.getCategoryProfile(catFilter) : null;
+    if (profile?.recommendedPrices?.length) {
+      return profile.recommendedPrices[0];
+    }
+
     const entries = this._read();
     const rows = catFilter
       ? entries.filter((e) => e.cat === String(catFilter))
@@ -82,17 +463,60 @@ const LocalPriceDB = {
     const rows = catFilter
       ? entries.filter((e) => e.cat === String(catFilter))
       : entries;
-    if (!rows.length) return null;
+    const profile = catFilter ? this.getCategoryProfile(catFilter) : null;
+    if (!rows.length && !profile?.hasData) return null;
+
     const prices = rows.map((e) => Number(e.price)).filter((p) => p > 0);
+    if (profile?.tiers?.length) {
+      profile.tiers.forEach((p) => prices.push(p));
+    }
     const best = this.bestLocalPrice(catFilter);
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const runs = new Set(rows.map((e) => e.ts)).size;
-    return { best, min, max, count: rows.length, runs };
+    const min = prices.length ? Math.min(...prices) : best;
+    const max = prices.length ? Math.max(...prices) : best;
+    const runs =
+      new Set(rows.map((e) => e.ts)).size + (profile?.runCount || 0);
+    return {
+      best,
+      min,
+      max,
+      count: rows.length,
+      runs,
+      tiers: profile?.tiers || [],
+      strategy: profile?.strategy || "",
+      recommendedPrices: profile?.recommendedPrices || [],
+    };
   },
 
   clear() {
     localStorage.removeItem(this.KEY);
+    localStorage.removeItem(this.REPORTS_KEY);
+    localStorage.removeItem(this.SEEDED_KEY);
+  },
+
+  async seedIfEmpty() {
+    if (localStorage.getItem(this.SEEDED_KEY)) return;
+    if (this._readReports().length > 0) {
+      localStorage.setItem(this.SEEDED_KEY, "1");
+      return;
+    }
+
+    let url = "data/seed-reports/kurti-10004.csv";
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      url = chrome.runtime.getURL(url);
+    }
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const text = await res.text();
+      const result = this.importCsv(text);
+      if (result.ok) {
+        localStorage.setItem(this.SEEDED_KEY, "1");
+        console.log("[LocalPriceDB] Seeded kurti profile:", result);
+      }
+    } catch (e) {
+      console.warn("[LocalPriceDB] Seed skipped:", e);
+    }
   },
 };
 
@@ -121,6 +545,8 @@ class MeeshoShippingOptimizer {
     this.gownStaticResults = [];
     this.showGownStaticResults = false;
     this.isGeneratingGownStatic = false;
+    this.localPriceMode = false;
+    this.localPriceProfile = null;
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -972,6 +1398,14 @@ class MeeshoShippingOptimizer {
         document.getElementById("image-input")?.files?.[0];
       gownStaticBtn.disabled = !hasFile;
     }
+    const localPriceGenBtn = document.getElementById("local-price-generate-btn");
+    if (localPriceGenBtn) {
+      const hasFile =
+        this._pendingFile ||
+        window.__webPendingFile ||
+        document.getElementById("image-input")?.files?.[0];
+      localPriceGenBtn.disabled = !hasFile;
+    }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
@@ -1300,6 +1734,7 @@ Please share payment details and license key.`;
       const promoBtn = document.getElementById("generate-promo-lifestyle-btn");
       const tallStaticBtn = document.getElementById("generate-tall-static-btn");
       const gownStaticBtn = document.getElementById("generate-gown-static-btn");
+      const localPriceGenBtn = document.getElementById("local-price-generate-btn");
       if (tabbedGenerateMode) {
         generateBtn.disabled = false;
         if (testGenBtn) testGenBtn.disabled = false;
@@ -1307,6 +1742,7 @@ Please share payment details and license key.`;
         if (promoBtn) promoBtn.disabled = false;
         if (tallStaticBtn) tallStaticBtn.disabled = false;
         if (gownStaticBtn) gownStaticBtn.disabled = false;
+        if (localPriceGenBtn) localPriceGenBtn.disabled = false;
         if (bootMsg) {
           bootMsg.textContent =
             this.getActiveOptimizerTab() === "test"
@@ -1449,6 +1885,7 @@ Please share payment details and license key.`;
           MeeshoAPI.setCategory(categoryId);
           console.log("📁 Category:", categoryId);
         }
+        this.refreshLocalPriceUI();
       };
     }
 
@@ -1457,6 +1894,48 @@ Please share payment details and license key.`;
   }
 
   wireLocalPriceButtons() {
+    const genBtn = document.getElementById("local-price-generate-btn");
+    if (genBtn) {
+      genBtn.onclick = () => {
+        const file =
+          this._pendingFile ||
+          window.__webPendingFile ||
+          document.getElementById("image-input")?.files?.[0];
+        if (!file) {
+          OptimizerUtils.showNotification("Choose an image first", "error");
+          return;
+        }
+        if (this.isProcessing) return;
+        void this.processImageLocalPrice(file);
+      };
+    }
+
+    const importBtn = document.getElementById("local-price-import-btn");
+    const importInput = document.getElementById("local-price-import-input");
+    if (importBtn && importInput) {
+      importBtn.onclick = () => importInput.click();
+      importInput.onchange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = LocalPriceDB.importCsv(ev.target.result);
+          if (result.ok) {
+            OptimizerUtils.showNotification(
+              `Imported ${result.variantCount} variants · cat ${result.categoryId} · tiers ₹${result.tiers.join(", ")} · recommend ₹${result.recommendedPrices.join(", ")}`,
+              "success",
+              8000,
+            );
+            this.refreshLocalPriceUI();
+          } else {
+            OptimizerUtils.showNotification(result.error || "Import failed", "error");
+          }
+        };
+        reader.readAsText(file);
+        importInput.value = "";
+      };
+    }
+
     const saveBtn = document.getElementById("local-price-save-btn");
     if (saveBtn) saveBtn.onclick = () => this.saveLocalPriceSnapshot();
     const viewBtn = document.getElementById("local-price-view-btn");
@@ -1467,9 +1946,11 @@ Please share payment details and license key.`;
         if (!confirm("Clear all local price history?")) return;
         LocalPriceDB.clear();
         OptimizerUtils.showNotification("Local price history cleared.", "info");
+        this.refreshLocalPriceUI();
       };
     }
-    this.refreshLocalPriceUI();
+
+    void LocalPriceDB.seedIfEmpty().then(() => this.refreshLocalPriceUI());
   }
 
   refreshLocalPriceUI() {
@@ -1478,11 +1959,24 @@ Please share payment details and license key.`;
     const categorySelect = document.getElementById("category-select");
     const catId = categorySelect?.value || "";
     const summary = LocalPriceDB.summary(catId);
+    const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
+
     if (summary) {
-      hint.textContent = `📦 Local best: ₹${summary.best} (${summary.runs} runs, ${summary.count} variants)`;
+      const tierText =
+        summary.tiers?.length
+          ? `tiers ₹${summary.tiers.join(", ")}`
+          : `range ₹${summary.min}–₹${summary.max}`;
+      const recText = summary.recommendedPrices?.length
+        ? ` → recommend ₹${summary.recommendedPrices.join(" + ₹")}`
+        : "";
+      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)`;
+      hint.style.color = "#047857";
+    } else if (profile?.hasData) {
+      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}`;
       hint.style.color = "#047857";
     } else {
-      hint.textContent = "No local history yet — generate & save after getting prices";
+      hint.textContent =
+        "Import CSV reports or run live → save to build local tiers per category";
       hint.style.color = "#6b7280";
     }
   }
@@ -1700,12 +2194,18 @@ Please share payment details and license key.`;
     const enable = () => {
       if (generateBtn) generateBtn.disabled = false;
       if (testGenBtn) testGenBtn.disabled = false;
-      ["generate-showcase-btn", "generate-promo-lifestyle-btn", "generate-tall-static-btn", "generate-gown-static-btn"].forEach(
-        (id) => {
-          const btn = document.getElementById(id);
-          if (btn) btn.disabled = false;
-        },
-      );
+      [
+        "generate-showcase-btn",
+        "generate-promo-lifestyle-btn",
+        "generate-tall-static-btn",
+        "generate-gown-static-btn",
+        "local-price-generate-btn",
+        "local-price-import-btn",
+        "local-price-import-btn",
+      ].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = false;
+      });
       if (bootMsg) {
         bootMsg.textContent =
           this.getActiveOptimizerTab?.() === "test"
@@ -2916,6 +3416,8 @@ Please share payment details and license key.`;
 
   // LIVE MODE ONLY — production generate path. Test Lab uses processImageTestLab().
   async processImage(file) {
+    this.localPriceMode = false;
+    this.localPriceProfile = null;
     if (!file) {
       OptimizerUtils.showNotification("Choose an image first", "error");
       return;
@@ -3230,6 +3732,188 @@ Please share payment details and license key.`;
     }
 
     this.isProcessing = false;
+  }
+
+  /**
+   * Generate exactly 2–3 local variants for lowest shipping (no live Meesho API).
+   * Kurti + correct image → 3 picks all at lowest tier (₹59 from report).
+   */
+  async processImageLocalPrice(file) {
+    const LOCAL_POOL_SIZE = 6;
+
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    this.shouldStop = false;
+    this.localPriceMode = true;
+    this.lastProcessedFile = file;
+
+    const processingArea = document.getElementById("processing-area");
+    const resultsArea = document.getElementById("results-area");
+    const uploadArea = document.getElementById("upload-area");
+    const sections = document.querySelectorAll(".opt-section");
+    const generateBtn = document.getElementById("generate-btn");
+    const localGenBtn = document.getElementById("local-price-generate-btn");
+
+    this.currentResults = [];
+    this.framedExtraResults = [];
+    this.analysisPrimaryResults = [];
+    this.analysisExtraResults = [];
+    this.showFramedExtras = false;
+    this.showAnalysisExtras = false;
+    this.liveAnalysis = null;
+
+    if (uploadArea) uploadArea.style.display = "none";
+    sections.forEach((s) => (s.style.display = "none"));
+    if (generateBtn) generateBtn.style.display = "none";
+    if (localGenBtn) localGenBtn.disabled = true;
+
+    const categorySelect = document.getElementById("category-select");
+    const catId = categorySelect?.value || "";
+    const profile = catId
+      ? LocalPriceDB.getCategoryProfile(catId)
+      : LocalPriceDB.getCategoryProfile("");
+
+    this.localPriceProfile = profile;
+
+    if (!profile.hasData) {
+      OptimizerUtils.showNotification(
+        "No local tiers for this category — import a CSV report or run live first, then save.",
+        "error",
+        8000,
+      );
+    } else {
+      OptimizerUtils.showNotification(
+        `📍 Local mode · tiers ₹${profile.tiers.join(", ")} · ${profile.strategyReason}`,
+        "info",
+        6000,
+      );
+    }
+
+    if (processingArea) {
+      processingArea.style.display = "block";
+      processingArea.innerHTML = `
+        <div style="text-align:center;padding:24px;">
+          <div style="font-size:40px;margin-bottom:8px;">📍</div>
+          <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
+          <p style="color:#6b7280;font-size:12px;">No live API — using saved category tiers</p>
+        </div>`;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      const blob = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          fetch(e.target.result).then((r) => r.blob()).then(resolve);
+        };
+        reader.readAsDataURL(file);
+      });
+
+      await this.ensureOriginalImageUrl(file);
+      this.gatherSettings();
+
+      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
+        console.warn("Local price static analysis failed:", e);
+        return null;
+      });
+
+      let rawResults = [];
+      if (typeof MeeshoAPI.generateLocalVariations === "function") {
+        const result = await MeeshoAPI.generateLocalVariations(
+          blob,
+          LOCAL_POOL_SIZE,
+          (attempt, max) => {
+            if (processingArea && !this.shouldStop) {
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              processingArea.innerHTML = this.getSmartModeHTML(
+                attempt,
+                max,
+                profile.recommendedPrices[0] || 59,
+                null,
+                0,
+                elapsed,
+                { testLab: true, phaseLabel: "Local variants (no live check)" },
+              );
+            }
+          },
+          () => this.shouldStop,
+        );
+        if (result?.success) {
+          rawResults = result.results || [];
+        }
+      }
+
+      const analysisOut = await analysisPromise;
+      if (analysisOut?.success && analysisOut.primary?.length) {
+        this.liveAnalysis = analysisOut.analysis;
+        const analysisMapped = (analysisOut.primary || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 20000),
+        );
+        if (!rawResults.length) {
+          rawResults = analysisMapped.slice(0, LOCAL_POOL_SIZE);
+        } else {
+          rawResults = rawResults.map((r, i) => {
+            const mapped = this.mapResultFromApi(r, i);
+            if (!mapped.estShipping && analysisMapped[i]) {
+              mapped.estShipping =
+                analysisMapped[i].estShipping ||
+                analysisMapped[i].meta?.estInr ||
+                0;
+            }
+            return mapped;
+          });
+        }
+      } else {
+        rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
+      }
+
+      const display = LocalPriceDB.buildLocalPicks(rawResults, catId);
+
+      display.sort(
+        (a, b) =>
+          (a.localEstShipping || a.estShipping || 999) -
+          (b.localEstShipping || b.estShipping || 999),
+      );
+
+      this.currentResults = display;
+
+      const recPrices = profile.recommendedPrices || [];
+      const bestEst = display[0]?.localEstShipping || display[0]?.estShipping || "—";
+      OptimizerUtils.showNotification(
+        profile.hasData
+          ? `📍 ${display.length} picks for lowest shipping · recommend ₹${recPrices.join(" + ₹")} · est ₹${bestEst}`
+          : `📍 ${display.length} picks (est only — import CSV for tier mapping)`,
+        "success",
+        8000,
+      );
+    } catch (err) {
+      console.error("Local price generate failed:", err);
+      OptimizerUtils.showNotification("Local price failed: " + err.message, "error");
+    }
+
+    if (processingArea) processingArea.style.display = "none";
+
+    if (this.currentResults.length > 0) {
+      if (resultsArea) {
+        resultsArea.style.display = "block";
+        delete resultsArea.dataset.view;
+        resultsArea.innerHTML = OptimizerUI.getResultsHTML(
+          this.currentResults,
+          this.getResultsViewOptions(),
+        );
+        this.setupResultsEvents();
+      }
+    } else {
+      if (resultsArea) resultsArea.style.display = "none";
+      if (uploadArea) uploadArea.style.display = "block";
+      sections.forEach((s) => (s.style.display = "block"));
+      if (generateBtn) generateBtn.style.display = "block";
+    }
+
+    if (localGenBtn) localGenBtn.disabled = false;
+    this.isProcessing = false;
+    this.refreshLocalPriceUI();
   }
 
   // Smart Mode HTML - Enhanced
@@ -3674,25 +4358,37 @@ Please share payment details and license key.`;
     const categorySelect = document.getElementById("category-select");
     const catId = categorySelect?.value || "";
     const summary = LocalPriceDB.summary(catId);
+    const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
     const prices = LocalPriceDB.allPrices(catId);
 
-    if (!summary) {
+    if (!summary && !profile?.hasData) {
       OptimizerUtils.showNotification(
-        "No local price history yet — generate variants with live shipping first, then save.",
+        "No local price history — import CSV reports or run live shipping, then save.",
         "error",
       );
       return;
     }
 
     const lines = [
-      `📦 Local Price History${catId ? ` (category ${catId})` : " (all)"}`,
-      `Runs saved: ${summary.runs}  |  Variants: ${summary.count}`,
-      `Price range: ₹${summary.min} – ₹${summary.max}`,
-      `Best local estimate: ₹${summary.best}`,
-      `All prices seen: ${prices.map((p) => "₹" + p).join(", ")}`,
+      `📦 Local Price${catId ? ` · category ${catId}` : ""}`,
+      summary
+        ? `Reports: ${summary.runs}  |  Variants: ${summary.count}`
+        : `Reports: ${profile?.runCount || 0}`,
     ];
 
-    // Find the ₹1 pair if any
+    if (profile?.tiers?.length) {
+      lines.push(`Tiers: ₹${profile.tiers.join(", ")}`);
+      lines.push(`Strategy: ${profile.strategy} — ${profile.strategyReason}`);
+      lines.push(`Recommend: ₹${profile.recommendedPrices.join(" + ₹")}`);
+    } else if (summary) {
+      lines.push(`Range: ₹${summary.min} – ₹${summary.max}`);
+      lines.push(`Best estimate: ₹${summary.best}`);
+    }
+
+    if (prices.length) {
+      lines.push(`All prices: ${prices.map((p) => "₹" + p).join(", ")}`);
+    }
+
     for (let i = 0; i < prices.length - 1; i++) {
       if (prices[i + 1] - prices[i] === 1) {
         lines.push(`✓ ₹1 pair: ₹${prices[i]} + ₹${prices[i + 1]} — test BOTH`);
@@ -3700,10 +4396,9 @@ Please share payment details and license key.`;
       }
     }
 
-    OptimizerUtils.showNotification(lines.join("\n"), "success", 8000);
-
-    // Also log full data to console for copying
-    console.log("[LocalPriceDB] Full history:", LocalPriceDB._read());
+    OptimizerUtils.showNotification(lines.join("\n"), "success", 10000);
+    console.log("[LocalPriceDB] Reports:", LocalPriceDB._readReports());
+    console.log("[LocalPriceDB] Variants:", LocalPriceDB._read());
   }
 
   saveLocalPriceSnapshot() {
@@ -3748,6 +4443,8 @@ Please share payment details and license key.`;
       isGeneratingGownStatic: this.isGeneratingGownStatic,
       gownStaticVariantCount: 25,
       staticPromoHubActive: this.shouldShowStaticPromoWorkspace(),
+      localPriceMode: this.localPriceMode,
+      localPriceProfile: this.localPriceProfile,
     };
   }
 

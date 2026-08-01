@@ -245,14 +245,17 @@
             <button type="button" id="generate-promo-lifestyle-btn" data-static-gen="lifestyle" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#22c55e;color:#fff;">🏷️ Generate Lifestyle Promo (25)</button>
             <button type="button" id="generate-tall-static-btn" data-static-gen="tall" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#7c3aed;color:#fff;">📐 Generate Tall Promo (25)</button>
             <button type="button" id="generate-gown-static-btn" data-static-gen="gown" class="generate-btn" disabled style="margin-top:8px;font-size:14px;padding:14px;background:#0d9488;color:#fff;">👗 Generate Gown Promo (25)</button>
-            <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
+            <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;" class="local-price-panel">
               <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:4px;">📦 Local Price History</div>
-              <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">No local history yet — generate &amp; save after getting live prices</p>
+              <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers per category</p>
+              <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;margin-bottom:6px;min-height:44px;touch-action:manipulation;">📍 Generate Local Price (2–3 lowest)</button>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button type="button" id="local-price-save-btn" style="flex:1;min-width:100px;padding:8px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;">💾 Save Local Price</button>
-                <button type="button" id="local-price-view-btn" style="flex:1;min-width:100px;padding:8px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;">📊 View Best</button>
+                <button type="button" id="local-price-save-btn" style="flex:1;min-width:90px;padding:8px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;">💾 Save</button>
+                <button type="button" id="local-price-view-btn" style="flex:1;min-width:90px;padding:8px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#065f46;color:#fff;cursor:pointer;">📊 View</button>
+                <button type="button" id="local-price-import-btn" style="flex:1;min-width:90px;padding:8px;font-size:12px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;">📥 Import CSV</button>
                 <button type="button" id="local-price-clear-btn" style="flex:0 0 auto;padding:8px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;">🗑️</button>
               </div>
+              <input type="file" id="local-price-import-input" accept=".csv,text/csv" style="display:none;">
             </div>
             <p style="font-size:10px;color:#888;text-align:center;margin-top:6px;">Static promo frames · showcase / lifestyle / tall / gown · no Meesho session</p>
             <button type="button" id="test-generate-btn" class="generate-btn" disabled style="margin-top:0;display:none;">🧪 Run Test Lab</button>
@@ -454,12 +457,16 @@
           var promoBtn = document.getElementById("generate-promo-lifestyle-btn");
           var tallBtn = document.getElementById("generate-tall-static-btn");
           var gownBtn = document.getElementById("generate-gown-static-btn");
+          var localPriceBtn = document.getElementById("local-price-generate-btn");
+          var localImportBtn = document.getElementById("local-price-import-btn");
           if (liveBtn) liveBtn.disabled = false;
           if (testBtn) testBtn.disabled = false;
           if (showcaseBtn) showcaseBtn.disabled = false;
           if (promoBtn) promoBtn.disabled = false;
           if (tallBtn) tallBtn.disabled = false;
           if (gownBtn) gownBtn.disabled = false;
+          if (localPriceBtn) localPriceBtn.disabled = false;
+          if (localImportBtn) localImportBtn.disabled = false;
           var boot = document.getElementById("boot-msg");
           var onTest =
             document.querySelector('[data-optimizer-tab="test"]')?.classList.contains("active");
