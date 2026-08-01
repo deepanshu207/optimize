@@ -1071,9 +1071,10 @@ class MeeshoShippingOptimizer {
     this._categoryAcActiveIndex = -1;
     this._categoryAcResults = [];
     this._categoryAcDebounce = null;
-    this._categoryAcOutsideBound = false;
     this._categoryAcIgnoreCloseUntil = 0;
     this._categoryAcPointerInWrap = false;
+    this._categoryAcOpenTimer = null;
+    this._categoryAcModalClickHandler = null;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -1623,12 +1624,22 @@ class MeeshoShippingOptimizer {
     // Always provide an entry point on catalog pages, even if image input isn't present yet.
     this.addFloatingOptimizerButton();
 
+    // Preload full category tree so picker is ready before modal opens
+    void this.ensureFullCategories().then((list) => {
+      if (list?.length) {
+        this.allCategories = list;
+        this.syncCategoryListToMeeshoCategories(list);
+      }
+    });
+
     // Wait for page to load and add button
     this.waitForElement("#changeFrontImage", () => {
       console.log("Image input found, adding button");
       this.addOptimizerButton();
       this.detectShipping();
-      this.scheduleMeeshoPageSync();
+      if (!document.getElementById("opt-modal")) {
+        this.scheduleMeeshoPageSync();
+      }
     });
   }
 
@@ -1968,7 +1979,8 @@ class MeeshoShippingOptimizer {
             width: 100%;
             height: 100%;
             background: rgba(0,0,0,0.8);
-            z-index: 99999;
+            z-index: 2147483646;
+            isolation: isolate;
             display: flex;
             justify-content: ${isNarrow ? "stretch" : "center"};
             align-items: ${isNarrow ? "stretch" : "center"};
@@ -1982,9 +1994,10 @@ class MeeshoShippingOptimizer {
     content.innerHTML = OptimizerUI.createModalHTML();
 
     this.modal.appendChild(content);
-    document.body.appendChild(this.modal);
+    document.documentElement.appendChild(this.modal);
 
     this.setupMainEvents();
+    this.attachCategoryAutocompleteModalHandlers();
 
     this.modal.onclick = (e) => {
       if (e.target === this.modal) this.closeModal();
@@ -2005,10 +2018,44 @@ class MeeshoShippingOptimizer {
       this.mountEmbedded(this.embeddedRoot);
       return;
     }
+    this.detachCategoryAutocompleteModalHandlers();
+    this._categoryUserEditing = false;
+    this.hideCategoryAutocomplete();
     if (this.modal) {
       this.modal.remove();
       this.modal = null;
     }
+  }
+
+  isCategoryAutocompleteActive() {
+    const listEl = document.getElementById("category-ac-list");
+    const search = document.getElementById("category-search");
+    return (
+      listEl?.classList.contains("open") ||
+      (this._categoryUserEditing &&
+        search &&
+        document.activeElement === search)
+    );
+  }
+
+  attachCategoryAutocompleteModalHandlers() {
+    if (!this.modal) return;
+    this.detachCategoryAutocompleteModalHandlers();
+    this._categoryAcModalClickHandler = (e) => {
+      if (e.target.closest("#category-ac-wrap")) return;
+      const listEl = document.getElementById("category-ac-list");
+      if (!listEl?.classList.contains("open")) return;
+      if (Date.now() < this._categoryAcIgnoreCloseUntil) return;
+      this.hideCategoryAutocomplete();
+    };
+    this.modal.addEventListener("click", this._categoryAcModalClickHandler);
+  }
+
+  detachCategoryAutocompleteModalHandlers() {
+    if (this.modal && this._categoryAcModalClickHandler) {
+      this.modal.removeEventListener("click", this._categoryAcModalClickHandler);
+    }
+    this._categoryAcModalClickHandler = null;
   }
 
   setupLicenseEvents() {
@@ -2599,6 +2646,7 @@ Please share payment details and license key.`;
 
   applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
+    if (this.isCategoryAutocompleteActive() && !options.force) return false;
     if (this._categoryUserEditing && !options.force) return false;
 
     const searchEl = document.getElementById("category-search");
@@ -2631,6 +2679,10 @@ Please share payment details and license key.`;
     let attempts = 0;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
+      if (this.isCategoryAutocompleteActive()) {
+        if (attempts < maxAttempts) setTimeout(tick, delayMs);
+        return;
+      }
 
       const searchEl = document.getElementById("category-search");
       if (
@@ -2657,6 +2709,7 @@ Please share payment details and license key.`;
 
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
+    if (this.isCategoryAutocompleteActive()) return;
     const searchEl = document.getElementById("category-search");
     if (
       this._categoryUserEditing &&
@@ -3090,24 +3143,7 @@ Please share payment details and license key.`;
 
     listEl.innerHTML = html;
     listEl.querySelectorAll(".category-ac-item").forEach((item) => {
-      item.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      });
-      item.addEventListener("touchstart", (e) => {
-        e.stopPropagation();
-      }, { passive: true });
-      item.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const id = parseInt(item.dataset.id, 10);
-        const cat =
-          this._categoryAcResults.find((c) => c.id === id) ||
-          this.findCategoryById(id);
-        if (cat) {
-          this.applyCategorySelection(cat, { source: "user" });
-          this.hideCategoryAutocomplete();
-        }
-      });
+      item.setAttribute("tabindex", "-1");
     });
 
     this.showCategoryAutocomplete();
@@ -3235,35 +3271,40 @@ Please share payment details and license key.`;
     const clearBtn = document.getElementById("category-clear");
     if (!wrap || !search) return;
 
-    const stopWrapPointer = (e) => {
-      this._categoryAcPointerInWrap = true;
-      e.stopPropagation();
-    };
-    const endWrapPointer = () => {
-      setTimeout(() => {
-        this._categoryAcPointerInWrap = false;
-      }, 0);
-    };
-    wrap.addEventListener("mousedown", stopWrapPointer, true);
-    wrap.addEventListener("touchstart", stopWrapPointer, { capture: true, passive: true });
-    wrap.addEventListener("mouseup", endWrapPointer, true);
-    wrap.addEventListener("touchend", endWrapPointer, true);
-
-    if (!this._categoryAcOutsideBound) {
-      this._categoryAcOutsideBound = true;
-      document.addEventListener(
-        "click",
+    if (wrap.dataset.categoryAcBound !== "1") {
+      wrap.dataset.categoryAcBound = "1";
+      wrap.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".category-ac-item")) {
+          e.preventDefault();
+        }
+      });
+      wrap.addEventListener(
+        "touchstart",
         (e) => {
-          const listEl = document.getElementById("category-ac-list");
-          if (!listEl?.classList.contains("open")) return;
-          if (Date.now() < this._categoryAcIgnoreCloseUntil) return;
-          if (this._categoryAcPointerInWrap) return;
-          if (!e.target.closest("#category-ac-wrap")) {
-            this.hideCategoryAutocomplete();
+          if (e.target.closest(".category-ac-item")) {
+            this._categoryAcPointerInWrap = true;
           }
         },
-        true,
+        { passive: true },
       );
+      wrap.addEventListener("touchend", () => {
+        setTimeout(() => {
+          this._categoryAcPointerInWrap = false;
+        }, 0);
+      });
+      wrap.addEventListener("click", (e) => {
+        const item = e.target.closest(".category-ac-item");
+        if (!item) return;
+        e.stopPropagation();
+        const id = parseInt(item.dataset.id, 10);
+        const cat =
+          this._categoryAcResults.find((c) => c.id === id) ||
+          this.findCategoryById(id);
+        if (cat) {
+          this.applyCategorySelection(cat, { source: "user" });
+          this.hideCategoryAutocomplete();
+        }
+      });
     }
 
     search.onfocus = () => {
@@ -3274,6 +3315,11 @@ Please share payment details and license key.`;
       this._categoryAcOpenTimer = setTimeout(() => {
         this.updateCategoryAutocompleteSuggestions();
       }, 0);
+    };
+
+    search.onmousedown = () => {
+      this._categoryUserEditing = true;
+      this._categoryAcIgnoreCloseUntil = Date.now() + 400;
     };
 
     search.oninput = () => {
@@ -3376,6 +3422,7 @@ Please share payment details and license key.`;
     );
 
     categorySearch.disabled = false;
+    categorySearch.readOnly = false;
     categorySearch.placeholder = `Search ${categories.length} categories by name or ID…`;
 
     const countHint = document.getElementById("category-count-hint");
@@ -3400,8 +3447,12 @@ Please share payment details and license key.`;
     );
 
     if (!window.WEB_OPTIMIZER_MODE) {
-      this.applyDefaultCategoryIfNeeded();
-      this.scheduleMeeshoPageSync();
+      if (!this._categoryUserPicked && !this.isCategoryAutocompleteActive()) {
+        this.applyDefaultCategoryIfNeeded();
+      }
+      if (!document.getElementById("opt-modal")) {
+        this.scheduleMeeshoPageSync();
+      }
     } else {
       this.refreshCategoryApiPreview();
     }
@@ -3415,6 +3466,18 @@ Please share payment details and license key.`;
     const categoryError = document.getElementById("category-error");
 
     if (!categorySearch) return;
+
+    const cached =
+      this.allCategories?.length >= 3000
+        ? this.allCategories
+        : typeof MeeshoAPI !== "undefined" &&
+            MeeshoAPI.cache?.categories?.length >= 3000
+          ? MeeshoAPI.cache.categories
+          : null;
+
+    if (cached?.length && this.bindCategoryUI(cached)) {
+      return;
+    }
 
     if (typeof MeeshoAPI === "undefined") {
       categorySearch.value = "";
