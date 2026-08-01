@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
           "config.js",
           "js/utils.js",
           "js/license.js",
-          "js/meeshoCategories-lite.js",
+          "js/meeshoCategories.js",
           "js/meeshoApi.js",
           "js/imageGenerator.js",
           "js/ui.js",

@@ -2067,6 +2067,7 @@ class MeeshoShippingOptimizer {
     const listEl = document.getElementById("category-ac-list");
     const search = document.getElementById("category-search");
     return (
+      this._categoryAcPinned ||
       listEl?.classList.contains("open") ||
       (this._categoryUserEditing &&
         search &&

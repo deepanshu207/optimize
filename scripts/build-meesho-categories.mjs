@@ -389,6 +389,10 @@ const MeeshoCategories = {
   LIST: ${JSON.stringify(categories)},
   _list: null,
 ${SHARED_METHODS}
+
+  async ensureLoaded() {
+    return this.getList();
+  },
 };
 
 window.MeeshoCategories = MeeshoCategories;
@@ -407,6 +411,7 @@ const MeeshoCategories = {
   CLOTH_RELATED_COUNT: ${clothRelatedCount},
   WOMEN_CLOTH_RELATED_COUNT: ${womenClothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
+  STORAGE_KEY: "meesho_category_tree_v1",
   LIST: [],
   _list: null,
   _loadPromise: null,
@@ -418,15 +423,86 @@ const MeeshoCategories = {
     return null;
   },
 
+  applyLoadedList(list) {
+    if (!list?.length) return null;
+    this._list = list;
+    window.MEESHO_EMBEDDED_CATEGORIES = list;
+    return list;
+  },
+
+  async loadFromStorageCache() {
+    try {
+      if (typeof chrome === "undefined" || !chrome.storage?.local?.get) return null;
+      const data = await chrome.storage.local.get(this.STORAGE_KEY);
+      const raw = data?.[this.STORAGE_KEY];
+      if (!Array.isArray(raw) || raw.length < this.FULL_CATEGORY_MIN) return null;
+      return this.applyLoadedList(raw);
+    } catch (e) {
+      console.warn("Category storage cache read failed:", e);
+      return null;
+    }
+  },
+
+  async saveToStorageCache(list) {
+    try {
+      if (!list?.length || typeof chrome === "undefined" || !chrome.storage?.local?.set) return;
+      await chrome.storage.local.set({ [this.STORAGE_KEY]: list });
+    } catch (e) {
+      console.warn("Category storage cache write failed:", e);
+    }
+  },
+
+  loadTreeFromUrlXhr(url) {
+    return new Promise((resolve, reject) => {
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.responseType = "json";
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const tree = xhr.response ?? JSON.parse(xhr.responseText || "null");
+            const list = this.applyLoadedList(this.parseTree(tree));
+            if (list?.length) resolve(list);
+            else reject(new Error("Category tree parsed empty (XHR)"));
+          } else {
+            reject(new Error("Category tree XHR failed: " + xhr.status));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Category tree XHR network error"));
+        xhr.send();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+
   async ensureLoaded() {
     if (this._list?.length >= this.FULL_CATEGORY_MIN) return this._list;
+    if (this.LIST?.length >= this.FULL_CATEGORY_MIN) {
+      return this.applyLoadedList(this.LIST.slice());
+    }
     if (this._loadPromise) return this._loadPromise;
 
     this._loadPromise = (async () => {
+      const cached = await this.loadFromStorageCache();
+      if (cached?.length >= this.FULL_CATEGORY_MIN) {
+        console.log("✅ Extension loaded categories from storage:", cached.length);
+        return cached;
+      }
+
       const url = this.categoryJsonUrl();
       if (!url) throw new Error("Extension category JSON URL unavailable");
-      const list = await this.loadTreeFromUrl(url);
+
+      let list = null;
+      try {
+        list = await this.loadTreeFromUrl(url);
+      } catch (fetchErr) {
+        console.warn("Category JSON fetch failed, trying XHR:", fetchErr.message);
+        list = await this.loadTreeFromUrlXhr(url);
+      }
+
       if (!list?.length) throw new Error("Category tree parsed empty");
+      await this.saveToStorageCache(list);
       console.log("✅ Extension loaded categories from JSON:", list.length);
       return list;
     })();
@@ -435,6 +511,9 @@ const MeeshoCategories = {
       return await this._loadPromise;
     } catch (e) {
       console.error("Extension category JSON load failed:", e);
+      const cached = await this.loadFromStorageCache();
+      if (cached?.length) return cached;
+      if (this.LIST?.length) return this.getList();
       throw e;
     } finally {
       this._loadPromise = null;
