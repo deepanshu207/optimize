@@ -65,16 +65,79 @@ const OptimizerUI = {
                 .session-status.warn { color: #b45309; }
                 .optimizer-chrome-hidden { display: none !important; }
                 .category-picker-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
-                #category-select {
+                #category-ac-wrap { position: relative; z-index: 10000; }
+                #category-search {
                     touch-action: manipulation;
-                    font-size: 14px !important;
+                    -webkit-user-select: text; user-select: text;
+                    font-size: 16px !important;
                     min-height: 44px;
                     width: 100%;
+                    padding-right: 32px;
                     color: #111827;
                     background: #fff;
                     border-color: #d1d5db;
                 }
-                #category-select option { color: #111827; }
+                #category-clear {
+                    position: absolute;
+                    right: 10px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    cursor: pointer;
+                    color: #9ca3af;
+                    display: none;
+                    z-index: 2;
+                    padding: 4px;
+                    line-height: 1;
+                }
+                .category-ac-list {
+                    display: none;
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    top: 100%;
+                    margin-top: 2px;
+                    max-height: 260px;
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+                    list-style: none;
+                    margin: 0;
+                    padding: 0;
+                    z-index: 10001;
+                }
+                .category-ac-list.open { display: block; }
+                .category-ac-item {
+                    padding: 10px 12px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #f3f4f6;
+                    font-size: 12px;
+                }
+                .category-ac-item:hover,
+                .category-ac-item.active {
+                    background: rgba(102,126,234,0.12);
+                }
+                .category-ac-item-name {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 8px;
+                    color: #111827;
+                    font-weight: 600;
+                }
+                .category-ac-item-id { font-size: 10px; color: #6b7280; font-weight: 500; white-space: nowrap; }
+                .category-ac-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.35; }
+                .category-ac-header,
+                .category-ac-footer {
+                    padding: 8px 12px;
+                    font-size: 10px;
+                    color: #6b7280;
+                    background: #f9fafb;
+                    border-bottom: 1px solid #f3f4f6;
+                }
+                .category-ac-footer { border-bottom: none; border-top: 1px solid #f3f4f6; }
+                .category-ac-empty { padding: 12px; color: #6b7280; font-size: 12px; }
                 @media (max-width: 640px) {
                     .opt-modal-ext { border-radius: 0 !important; min-height: 100vh; }
                     .opt-modal-ext .opt-header { border-radius: 0 !important; }
@@ -322,13 +385,14 @@ const OptimizerUI = {
                             <span>📁 Category (Required)</span>
                             <button id="refresh-categories" style="background:rgba(102,126,234,0.2);border:none;color:#a78bfa;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;display:none;" title="Refresh">🔄</button>
                         </div>
-                        <div style="position:relative;z-index:10000;">
-                            <select id="category-select" class="opt-select" disabled>
-                                <option value="">Loading women categories…</option>
-                            </select>
+                        <div id="category-ac-wrap">
+                            <input type="text" id="category-search" class="opt-input" placeholder="Search 3777 categories by name or ID…" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="category-ac-list" disabled>
+                            <button type="button" id="category-clear" aria-label="Clear category" title="Clear">✕</button>
+                            <ul id="category-ac-list" class="category-ac-list" role="listbox" aria-label="Category suggestions"></ul>
                         </div>
+                        <input type="hidden" id="category-select" value="">
                         <p class="category-picker-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-picker-hint">Women apparel — ethnic, western, footwear, innerwear &amp; more (grouped by section)</p>
+                        <p class="category-picker-hint">Type to search all categories · women apparel quick picks when empty</p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>

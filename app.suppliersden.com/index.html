@@ -131,12 +131,58 @@
     .session-status.warn { background: #fffbeb; color: #b45309; }
     .session-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.4; }
     .category-picker-hint { font-size: 10px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
-    #category-select {
+    #category-ac-wrap { position: relative; z-index: 10000; }
+    #category-search {
       touch-action: manipulation;
+      -webkit-user-select: text; user-select: text;
       font-size: 16px !important;
       min-height: 44px;
       width: 100%;
+      padding-right: 32px;
     }
+    #category-clear {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: #888;
+      display: none;
+      z-index: 2;
+      border: none;
+      background: transparent;
+      font-size: 14px;
+      padding: 4px;
+    }
+    .category-ac-list {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      margin-top: 2px;
+      max-height: 260px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.12);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      z-index: 10001;
+    }
+    .category-ac-list.open { display: block; }
+    .category-ac-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 12px; }
+    .category-ac-item:hover, .category-ac-item.active { background: rgba(102,126,234,0.12); }
+    .category-ac-item-name { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: #111827; }
+    .category-ac-item-id { font-size: 10px; color: #6b7280; font-weight: 500; }
+    .category-ac-item-path { font-size: 10px; color: #4b5563; margin-top: 2px; }
+    .category-ac-header, .category-ac-footer { padding: 8px 12px; font-size: 10px; color: #6b7280; background: #f9fafb; }
+    .category-ac-header { border-bottom: 1px solid #f3f4f6; }
+    .category-ac-footer { border-top: 1px solid #f3f4f6; }
+    .category-ac-empty { padding: 12px; color: #6b7280; font-size: 12px; }
     .smart-mode-note {
       font-size: 11px;
       color: #666;
@@ -307,11 +353,14 @@
               <span>📁 Category <span style="font-size:10px;font-weight:normal;color:#6b7280;">(optional)</span></span>
               <button type="button" id="refresh-categories" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;" title="Refresh">🔄 Refresh</button>
             </div>
-            <select id="category-select" class="opt-select" disabled>
-              <option value="">Loading women categories…</option>
-            </select>
+            <div id="category-ac-wrap">
+              <input type="text" id="category-search" class="opt-input" placeholder="Search 3777 categories by name or ID…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="category-ac-list" disabled>
+              <button type="button" id="category-clear" aria-label="Clear category" title="Clear">✕</button>
+              <ul id="category-ac-list" class="category-ac-list" role="listbox"></ul>
+            </div>
+            <input type="hidden" id="category-select" value="">
             <p class="category-picker-hint" id="category-count-hint" style="font-size:10px;color:#047857;margin-top:4px;line-height:1.4;">Loading categories…</p>
-            <p class="category-picker-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Women apparel — ethnic, western, footwear, innerwear &amp; more (grouped by section)</p>
+            <p class="category-picker-hint" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.4;">Type to search all categories · women apparel quick picks when empty</p>
             <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca;">
               <span style="font-size:11px;color:#dc2626;">⚠️ Could not load categories. You can still generate variants — category is only needed for live Meesho shipping checks.</span>
             </div>
