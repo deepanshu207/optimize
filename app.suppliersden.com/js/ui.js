@@ -393,11 +393,15 @@ const OptimizerUI = {
 
                     <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
-                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">No local history yet — generate &amp; save after getting prices</p>
+                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers</p>
+                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate Local Price (2–10)</button>
                         <div style="display:flex;gap:6px;">
-                            <button type="button" id="local-price-save-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save Local Price</button>
-                            <button type="button" id="local-price-view-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View Best</button>
+                            <button type="button" id="local-price-save-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save</button>
+                            <button type="button" id="local-price-view-btn" style="flex:1;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#065f46;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View</button>
+                            <button type="button" id="local-price-import-btn" style="flex:1;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📥 CSV</button>
+                            <button type="button" id="local-price-clear-btn" style="flex:0 0 auto;padding:8px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;min-height:40px;">🗑️</button>
                         </div>
+                        <input type="file" id="local-price-import-input" accept=".csv,text/csv" style="display:none;">
                     </div>
 
                     <div id="processing-area" style="display:none;"></div>
@@ -452,9 +456,11 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     const testLabMode = !!options.testLabMode;
     const analysisMode = !!options.analysisMode || !!r.analysisMode;
+    const localPriceMode = !!options.localPriceMode;
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
-    const isBest = !!options.isBest;
+    const isLocalPick = !!r.localRecommended;
+    const isBest = isLocalPick || !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
     const frozenEst =
       r._frozenPricing?.estShipping ??
@@ -465,7 +471,9 @@ const OptimizerUI = {
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const estInr = frozenEst;
     const priceLabel =
-      testLabMode || analysisMode
+      localPriceMode && estInr > 0
+      ? "local ₹" + estInr
+      : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
         : "est ₹" + estInr
@@ -519,7 +527,9 @@ const OptimizerUI = {
       isBest ? "#10b981" : "rgba(255,255,255,0.1)"
     };border-radius:8px;padding:8px;text-align:center;position:relative;">
                     ${
-                      isBest
+                      isLocalPick
+                        ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#047857;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">★ LOCAL PICK</div>'
+                        : isBest
                         ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">🏆 BEST</div>'
                         : ""
                     }
@@ -992,7 +1002,34 @@ const OptimizerUI = {
 
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const manualMode = !!options.manualMode;
+    const localPriceMode = !!options.localPriceMode;
+    const localProfile = options.localPriceProfile || null;
     let html = "";
+
+    if (localPriceMode && results.length > 0) {
+      const best = results[0];
+      const bestEst = best.localEstShipping || best.estShipping || "—";
+      const recPrices = localProfile?.recommendedPrices || [];
+      const tierText = localProfile?.tiers?.length
+        ? `tiers ₹${localProfile.tiers.join(", ")}`
+        : "est from image analysis";
+      html += `
+            <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                <div style="font-size:11px;color:#047857;">📍 Local Price Mode (no live check)</div>
+                <div style="font-size:26px;font-weight:700;color:#047857;">est ₹${bestEst}</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · ${tierText}</div>
+                ${
+                  recPrices.length
+                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Recommend: ₹${recPrices.join(" + ₹")}</div>`
+                    : ""
+                }
+                ${
+                  localProfile?.strategyReason
+                    ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`
+                    : ""
+                }
+            </div>`;
+    }
 
     if (!hasLive && !hasAnalysis && hasShowcase && !hasPromoLifestyle && !hasTallStatic) {
       const sortedShowcase = [...showcaseResults].sort(
@@ -1042,7 +1079,7 @@ const OptimizerUI = {
             </div>`;
     }
 
-    if (hasLive) {
+    if (hasLive && !localPriceMode) {
       const best = results[0];
       const totalResults = results.length;
       const testedCount = results.filter((r) => r.shippingCost > 0).length;
@@ -1095,6 +1132,21 @@ const OptimizerUI = {
         });
       });
 
+      html += `</div>`;
+    }
+
+    if (hasLive && localPriceMode) {
+      html += `
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
+        `;
+      results.forEach((r, i) => {
+        html += this.renderResultCard(r, i, {
+          baselineShipping: baseline,
+          manualMode,
+          localPriceMode: true,
+          isBest: r.localRecommended,
+        });
+      });
       html += `</div>`;
     }
 
