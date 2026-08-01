@@ -125,13 +125,6 @@ function pickLocalStrategy(prices) {
   };
 }
 
-/** Empirical KB/border from live Meesho tiers (CSV reports often omit KB). */
-const LIVE_TIER_KB_PROFILE = {
-  59: { anchorKb: 52, maxKb: 58, borderMin: 8, borderMax: 14, badgeCount: 0 },
-  60: { anchorKb: 54, maxKb: 62, borderMin: 8, borderMax: 16, badgeCount: 0 },
-  65: { anchorKb: 64, maxKb: 72, borderMin: 12, borderMax: 20, badgeCount: 1 },
-};
-
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
   REPORTS_KEY: "meesho_local_price_reports",
@@ -144,25 +137,62 @@ const LocalPriceDB = {
   PICK_COUNT_MAX: 10,
   PICK_COUNT_DEFAULT: 2,
 
-  getTierKbProfile(tierPrice) {
-    const t = Number(tierPrice);
-    if (!t) return null;
-    if (LIVE_TIER_KB_PROFILE[t]) return LIVE_TIER_KB_PROFILE[t];
-    if (t <= 60) return LIVE_TIER_KB_PROFILE[59];
-    if (t <= 65) return LIVE_TIER_KB_PROFILE[65];
-    return null;
+  /** KB/border profile only when this category+tier was live-tested (fingerprints/history). */
+  getEmpiricalTierProfile(catId, tierPrice) {
+    const tier = Number(tierPrice);
+    const id = String(catId || "");
+    if (!tier || !id) return null;
+    const stats = this.getTierLearnedStats(id, tier);
+    if (!stats) return null;
+
+    const fps = this._readFingerprints().filter(
+      (f) => f.cat === id && Number(f.shipping) === tier,
+    );
+    const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
+    const anchorKb =
+      stats.medianKb ||
+      (kbs.length ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)] : null);
+    if (!anchorKb) return null;
+
+    const borders = fps
+      .map((f) => Number(f.borderPx))
+      .filter((b) => b > 0);
+    const medianBorder =
+      stats.medianBorder ||
+      (borders.length
+        ? borders.sort((a, b) => a - b)[Math.floor(borders.length / 2)]
+        : null);
+    const maxKb = Math.min(Math.ceil(anchorKb * 1.12), anchorKb + 6);
+    const borderMax = medianBorder || null;
+    const borderMin = borderMax ? Math.max(8, borderMax - 6) : null;
+
+    return {
+      anchorKb,
+      maxKb,
+      borderMin,
+      borderMax,
+      badgeCount: 0,
+      liveTested: true,
+    };
   },
 
-  enrichVariantFromLiveTier(v) {
+  hasLiveTierLearned(catId, tierPrice) {
+    return this.getEmpiricalTierProfile(catId, tierPrice) != null;
+  },
+
+  enrichVariantFromLiveTier(v, catId = "") {
     if (!v) return v;
     const ship = Number(v.shippingCost || 0);
-    const prof = ship > 0 ? this.getTierKbProfile(ship) : null;
+    const prof =
+      ship > 0 && catId
+        ? this.getEmpiricalTierProfile(catId, ship)
+        : null;
     const kb = this.variantKb(v);
     if (prof) {
       v.meta = { ...(v.meta || {}) };
       if (!kb && prof.anchorKb) {
         v.meta.kb = prof.anchorKb;
-        v.meta.kbFromTier = true;
+        v.meta.kbFromLiveLearn = true;
       }
       if (!v.meta.borderPx && prof.borderMax) {
         v.meta.borderPx = prof.borderMax;
@@ -447,7 +477,7 @@ const LocalPriceDB = {
 
     const priced = variants
       .filter((v) => Number(v.shippingCost) > 0)
-      .map((v) => this.enrichVariantFromLiveTier(v));
+      .map((v) => this.enrichVariantFromLiveTier(v, catId));
     if (!priced.length) return { learned: 0, lowest: 0, lowestCount: 0 };
 
     this.saveRun(priced, context);
@@ -573,40 +603,43 @@ const LocalPriceDB = {
       const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
       if (kbs.length) return Math.min(...kbs);
     }
-    const tierProf = this.getTierKbProfile(tier);
+    const tierProf = this.getEmpiricalTierProfile(catId, tier);
     if (tierProf?.anchorKb) return tierProf.anchorKb;
     return null;
   },
 
-  /** Live-learned generation hints (KB / border from Meesho-verified runs). */
+  /** Live-learned generation hints — only when tier was Meesho-tested for this category. */
   getLiveGenerationHints(catId) {
     const id = String(catId || "");
     const tier = this.resolveLearnedTier(id);
     if (!tier) return null;
-    const tierProf = this.getTierKbProfile(tier) || {};
     const stats = this.getTierLearnedStats(id, tier);
+    const tierProf = this.getEmpiricalTierProfile(id, tier);
+    if (!stats || !tierProf) return null;
+
     const anchorKb =
-      stats?.medianKb || tierProf.anchorKb || this.resolveLiveAnchorKb(id, null, tier);
-    const maxKb =
-      tierProf.maxKb ||
-      (anchorKb ? Math.min(anchorKb + 6, 62) : tier <= 65 ? 58 : 72);
-    const borderMax =
-      stats?.medianBorder != null
-        ? Math.min(16, stats.medianBorder + 4)
-        : tierProf.borderMax || (tier <= 65 ? 14 : 22);
-    const borderMin = tierProf.borderMin || (tier <= 65 ? 8 : 12);
+      stats.medianKb ||
+      tierProf.anchorKb ||
+      this.resolveLiveAnchorKb(id, null, tier);
+    const maxKb = tierProf.maxKb || (anchorKb ? anchorKb + 6 : null);
+    const borderMax = stats.medianBorder ?? tierProf.borderMax ?? null;
+    const borderMin =
+      tierProf.borderMin ||
+      (borderMax ? Math.max(8, borderMax - 6) : null);
+
     return {
       tier,
       medianKb: anchorKb,
       maxKb,
-      medianBorder: stats?.medianBorder ?? borderMax,
-      dominantStyle: stats?.dominantStyle || "standard",
-      ultraLow: tier <= 65,
+      medianBorder: borderMax,
+      dominantStyle: stats.dominantStyle || "standard",
+      ultraLow: false,
       lowBias: false,
       borderMin,
       borderMax,
-      badgeCount: tierProf.badgeCount ?? (tier <= 60 ? 0 : 1),
+      badgeCount: tierProf.badgeCount ?? 0,
       kbTolerance: 5,
+      liveTested: true,
     };
   },
 
@@ -649,7 +682,7 @@ const LocalPriceDB = {
     });
     if (band.length) return band;
 
-    const tierProf = this.getTierKbProfile(tier);
+    const tierProf = this.getEmpiricalTierProfile(catId, tier);
     if (tierProf?.maxKb) {
       return (variants || []).filter((v) => {
         const kb = this.variantKb(v);
@@ -915,7 +948,7 @@ const LocalPriceDB = {
 
   poolSizeForPickCount(pickCount) {
     const n = this.clampPickCount(pickCount);
-    return Math.min(28, Math.max(20, n * 6));
+    return Math.min(10, Math.max(n + 2, n * 2));
   },
 
   /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
@@ -959,7 +992,7 @@ const LocalPriceDB = {
     const cat = String(context.categoryId || "");
     const entries = this._read();
     priced.forEach((v) => {
-      this.enrichVariantFromLiveTier(v);
+      this.enrichVariantFromLiveTier(v, cat);
       entries.push({
         ts,
         cat,
@@ -988,7 +1021,7 @@ const LocalPriceDB = {
     const catId = String(parsed.meta.category_id || "");
     const priced = parsed.variants
       .filter((v) => Number(v.shippingCost) > 0)
-      .map((v) => this.enrichVariantFromLiveTier(v));
+      .map((v) => this.enrichVariantFromLiveTier(v, catId));
 
     if (!priced.length && !parsed.uniquePrices.length) {
       return { ok: false, error: "No variant or tier data found in CSV." };
@@ -1009,7 +1042,7 @@ const LocalPriceDB = {
             Number(v.shippingCost) === Number(lowestTier) ||
             v.meta?.recommended,
         )
-        .map((v) => this.enrichVariantFromLiveTier(v));
+        .map((v) => this.enrichVariantFromLiveTier(v, catId));
       if (atLowest.length) {
         this.saveFingerprints(atLowest, catId, "csv", lowestTier);
       }
@@ -1312,7 +1345,9 @@ const LocalPriceDB = {
       anchorKb,
     );
     let pool = liveBand.length ? liveBand : sortedAll;
-    const tierProf = learnedTier ? this.getTierKbProfile(learnedTier) : null;
+    const tierProf = learnedTier
+      ? this.getEmpiricalTierProfile(catId, learnedTier)
+      : null;
     if (tierProf?.maxKb) {
       pool = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
     }
@@ -5191,11 +5226,6 @@ Please share payment details and license key.`;
 
       this.gatherSettings();
 
-      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
-        console.warn("Static analysis failed:", e);
-        return null;
-      });
-
       let result = { success: false, results: [] };
 
       if (
@@ -5290,84 +5320,63 @@ Please share payment details and license key.`;
         );
       }
 
-      const analysisOut = await analysisPromise;
-      if (analysisOut?.success) {
-        this.liveAnalysis = analysisOut.analysis;
-        this.analysisPrimaryResults = (analysisOut.primary || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 20000)
+      if (result.success && result.results.length > 0) {
+        const mapped = result.results.map((r, i) =>
+          this.mapResultFromApi(r, i),
         );
-        this.analysisExtraResults = (analysisOut.seeMore || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 30000)
+        const framedMapped = (result.framedExtras || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 10000),
         );
-        this.analysisPrimaryResults.sort(
-          (a, b) => (a.estShipping || 999) - (b.estShipping || 999)
-        );
+        const policy = LocalPriceDB.applyLiveResultPolicy(mapped, liveCatId);
+        this._liveLearnResults = policy.allPriced;
+        this.lastLivePricedResults = [...policy.allPriced];
+        this.currentResults = policy.display;
+        this.framedExtraResults = framedMapped;
+        this.showFramedExtras = false;
+        this.liveAnalysis = null;
+        this.analysisPrimaryResults = [];
+        this.analysisExtraResults = [];
         this.showAnalysisExtras = false;
-      }
 
-      if (
-        (result.success && result.results.length > 0) ||
-        this.analysisPrimaryResults.length > 0
-      ) {
-        if (result.success && result.results.length > 0) {
-          const mapped = result.results.map((r, i) =>
-            this.mapResultFromApi(r, i),
-          );
-          const framedMapped = (result.framedExtras || []).map((r, i) =>
-            this.mapResultFromApi(r, i + 10000),
-          );
-          const policy = LocalPriceDB.applyLiveResultPolicy(mapped, liveCatId);
-          this._liveLearnResults = policy.allPriced;
-          this.lastLivePricedResults = [...policy.allPriced];
-          this.currentResults = policy.display;
-          this.framedExtraResults = framedMapped;
-          this.showFramedExtras = false;
-
-          if (policy.hiddenHighCount > 0 && shippingCap) {
-            OptimizerUtils.showNotification(
-              `Hidden ${policy.hiddenHighCount} variant(s) above ₹${shippingCap} cap for this category`,
-              "info",
-              5000,
-            );
-          }
-          const recPrices = (policy.recommendation?.picks || [])
-            .map((p) => `₹${p.shippingCost}`)
-            .join(" + ");
-          if (recPrices && policy.recommendation?.picks?.length) {
-            OptimizerUtils.showNotification(
-              `★ Recommended: ${recPrices} (${policy.recommendation.strategy})`,
-              "success",
-              6000,
-            );
-          }
-
-          if (result.localOnly) {
-            OptimizerUtils.showNotification(
-              manualMode
-                ? `✅ ${result.results.length} variants — download, test on Meesho, type ₹ below`
-                : `✅ ${result.results.length} variants ready — download & test on Meesho`,
-              "success"
-            );
-          } else if (result.targetReached) {
-            OptimizerUtils.showNotification(
-              `🎯 Target! ₹${result.bestResult.shippingCost}`,
-              "success"
-            );
-          } else if (this.shouldStop) {
-            OptimizerUtils.showNotification(
-              `Stopped. Best: ₹${result.bestResult?.shippingCost || "—"}`,
-              "info"
-            );
-          } else if (result.bestResult?.shippingCost) {
-            OptimizerUtils.showNotification(
-              `✅ Best: ₹${result.bestResult.shippingCost} (${result.verifiedCount || 0} verified, ${result.noPidCount || 0} no PID)`,
-              "info"
-            );
-          }
-        } else if (this.analysisPrimaryResults.length > 0) {
+        if (policy.hiddenHighCount > 0 && shippingCap) {
           OptimizerUtils.showNotification(
-            `📊 ${this.analysisPrimaryResults.length} analysis options ready (est ₹, no Meesho needed)`,
+            `Hidden ${policy.hiddenHighCount} variant(s) above ₹${shippingCap} cap for this category`,
+            "info",
+            5000,
+          );
+        }
+        const recPrices = (policy.recommendation?.picks || [])
+          .map((p) => `₹${p.shippingCost}`)
+          .join(" + ");
+        if (recPrices && policy.recommendation?.picks?.length) {
+          OptimizerUtils.showNotification(
+            `★ Recommended: ${recPrices} (${policy.recommendation.strategy})`,
+            "success",
+            6000,
+          );
+        }
+
+        if (result.localOnly) {
+          OptimizerUtils.showNotification(
+            manualMode
+              ? `✅ ${result.results.length} variants — download, test on Meesho, type ₹ below`
+              : `✅ ${result.results.length} variants ready — download & test on Meesho`,
             "success"
+          );
+        } else if (result.targetReached) {
+          OptimizerUtils.showNotification(
+            `🎯 Target! ₹${result.bestResult.shippingCost}`,
+            "success"
+          );
+        } else if (this.shouldStop) {
+          OptimizerUtils.showNotification(
+            `Stopped. Best: ₹${result.bestResult?.shippingCost || "—"}`,
+            "info"
+          );
+        } else if (result.bestResult?.shippingCost) {
+          OptimizerUtils.showNotification(
+            `✅ Best: ₹${result.bestResult.shippingCost} (${result.verifiedCount || 0} verified, ${result.noPidCount || 0} no PID)`,
+            "info"
           );
         }
       } else if (!window.WEB_OPTIMIZER_MODE) {
@@ -5400,7 +5409,7 @@ Please share payment details and license key.`;
     const resultsArea = document.getElementById("results-area");
     if (processingArea) processingArea.style.display = "none";
 
-    if (this.currentResults.length > 0 || this.analysisPrimaryResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0 || this.gownStaticResults.length > 0))) {
+    if (this.currentResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0 || this.gownStaticResults.length > 0))) {
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -5498,7 +5507,7 @@ Please share payment details and license key.`;
         <div style="text-align:center;padding:24px;">
           <div style="font-size:40px;margin-bottom:8px;">📍</div>
           <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
-          <p style="color:#6b7280;font-size:12px;">Building variants to match your live Meesho ₹ pattern (KB / border)</p>
+          <p style="color:#6b7280;font-size:12px;">Only Meesho-tested live variants — small pool, no untested ultra tiers</p>
         </div>`;
     }
 
@@ -5518,16 +5527,65 @@ Please share payment details and license key.`;
 
       const liveRefs = this.getLiveRefsForLocal(effectiveCatId);
       const liveHints = LocalPriceDB.getLiveGenerationHints(effectiveCatId);
-      const targetTier =
-        liveHints?.tier || profile.recommendedPrices?.[0] || 59;
+      const sessionRefs = liveRefs.filter(
+        (r) => Number(r.shippingCost) > 0 && LocalPriceDB.variantKb(r) > 0,
+      );
+      let targetTier =
+        liveHints?.tier || profile.recommendedPrices?.[0] || null;
+      if (!targetTier && sessionRefs.length) {
+        const ships = sessionRefs
+          .map((r) => Number(r.shippingCost))
+          .filter((p) => p > 0);
+        if (ships.length) targetTier = Math.min(...ships);
+      }
 
-      if (!profile.hasData && !liveRefs.length) {
+      const sessionLearned =
+        targetTier &&
+        LocalPriceDB.hasLiveTierLearned(effectiveCatId, targetTier);
+
+      if (!sessionLearned && !sessionRefs.length) {
         OptimizerUtils.showNotification(
-          "Run Live generate first — local only copies patterns from live Meesho ₹ runs",
+          "Run Live generate first — local only copies Meesho-tested variants (no untested tiers)",
           "error",
           8000,
         );
+        if (processingArea) processingArea.style.display = "none";
+        if (uploadArea) uploadArea.style.display = "block";
+        sections.forEach((s) => (s.style.display = "block"));
+        if (localGenBtn) localGenBtn.disabled = false;
+        this.isProcessing = false;
+        return;
       }
+
+      const refKbs = sessionRefs.map((r) => LocalPriceDB.variantKb(r)).filter((k) => k > 0);
+      const refKbMin = refKbs.length ? Math.min(...refKbs) : null;
+      const refBorder =
+        sessionRefs.length
+          ? Math.round(
+              sessionRefs.reduce(
+                (s, r) => s + Number(r.meta?.borderPx || 0),
+                0,
+              ) / sessionRefs.length,
+            )
+          : null;
+      const genHints = liveHints
+        ? {
+            ...liveHints,
+            borderMax: refBorder || liveHints.borderMax,
+            borderMin:
+              refBorder
+                ? Math.max(8, refBorder - 4)
+                : liveHints.borderMin,
+            maxKb: liveHints.maxKb || (refKbMin ? refKbMin + 6 : null),
+          }
+        : refKbMin
+          ? {
+              maxKb: refKbMin + 6,
+              borderMin: refBorder ? Math.max(8, refBorder - 4) : null,
+              borderMax: refBorder || null,
+              badgeCount: 0,
+            }
+          : null;
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5540,13 +5598,13 @@ Please share payment details and license key.`;
                   processingArea.innerHTML = this.getSmartModeHTML(
                     attempt,
                     max,
-                    targetTier,
+                    targetTier || 0,
                     null,
                     0,
                     elapsed,
                     {
                       testLab: true,
-                      phaseLabel: `Match live ₹${targetTier} pattern (KB/border)`,
+                      phaseLabel: `Match live-tested ₹${targetTier} (KB/border from Meesho run)`,
                     },
                   );
                 }
@@ -5554,22 +5612,13 @@ Please share payment details and license key.`;
               () => this.shouldStop,
               {
                 livePatternOnly: true,
-                maxKb: liveHints?.maxKb ?? (targetTier <= 65 ? 58 : 72),
+                maxKb: genHints?.maxKb ?? null,
                 variantOptions: () => {
-                  if (liveHints) {
-                    return {
-                      ultraLow: true,
-                      lowBias: false,
-                      borderMin: liveHints.borderMin ?? 8,
-                      borderMax: liveHints.borderMax ?? 14,
-                      badgeCount: liveHints.badgeCount ?? 0,
-                    };
-                  }
+                  if (!genHints) return {};
                   return {
-                    ultraLow: true,
-                    borderMin: 8,
-                    borderMax: 14,
-                    badgeCount: 0,
+                    borderMin: genHints.borderMin,
+                    borderMax: genHints.borderMax,
+                    badgeCount: genHints.badgeCount ?? 0,
                   };
                 },
               },
