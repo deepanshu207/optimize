@@ -1,5 +1,5 @@
 record_type,key,value,variant_id,name,shipping_inr,est_inr,verified,live_verified,duplicate_pid,no_pid,variant_style,path,kb,width,height,source,recommended,pick_rank,score,gap_to_next,tier_count,notes,savings_vs_baseline,border_px,badge_count,jpeg_quality,live_total_price,meesho_price_used
-META,generated_at,2026-07-31T23:55:26.663Z,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,generated_at,2026-08-01T20:06:43.024Z,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,baseline_shipping_inr,59,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,category_id,10004,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,category_name,Kurtis · ID 10004,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -7,41 +7,28 @@ META,category_path,"Women Fashion › Ethnic Wear › Kurtis, Sets & Fabrics",,,
 META,category_source,user,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,manual_mode,false,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,strategy,single_lowest,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,strategy_reason,"No consecutive ₹1 gap in unique prices (59, 65, 79, 133, 241, 290). Recommend only the lowest tier ₹59.",,,,,,,,,,,,,,,,,,,,,,,,,,
-META,total_variants,16,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,priced_count,16,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,strategy_reason,"No consecutive ₹1 gap in unique prices (59, 65). Recommend only the lowest tier ₹59.",,,,,,,,,,,,,,,,,,,,,,,,,,
+META,total_variants,7,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,priced_count,7,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,unpriced_count,0,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,unique_prices,59|65|79|133|241|290,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,unique_prices,59|65,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,lowest_price,59,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,highest_price,290,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,highest_price,65,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,recommended_prices,59,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,recommended_variant_ids,var-1-88r2u,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,recommended_variant_ids,var-1-ueysr,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,all_rupee_pairs,,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,FLOW: Generate live variants → Meesho returns customer shipping ₹ per image → sort by price → apply pick rules.,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,"PICK RULE: If lowest unique prices include a ₹1 gap (e.g. 60 & 61), recommend BOTH. Otherwise recommend ONLY the lowest price (e.g. 46 from 46,50).",,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,RESULT: Single strategy — lowest tier is ₹59; larger gaps mean no adjacent floor pair.,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,Category: Kurtis · ID 10004 (sscat_id 10004) — shipping slabs vary by category.,,,,,,,,,,,,,,,,,,,,,,,,,,
-PATTERN,,Large tier jumps: ₹59→₹65 (+6); ₹65→₹79 (+14); ₹79→₹133 (+54); ₹133→₹241 (+108); ₹241→₹290 (+49) — images likely crossed a Meesho size/weight slab.,,,,,,,,,,,,,,,,,,,,,,,,,,
-PRICE_TIER,,,var-1-88r2u,Var-1,59,,,,,,,,,,,,,,,6,8,verified=8;no_pid=0;dup_pid=8,,,,,,
-PRICE_TIER,,,var-9-yxitg,Var-9,65,,,,,,,,,,,,,,,14,1,verified=1;no_pid=0;dup_pid=1,,,,,,
-PRICE_TIER,,,var-10-gnw5b,Var-7,79,,,,,,,,,,,,,,,54,3,verified=3;no_pid=0;dup_pid=3,,,,,,
-PRICE_TIER,,,var-13-2k9r8,Var-2,133,,,,,,,,,,,,,,,108,2,verified=2;no_pid=0;dup_pid=2,,,,,,
-PRICE_TIER,,,var-15-nmehu,Var-13,241,,,,,,,,,,,,,,,49,1,verified=1;no_pid=0;dup_pid=1,,,,,,
-PRICE_TIER,,,var-16-iyal7,Var-5,290,,,,,,,,,,,,,,,,1,verified=1;no_pid=0;dup_pid=1,,,,,,
-VARIANT,,,var-1-88r2u,Var-1,59,0,true,true,1032730386,false,standard,standard,,,,primary,true,1,185,,,,0,,,,159,100
-VARIANT,,,var-2-qwmxt,Var-3,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-3-zv6gu,Var-4,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-4-bnvdj,Var-8,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-5-j7yva,Var-10,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-6-miy2h,Var-11,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-7-v28eq,Var-12,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-8-ngpbh,Var-16,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-9-yxitg,Var-9,65,0,true,true,950473992,false,standard,standard,,,,primary,false,,185,,,,-6,,,,165,100
-VARIANT,,,var-10-gnw5b,Var-7,79,0,true,true,453435142,false,standard,standard,,,,primary,false,,185,,,,-20,,,,179,100
-VARIANT,,,var-11-m9z83,Var-14,79,0,true,true,453435142,false,standard,standard,,,,primary,false,,185,,,,-20,,,,179,100
-VARIANT,,,var-12-d9zpf,Var-15,79,0,true,true,453435142,false,standard,standard,,,,primary,false,,185,,,,-20,,,,179,100
-VARIANT,,,var-13-2k9r8,Var-2,133,0,true,true,988898720,false,standard,standard,,,,primary,false,,185,,,,-74,,,,233,100
-VARIANT,,,var-14-b2tac,Var-6,133,0,true,true,988898720,false,standard,standard,,,,primary,false,,185,,,,-74,,,,233,100
-VARIANT,,,var-15-nmehu,Var-13,241,0,true,true,1028206592,false,standard,standard,,,,primary,false,,185,,,,-182,,,,341,100
-VARIANT,,,var-16-iyal7,Var-5,290,0,true,true,1026118640,false,standard,standard,,,,primary,false,,185,,,,-231,,,,390,100
-RECOMMENDATION,,,var-1-88r2u,Var-1,59,,true,true,1032730386,false,standard,standard,,,,,true,,185,,,"No consecutive ₹1 gap in unique prices (59, 65, 79, 133, 241, 290). Recommend only the lowest tier ₹59.",0,,,,159,100
+PATTERN,,Large tier jumps: ₹59→₹65 (+6) — images likely crossed a Meesho size/weight slab.,,,,,,,,,,,,,,,,,,,,,,,,,,
+PRICE_TIER,,,var-1-ueysr,Var-4,59,,,,,,,,,,,,,,,6,6,verified=6;no_pid=0;dup_pid=6,,,,,,
+PRICE_TIER,,,var-7-zdw3i,Var-1,65,,,,,,,,,,,,,,,,1,verified=1;no_pid=0;dup_pid=1,,,,,,
+VARIANT,,,var-1-ueysr,Var-4,59,0,true,true,1032730386,false,standard,standard,,,,primary,true,1,185,,,,0,,,,159,100
+VARIANT,,,var-2-wd8oz,Var-5,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-3-onvnr,Var-7,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-4-up339,Var-8,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-5-ao79u,Var-10,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-6-ire5g,Var-12,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-7-zdw3i,Var-1,65,0,true,true,424960631,false,standard,standard,,,,primary,false,,185,,,,-6,,,,165,100
+RECOMMENDATION,,,var-1-ueysr,Var-4,59,,true,true,1032730386,false,standard,standard,,,,,true,,185,,,"No consecutive ₹1 gap in unique prices (59, 65). Recommend only the lowest tier ₹59.",0,,,,159,100

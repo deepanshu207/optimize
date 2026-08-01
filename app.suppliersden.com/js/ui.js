@@ -534,8 +534,8 @@ const OptimizerUI = {
     const liveTier = r.localEstShipping || r.meta?.localTier || 0;
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const priceLabel =
-      localPriceMode && staticEst > 0 && liveTier > 0
-        ? `est ₹${staticEst} → live ₹${liveTier}`
+      localPriceMode && liveTier > 0
+        ? `₹${liveTier}`
         : localPriceMode && staticEst > 0
         ? "est ₹" + staticEst
         : testLabMode || analysisMode
@@ -624,6 +624,8 @@ const OptimizerUI = {
                     ${
                       analysisMode
                         ? '<div style="font-size:8px;color:#2563eb;font-weight:600;">static est</div>'
+                        : localPriceMode && liveTier > 0
+                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">learned tier · verify on Meesho</div>'
                         : testLabMode && r.shippingCost > 0
                         ? '<div style="font-size:8px;color:#047857;font-weight:600;">✓ live Meesho</div>'
                         : testLabMode && r.liveChecked
@@ -633,6 +635,14 @@ const OptimizerUI = {
                     ${
                       savings > 0
                         ? `<div style="font-size:9px;color:#10b981;">Save ₹${savings}</div>`
+                        : ""
+                    }
+                    ${
+                      localPriceMode &&
+                      liveTier > 0 &&
+                      staticEst > 0 &&
+                      staticEst !== liveTier
+                        ? `<div style="font-size:8px;color:#6b7280;">file analysis est ₹${staticEst}</div>`
                         : ""
                     }
                     ${
@@ -1082,7 +1092,7 @@ const OptimizerUI = {
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
                 <div style="font-size:11px;color:#047857;">📍 Local Price (no live API check)</div>
-                <div style="font-size:22px;font-weight:700;color:#047857;">est ₹${bestStatic} → live ₹${bestLive}</div>
+                <div style="font-size:22px;font-weight:700;color:#047857;">₹${bestLive}${bestStatic !== "—" && bestStatic !== bestLive ? ` <span style="font-size:12px;color:#6b7280;">(file est ₹${bestStatic})</span>` : ""}</div>
                 <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} picks · ${tierText}</div>
                 <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Static est varies by file KB, frame & badges. Learned live tier is same for category.</div>
                 ${
@@ -1255,7 +1265,7 @@ const OptimizerUI = {
         `;
     }
 
-    if (hasAnalysis) {
+    if (hasAnalysis && !localPriceMode) {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
