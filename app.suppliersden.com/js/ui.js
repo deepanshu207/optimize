@@ -162,7 +162,7 @@ const OptimizerUI = {
     return `
                     <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
-                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Run live generate first → auto-learns lowest shipping for better local picks</p>
+                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Auto-loads public seed tiers + live analysis — no CSV import needed</p>
                         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                             <label style="font-size:10px;color:#047857;flex:1;">Variants to show</label>
                             <select id="local-price-pick-count" class="opt-select" style="flex:1;font-size:12px;padding:6px 8px;">
