@@ -536,11 +536,9 @@ const OptimizerUI = {
       (r.blob?.size ? Math.ceil(r.blob.size / 1024) : null);
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const priceLabel = localPriceMode
-      ? kbLabel
-        ? `${kbLabel} KB`
-        : isLocalPick
-          ? "Local pick"
-          : "Local"
+      ? isLocalPick
+        ? "★ Local pick"
+        : r.name || "Variant"
       : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
@@ -1076,6 +1074,7 @@ const OptimizerUI = {
     const manualMode = !!options.manualMode;
     const localPriceMode = !!options.localPriceMode;
     const localProfile = options.localPriceProfile || null;
+    const livePricedResults = options.livePricedResults || [];
     let html = "";
 
     if (localPriceMode && results.length > 0) {
@@ -1083,15 +1082,21 @@ const OptimizerUI = {
       const bestKb =
         best.meta?.kb ||
         (best.blob?.size ? Math.ceil(best.blob.size / 1024) : "—");
-      const tierText = localProfile?.hasData
-        ? "matched to your live history for this category"
-        : "run Live once to learn this category";
+      const liveTier =
+        localProfile?.recommendedPrices?.[0] ||
+        LocalPriceDB.resolveLearnedTier(
+          String(localProfile?.categoryId || ""),
+        ) ||
+        null;
+      const tierText = liveTier
+        ? `matched to live ₹${liveTier} pattern (KB/border)`
+        : "run Live first to learn ₹ pattern";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local variants (no live price check)</div>
+                <div style="font-size:11px;color:#047857;">📍 Local variants (from live learn — not a Meesho check)</div>
                 <div style="font-size:22px;font-weight:700;color:#047857;">${results.length} picks · ~${bestKb} KB</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">Lowest file weight first · ${tierText}</div>
-                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Shipping is not shown here — only Live generate returns real Meesho ₹.</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${tierText}</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Same image + same live ₹ tier → we copy KB/border from your live winners. Confirm with Live generate.</div>
                 ${
                   localProfile?.strategyReason
                     ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`
@@ -1331,6 +1336,11 @@ const OptimizerUI = {
     const livePricedCount = hasLive
       ? results.filter((r) => r.shippingCost > 0).length
       : 0;
+    const cachedLivePricedCount = (livePricedResults || []).filter(
+      (r) => Number(r.shippingCost) > 0,
+    ).length;
+    const canCreateReport =
+      livePricedCount > 0 || cachedLivePricedCount > 0;
     const localCsvBtn =
       localPriceMode && results.length > 0
         ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
@@ -1339,9 +1349,8 @@ const OptimizerUI = {
       localPriceMode && results.length > 0
         ? `<button id="generate-live-from-results-btn" class="opt-btn opt-btn-primary" style="width:100%;padding:12px;margin-bottom:8px;font-size:13px;font-weight:700;">🚀 Generate Live Variants (learn for local)</button>`
         : "";
-    const reportBtn =
-      hasLive && livePricedCount > 0 && !localPriceMode
-        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
+    const reportBtn = canCreateReport
+        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report (from live ₹)</button>`
         : "";
 
     html += `
@@ -1350,7 +1359,9 @@ const OptimizerUI = {
             ${reportBtn}
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  bestLive
+                  localPriceMode
+                    ? "Download Best Local Pick"
+                    : bestLive
                     ? "Download Best ₹" + bestLive
                     : bestEst
                     ? "Download Best est ₹" + bestEst
