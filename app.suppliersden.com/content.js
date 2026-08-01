@@ -123,9 +123,11 @@ function pickLocalStrategy(prices) {
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
   REPORTS_KEY: "meesho_local_price_reports",
+  FINGERPRINTS_KEY: "meesho_local_price_fingerprints",
   SEEDED_KEY: "meesho_local_price_seeded",
   MAX_ENTRIES: 200,
   MAX_REPORTS: 50,
+  MAX_FINGERPRINTS: 500,
 
   _read() {
     try {
@@ -158,6 +160,114 @@ const LocalPriceDB = {
     } catch {}
   },
 
+  _writeReports(reports) {
+    try {
+      localStorage.setItem(
+        this.REPORTS_KEY,
+        JSON.stringify(reports.slice(-this.MAX_REPORTS)),
+      );
+    } catch {}
+  },
+
+  _readFingerprints() {
+    try {
+      return JSON.parse(localStorage.getItem(this.FINGERPRINTS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  },
+
+  _writeFingerprints(rows) {
+    try {
+      localStorage.setItem(
+        this.FINGERPRINTS_KEY,
+        JSON.stringify(rows.slice(-this.MAX_FINGERPRINTS)),
+      );
+    } catch {}
+  },
+
+  _variantFingerprint(v, catId, source = "run") {
+    const est = Number(
+      v.estShipping ?? v.meta?.estInr ?? v.meta?.est_inr ?? 0,
+    );
+    return {
+      cat: String(catId || ""),
+      shipping: Number(v.shippingCost || 0),
+      est,
+      kb: Number(v.meta?.kb || v.meta?.actualKb || 0) || "",
+      width: v.meta?.width || v.meta?.canvasW || "",
+      height: v.meta?.height || v.meta?.canvasH || "",
+      borderPx: v.meta?.borderPx ?? "",
+      style: v.variantStyle || v.meta?.style || v.meta?.path || "",
+      path: v.meta?.path || "",
+      name: v.name || "",
+      variantId: v.variantId || "",
+      recommended: !!v.recommended || !!v.meta?.recommended,
+      source,
+      ts: Date.now(),
+    };
+  },
+
+  /** Store per-variant learnings for category tier matching (CSV + live saves). */
+  saveFingerprints(variants, catId, source = "run") {
+    if (!variants?.length || !catId) return;
+    const fps = this._readFingerprints();
+    variants.forEach((v) => {
+      const fp = this._variantFingerprint(v, catId, source);
+      if (fp.shipping > 0 || fp.est > 0) fps.push(fp);
+    });
+    this._writeFingerprints(fps);
+  },
+
+  /** Stats for lowest live tier learned from localStorage for a category. */
+  getLowestTierLearnedStats(catId) {
+    const profile = this.getCategoryProfile(catId);
+    if (!profile.hasData) return null;
+
+    const lowest =
+      profile.recommendedPrices?.[0] || profile.tiers?.[0] || null;
+    if (!lowest) return null;
+
+    const fps = this._readFingerprints().filter(
+      (f) => f.cat === String(catId) && Number(f.shipping) === Number(lowest),
+    );
+    const entries = this._read().filter(
+      (e) => e.cat === String(catId) && Number(e.price) === Number(lowest),
+    );
+
+    const count = fps.length + entries.length;
+    if (!count) return { lowestShipping: lowest, count: 0 };
+
+    const ests = fps.map((f) => Number(f.est)).filter((e) => e > 0 && e < 900);
+    const styles = fps.map((f) => f.style).filter(Boolean);
+    const dominantStyle = styles.length
+      ? styles.sort(
+          (a, b) =>
+            styles.filter((s) => s === b).length -
+            styles.filter((s) => s === a).length,
+        )[0]
+      : "";
+
+    const minEst = ests.length ? Math.min(...ests) : null;
+    const maxEst = ests.length ? Math.max(...ests) : null;
+    const medianEst = ests.length
+      ? ests.sort((a, b) => a - b)[Math.floor(ests.length / 2)]
+      : null;
+
+    return {
+      lowestShipping: lowest,
+      count,
+      minEst,
+      maxEst,
+      medianEst,
+      dominantStyle,
+      estTolerance:
+        minEst != null && maxEst != null
+          ? Math.max(5, maxEst - minEst + 3)
+          : 5,
+    };
+  },
+
   /** Save all priced variants from a completed run. */
   saveRun(variants, context = {}) {
     if (!variants?.length) return;
@@ -178,9 +288,11 @@ const LocalPriceDB = {
         height: v.meta?.height || v.meta?.canvasH || "",
         borderPx: v.meta?.borderPx ?? "",
         style: v.variantStyle || v.meta?.style || "",
+        est: Number(v.estShipping ?? v.meta?.estInr ?? 0) || "",
       });
     });
     this._write(entries);
+    if (cat) this.saveFingerprints(priced, cat, "live");
   },
 
   /** Import a live report CSV (VARIANT + META + PRICE_TIER rows). */
@@ -195,6 +307,9 @@ const LocalPriceDB = {
 
     if (priced.length) {
       this.saveRun(priced, { categoryId: catId });
+    }
+    if (catId && parsed.variants.length) {
+      this.saveFingerprints(parsed.variants, catId, "csv");
     }
 
     const reports = this._readReports();
@@ -214,6 +329,14 @@ const LocalPriceDB = {
       tiers: parsed.tiers,
       variantCount: parsed.variants.length,
       baselineShipping: Number(parsed.meta.baseline_shipping_inr) || 0,
+      variantSnapshots: parsed.variants.map((v) => ({
+        shippingCost: v.shippingCost,
+        estShipping: v.estShipping,
+        name: v.name,
+        variantStyle: v.variantStyle,
+        path: v.meta?.path,
+        kb: v.meta?.kb,
+      })),
     });
     this._writeReports(reports);
 
@@ -308,21 +431,59 @@ const LocalPriceDB = {
   },
 
   /**
-   * Pick N variants with lowest static est — no CSV tier remapping.
-   * Cards show actual est ₹ from image analysis (e.g. est ₹49).
+   * Pick 2 variants using localStorage learnings for the selected category.
+   * Kurti history → lowest live ₹59; picks lowest static est band (e.g. est ₹49).
    */
-  pickLowestEstVariants(variants, count = 2) {
+  pickCategoryLearnedVariants(variants, catId, count = 2) {
+    const profile = this.getCategoryProfile(catId);
+    const stats = catId ? this.getLowestTierLearnedStats(catId) : null;
     const sorted = [...(variants || [])].sort(
       (a, b) => this._rawEst(a) - this._rawEst(b),
     );
     if (!sorted.length) return [];
 
-    const band = this._filterLowestEstBand(sorted);
-    return band.slice(0, count).map((v) => {
+    const ests = sorted
+      .map((v) => this._rawEst(v))
+      .filter((e) => e > 0 && e < 900);
+    const poolMin = ests.length ? Math.min(...ests) : 999;
+
+    let tolerance = stats?.estTolerance ?? 5;
+    if (!stats?.minEst) tolerance = 5;
+
+    let candidates = sorted.filter((v) => {
+      const est = this._rawEst(v);
+      if (!est || est >= 900) return false;
+      return est - poolMin <= tolerance;
+    });
+
+    if (candidates.length < count) {
+      candidates = sorted.filter((v) => this._rawEst(v) > 0 && this._rawEst(v) < 900);
+    }
+    if (candidates.length < count) candidates = sorted;
+
+    if (stats?.dominantStyle) {
+      const dom = stats.dominantStyle;
+      candidates.sort((a, b) => {
+        const aDom =
+          a.variantStyle === dom || a.meta?.path === dom ? 0 : 1;
+        const bDom =
+          b.variantStyle === dom || b.meta?.path === dom ? 0 : 1;
+        if (aDom !== bDom) return aDom - bDom;
+        return this._rawEst(a) - this._rawEst(b);
+      });
+    }
+
+    const learnedLow =
+      stats?.lowestShipping ||
+      profile?.recommendedPrices?.[0] ||
+      null;
+
+    return candidates.slice(0, count).map((v) => {
       const est = this._rawEst(v);
       return {
         ...v,
         estShipping: est,
+        localLearnedShipping: learnedLow,
         localRecommended: true,
         localOnly: true,
         isVerified: false,
@@ -330,10 +491,16 @@ const LocalPriceDB = {
         meta: {
           ...(v.meta || {}),
           localPick: true,
-          staticEstOnly: true,
+          localLearnedTier: learnedLow,
+          learnedFromStorage: !!(stats?.count),
         },
       };
     });
+  },
+
+  /** @deprecated use pickCategoryLearnedVariants */
+  pickLowestEstVariants(variants, count = 2) {
+    return this.pickCategoryLearnedVariants(variants, "", count);
   },
 
   /** @deprecated CSV tier mapping — not used for local generate display */
@@ -479,15 +646,14 @@ const LocalPriceDB = {
   clear() {
     localStorage.removeItem(this.KEY);
     localStorage.removeItem(this.REPORTS_KEY);
+    localStorage.removeItem(this.FINGERPRINTS_KEY);
     localStorage.removeItem(this.SEEDED_KEY);
   },
 
   async seedIfEmpty() {
-    if (localStorage.getItem(this.SEEDED_KEY)) return;
-    if (this._readReports().length > 0) {
-      localStorage.setItem(this.SEEDED_KEY, "1");
-      return;
-    }
+    const hasReports = this._readReports().length > 0;
+    const hasFp = this._readFingerprints().some((f) => f.cat === "10004");
+    if (localStorage.getItem(this.SEEDED_KEY) && hasReports && hasFp) return;
 
     let url = "data/seed-reports/kurti-10004.csv";
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
@@ -3771,13 +3937,14 @@ Please share payment details and license key.`;
           <div style="background:#047857;height:100%;width:${pct}%;transition:width 0.3s;"></div>
         </div>
         <p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.4;">
-          ${catLabel ? `Category: ${catLabel} · ` : ""}static est only — not live Meesho · showing 2 lowest
+          ${catLabel ? `${catLabel} · ` : ""}building candidates → pick 2 best from your saved history
         </p>
       </div>`;
   }
 
   async processImageLocalPrice(file) {
-    const LOCAL_BUILD_COUNT = 3;
+    const LOCAL_BUILD_COUNT = 4;
+    const ANALYSIS_POOL = 8;
     const LOCAL_PICK_COUNT = 2;
 
     if (this.isProcessing) return;
@@ -3814,19 +3981,50 @@ Please share payment details and license key.`;
 
     const catId = catCtx.catId;
     const catLabel = catCtx.display?.title || (catId ? `ID ${catId}` : "");
+    const learnedStats = catId
+      ? LocalPriceDB.getLowestTierLearnedStats(catId)
+      : null;
+    const profile = catCtx.profile || LocalPriceDB.getCategoryProfile(catId);
 
     this.localPriceProfile = {
       categoryId: catId,
       categoryName: catLabel,
       categoryPath: catCtx.display?.path || "",
-      staticEstOnly: true,
+      learnedLowShipping: learnedStats?.lowestShipping,
+      learnedCount: learnedStats?.count || 0,
+      learnedFromStorage: !!(learnedStats?.count),
+      recommendedPrices: profile?.recommendedPrices || [],
     };
 
     if (!catId) {
       OptimizerUtils.showNotification(
-        "Tip: select category (e.g. Kurtis · 10004) so live tests match your listing.",
+        "Select category (e.g. Kurtis · 10004) — picks use saved history for that category.",
+        "error",
+        6000,
+      );
+      if (processingArea) processingArea.style.display = "none";
+      if (localGenBtn) localGenBtn.disabled = false;
+      this.isProcessing = false;
+      return;
+    }
+
+    if (!profile?.hasData) {
+      OptimizerUtils.showNotification(
+        `No saved history for ${catLabel} — import your CSV or save a live run first.`,
+        "error",
+        8000,
+      );
+      if (processingArea) processingArea.style.display = "none";
+      if (localGenBtn) localGenBtn.disabled = false;
+      this.isProcessing = false;
+      return;
+    }
+
+    if (learnedStats?.count) {
+      OptimizerUtils.showNotification(
+        `📍 ${catLabel}: picking 2 like your saved low ₹${learnedStats.lowestShipping} (${learnedStats.count} variants in history)`,
         "info",
-        5000,
+        6000,
       );
     }
 
@@ -3834,8 +4032,6 @@ Please share payment details and license key.`;
       processingArea.style.display = "block";
       processingArea.innerHTML = this.getLocalPriceProgressHTML(0, LOCAL_BUILD_COUNT, catLabel);
     }
-
-    const startTime = Date.now();
 
     try {
       const blob = await new Promise((resolve) => {
@@ -3852,6 +4048,18 @@ Please share payment details and license key.`;
         console.warn("Local price static analysis failed:", e);
         return null;
       });
+
+      const analysisOut = await analysisPromise;
+      const analysisMapped = [];
+      if (analysisOut?.success) {
+        this.liveAnalysis = analysisOut.analysis;
+        (analysisOut.primary || []).forEach((r, i) => {
+          analysisMapped.push(this.mapResultFromApi(r, i + 20000));
+        });
+        (analysisOut.seeMore || []).slice(0, ANALYSIS_POOL).forEach((r, i) => {
+          analysisMapped.push(this.mapResultFromApi(r, i + 30000));
+        });
+      }
 
       let rawResults = [];
       if (typeof MeeshoAPI.generateLocalVariations === "function") {
@@ -3870,40 +4078,52 @@ Please share payment details and license key.`;
           () => this.shouldStop,
         );
         if (result?.success) {
-          rawResults = result.results || [];
+          rawResults = (result.results || []).map((r, i) =>
+            this.mapResultFromApi(r, i),
+          );
         }
       }
 
-      const analysisOut = await analysisPromise;
-      if (analysisOut?.success && analysisOut.primary?.length) {
-        this.liveAnalysis = analysisOut.analysis;
-        const analysisMapped = (analysisOut.primary || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 20000),
-        );
-        if (!rawResults.length) {
-          rawResults = analysisMapped.slice(0, LOCAL_BUILD_COUNT);
-        } else {
-          rawResults = rawResults.map((r, i) => {
-            const mapped = this.mapResultFromApi(r, i);
-            if (!mapped.estShipping && analysisMapped[i]) {
-              const est =
-                analysisMapped[i].estShipping ||
-                analysisMapped[i].meta?.estInr ||
-                0;
-              mapped.estShipping = est;
-              this.freezeRowPricing(mapped, {
-                estShipping: est,
-                meta: { ...mapped.meta, ...analysisMapped[i].meta },
-              });
-            }
-            return mapped;
-          });
+      rawResults.forEach((mapped, i) => {
+        const fromAnalysis = analysisMapped[i];
+        if (fromAnalysis) {
+          const est =
+            fromAnalysis.estShipping || fromAnalysis.meta?.estInr || 0;
+          if (est > 0) {
+            mapped.estShipping = est;
+            this.freezeRowPricing(mapped, {
+              estShipping: est,
+              meta: { ...mapped.meta, ...fromAnalysis.meta },
+            });
+          }
         }
-      } else {
-        rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
+      });
+
+      const seen = new Set();
+      const candidatePool = [];
+      const pushUnique = (row) => {
+        const id = row.variantId || row.name;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        candidatePool.push(row);
+      };
+      analysisMapped.forEach(pushUnique);
+      rawResults.forEach(pushUnique);
+
+      if (processingArea) {
+        processingArea.innerHTML = `
+          <div style="text-align:center;padding:24px;">
+            <div style="font-size:36px;margin-bottom:8px;">📍</div>
+            <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Picking 2 best for ${catLabel}</h3>
+            <p style="color:#6b7280;font-size:13px;">Scored ${candidatePool.length} candidates · target live ₹${learnedStats?.lowestShipping || "—"}</p>
+          </div>`;
       }
 
-      const display = LocalPriceDB.pickLowestEstVariants(rawResults, LOCAL_PICK_COUNT);
+      const display = LocalPriceDB.pickCategoryLearnedVariants(
+        candidatePool,
+        catId,
+        LOCAL_PICK_COUNT,
+      );
 
       this.currentResults = display.map((row) => {
         const est = LocalPriceDB._rawEst(row) || row.estShipping || 0;
@@ -3920,12 +4140,13 @@ Please share payment details and license key.`;
         this.currentResults[0]?.estShipping ||
         this.currentResults[0]?._frozenPricing?.estShipping ||
         "—";
+      const histLow = learnedStats?.lowestShipping || profile?.recommendedPrices?.[0];
       OptimizerUtils.showNotification(
-        `📍 ${this.currentResults.length} local variants · est ₹${bestEst} (static analysis, not live)${
-          catLabel ? ` · ${catLabel}` : ""
-        }`,
+        `📍 ${this.currentResults.length} picks · est ₹${bestEst}${
+          histLow ? ` · your history low ₹${histLow}` : ""
+        } · ${catLabel}`,
         "success",
-        6000,
+        8000,
       );
     } catch (err) {
       console.error("Local price generate failed:", err);

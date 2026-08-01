@@ -1025,16 +1025,26 @@ const OptimizerUI = {
         best.estShipping ??
         best.meta?.estInr ??
         "—";
+      const histLow =
+        localProfile?.learnedLowShipping ||
+        localProfile?.recommendedPrices?.[0] ||
+        best.localLearnedShipping ||
+        best.meta?.localLearnedTier;
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local variants (static est — not live Meesho)</div>
+                <div style="font-size:11px;color:#047857;">📍 2 picks from saved category history</div>
                 <div style="font-size:26px;font-weight:700;color:#047857;">est ₹${bestEst}</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} lowest-est picks${
+                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · lowest static est band${
                   localProfile?.categoryName
                     ? ` · ${localProfile.categoryName}`
                     : ""
                 }</div>
-                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.3;">Image analysis only — CSV is for Save/View, not these labels</div>
+                ${
+                  histLow
+                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Your saved low for this category: live ₹${histLow}</div>`
+                    : ""
+                }
+                <div style="font-size:9px;color:#6b7280;margin-top:4px;">More live runs + Save grow localStorage per category</div>
             </div>`;
     }
 
