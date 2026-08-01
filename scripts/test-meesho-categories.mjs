@@ -40,12 +40,23 @@ assert(
 );
 assert(ethnic.length >= 20, `Ethnic Wear section has ${ethnic.length} categories`);
 
-const defaults = MeeshoCategories.getDefaultList(50);
+const defaults = MeeshoCategories.getDefaultList();
 assert(
-  defaults.every((c) => c.rootName === "Women Fashion"),
-  "default dropdown slice is Women Fashion only",
+  defaults.every((c) => MeeshoCategories.isClothRelatedCategory(c)),
+  "default dropdown slice is apparel/cloth categories only",
 );
-assert(defaults.length === 50, "default slice returns 50 items");
+assert(
+  defaults.length === MeeshoCategories.CLOTH_RELATED_COUNT,
+  `default slice returns all ${MeeshoCategories.CLOTH_RELATED_COUNT} cloth categories`,
+);
+assert(
+  defaults.some((c) => c.rootName === "Men Fashion"),
+  "default list includes Men Fashion",
+);
+assert(
+  defaults.some((c) => c.sectionName === "Kids Clothing"),
+  "default list includes Kids Clothing",
+);
 
 const kurtisDisplay = MeeshoCategories.formatDisplay(kurtis, { source: "default" });
 assert(

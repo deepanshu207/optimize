@@ -84,6 +84,20 @@ const womenFashionCount = categories.filter(
   (c) => c.rootName === "Women Fashion",
 ).length;
 
+function isClothRelatedCategory(cat) {
+  if (!cat) return false;
+  const root = String(cat.rootName || "");
+  const section = String(cat.sectionName || "");
+  if (root === "Women Fashion" || root === "Men Fashion") return true;
+  if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+  if (section === "Kids Clothing") return true;
+  if (/Kids - (Boys|Girls) Western Wear/i.test(section)) return true;
+  if (section === "Apparel" && root === "Kids & Toys") return true;
+  return false;
+}
+
+const clothRelatedCount = categories.filter(isClothRelatedCategory).length;
+
 const SHARED_METHODS = `
   parseTree(raw) {
     if (!raw) return [];
@@ -137,13 +151,52 @@ const SHARED_METHODS = `
     return this._list;
   },
 
-  getDefaultList(limit = 50) {
-    const list = this.getList();
-    const preferred = list.filter((c) => c.rootName === this.DEFAULT_ROOT);
-    if (!preferred.length) return list.slice(0, limit);
-    if (preferred.length >= limit) return preferred.slice(0, limit);
-    const rest = list.filter((c) => c.rootName !== this.DEFAULT_ROOT);
-    return preferred.concat(rest).slice(0, limit);
+  isClothRelatedCategory(cat) {
+    if (!cat) return false;
+    const root = String(cat.rootName || "");
+    const section = String(cat.sectionName || "");
+    if (root === "Women Fashion" || root === "Men Fashion") return true;
+    if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+    if (section === "Kids Clothing") return true;
+    if (/Kids - (Boys|Girls) Western Wear/i.test(section)) return true;
+    if (section === "Apparel" && root === "Kids & Toys") return true;
+    return false;
+  },
+
+  getClothRelatedList() {
+    const ROOT_ORDER = {
+      "Women Fashion": 0,
+      "Men Fashion": 1,
+      Women: 2,
+      "Kids & Toys": 3,
+    };
+    return this.getList()
+      .filter((c) => this.isClothRelatedCategory(c))
+      .sort((a, b) => {
+        const ra = ROOT_ORDER[a.rootName] ?? 99;
+        const rb = ROOT_ORDER[b.rootName] ?? 99;
+        if (ra !== rb) return ra - rb;
+        const sa = String(a.sectionName || "");
+        const sb = String(b.sectionName || "");
+        if (sa !== sb) return sa.localeCompare(sb);
+        const pa = String(a.parentName || "");
+        const pb = String(b.parentName || "");
+        if (pa !== pb) return pa.localeCompare(pb);
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  },
+
+  getDefaultList(limit) {
+    const cloth = this.getClothRelatedList();
+    if (!cloth.length) {
+      const list = this.getList();
+      const cap = limit && limit > 0 ? limit : 50;
+      return list.slice(0, cap);
+    }
+    if (limit && limit > 0 && cloth.length > limit) {
+      return cloth.slice(0, limit);
+    }
+    return cloth;
   },
 
   getDefaultCategoryId() {
@@ -260,6 +313,7 @@ const MeeshoCategories = {
   DEFAULT_ROOT: "Women Fashion",
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
+  CLOTH_RELATED_COUNT: ${clothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: ${JSON.stringify(categories)},
   _list: null,
@@ -279,6 +333,7 @@ const MeeshoCategories = {
   DEFAULT_ROOT: "Women Fashion",
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
+  CLOTH_RELATED_COUNT: ${clothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: [],
   _list: null,
