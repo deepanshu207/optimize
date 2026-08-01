@@ -835,19 +835,24 @@ const LocalPriceDB = {
 
   /** Tag a variant with learned live tier — keeps static analysis est separate. */
   _tagLocalVariant(v, tierPrice, recommended) {
+    const tier = Number(tierPrice);
     const staticEst = this.estOf(v);
+    const learnedTier =
+      tier > 0 && tier < 900 ? tier : 0;
     const tagged = {
       ...v,
-      localEstShipping: tierPrice,
+      localEstShipping: learnedTier,
       localRecommended: recommended,
       estShipping: staticEst,
-      shippingCost: 0,
+      // Show learned category tier on cards (not static KB est).
+      shippingCost: learnedTier,
       isVerified: false,
+      liveVerified: false,
       localOnly: true,
       meta: {
         ...(v.meta || {}),
         localPrice: true,
-        localTier: tierPrice,
+        localTier: learnedTier,
         localEstimated: true,
         staticEst,
         estInr: staticEst,
@@ -858,8 +863,8 @@ const LocalPriceDB = {
         ...tagged._frozenPricing,
         estShipping: staticEst,
         metaEstInr: staticEst,
-        shippingCost: 0,
-        localTier: tierPrice,
+        shippingCost: learnedTier,
+        localTier: learnedTier,
       };
     }
     return tagged;
@@ -4014,6 +4019,7 @@ Please share payment details and license key.`;
       source: options.source || "user",
       cat,
     });
+    void this.refreshLocalPriceFromPublicSeed(String(cat.id));
     return true;
   }
 
@@ -5132,12 +5138,11 @@ Please share payment details and license key.`;
     if (localGenBtn) localGenBtn.disabled = true;
 
     const categorySelect = document.getElementById("category-select");
-    const catId = categorySelect?.value || "";
+    const catId = String(categorySelect?.value || "").trim();
+    const effectiveCatId = catId || "10004";
 
-    await LocalPriceDB.ensureCategorySeed(catId || "10004");
-    const profile = catId
-      ? LocalPriceDB.getCategoryProfile(catId)
-      : LocalPriceDB.getCategoryProfile("");
+    await LocalPriceDB.ensureCategorySeed(effectiveCatId);
+    const profile = LocalPriceDB.getCategoryProfile(effectiveCatId);
 
     this.localPriceProfile = profile;
 
@@ -5258,17 +5263,19 @@ Please share payment details and license key.`;
       const analysisPrimary = analysisOut?.primary || this.analysisPrimaryResults || [];
       const display = LocalPriceDB.buildLocalPicks(
         rawResults,
-        catId,
+        effectiveCatId,
         pickCount,
         analysisPrimary,
       );
-      display.forEach((row) => this.freezeRowPricing(row, {
-        estShipping: row.meta?.staticEst ?? row.estShipping,
-        shippingCost: 0,
-        pricingImageUrl: row.pricingImageUrl,
-        dataUrl: row.dataUrl,
-        meta: row.meta,
-      }));
+      display.forEach((row) =>
+        this.freezeRowPricing(row, {
+          estShipping: row.meta?.staticEst ?? row.estShipping,
+          shippingCost: row.localEstShipping || row.meta?.localTier || 0,
+          pricingImageUrl: row.pricingImageUrl,
+          dataUrl: row.dataUrl,
+          meta: row.meta,
+        }),
+      );
 
       this.currentResults = display;
 
@@ -5726,9 +5733,20 @@ Please share payment details and license key.`;
 
     try {
       const context = this.buildLiveReportContext();
-      const analysis = window.LiveVariantReport.createAndDownloadReport(
-        [...this.currentResults, ...this.framedExtraResults],
+      const variants = [...this.currentResults, ...this.framedExtraResults];
+      const analysis = window.LiveVariantReport.analyzeLiveVariants(
+        variants,
         context,
+      );
+      const csv = window.LiveVariantReport.exportReportCsv(analysis);
+      const importResult = LocalPriceDB.importCsv(csv);
+      if (importResult?.ok) {
+        this.refreshLocalPriceUI();
+      }
+      window.LiveVariantReport.downloadReportBlob(
+        csv,
+        window.LiveVariantReport.buildReportFilename(analysis, "csv"),
+        "text/csv;charset=utf-8",
       );
       const rec = analysis.recommendation;
       const pickPrices = (rec.picks || [])
@@ -6027,6 +6045,8 @@ Please share payment details and license key.`;
 
   freezeRowPricing(row, source = {}) {
     const estShipping = source.estShipping ?? source.meta?.estInr ?? row.estShipping ?? 0;
+    const localTier =
+      Number(source.meta?.localTier ?? row.meta?.localTier ?? row.localEstShipping ?? 0);
     row._frozenPricing = {
       estShipping,
       shippingCost: source.shippingCost ?? row.shippingCost ?? 0,
@@ -6039,6 +6059,7 @@ Please share payment details and license key.`;
       metaKb: source.meta?.kb ?? row.meta?.kb,
       metaEstInr: source.meta?.estInr ?? estShipping,
       targetKb: source.meta?.targetKb ?? row.meta?.targetKb,
+      localTier: localTier > 0 ? localTier : undefined,
     };
     return row;
   }
@@ -6068,13 +6089,31 @@ Please share payment details and license key.`;
   }
 
   getRowDisplayShipping(row) {
+    const localTier =
+      Number(row?.localEstShipping || row?.meta?.localTier || 0) ||
+      Number(row?._frozenPricing?.localTier || 0);
+    if (localTier > 0 && (row?.localOnly || row?.meta?.localPrice)) {
+      return { amount: localTier, verified: false, localTier: true };
+    }
     const frozen = row?._frozenPricing;
     if (frozen) {
-      if (frozen.shippingCost > 0) return { amount: frozen.shippingCost, verified: true };
+      if (frozen.shippingCost > 0) {
+        return {
+          amount: frozen.shippingCost,
+          verified: !!row?.isVerified || !!row?.liveVerified,
+          localTier: !!frozen.localTier && !row?.liveVerified,
+        };
+      }
       if (frozen.estShipping > 0) return { amount: frozen.estShipping, verified: false };
       if (frozen.metaEstInr > 0) return { amount: frozen.metaEstInr, verified: false };
     }
-    if (row?.shippingCost > 0) return { amount: row.shippingCost, verified: true };
+    if (row?.shippingCost > 0) {
+      return {
+        amount: row.shippingCost,
+        verified: !!row?.isVerified || !!row?.liveVerified,
+      };
+    }
+    if (localTier > 0) return { amount: localTier, verified: false, localTier: true };
     const est = row?.estShipping ?? row?.meta?.estInr ?? 0;
     return { amount: est, verified: false };
   }

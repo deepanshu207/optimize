@@ -125,7 +125,7 @@ export function estimateImageShipping(variant) {
     if (kb >= 54 && kb <= 58) return 41;
     return Math.min(kb, 93);
   }
-  return kb;
+  return Math.min(kb, 93);
 }
 
 export function formatInr(n) {
