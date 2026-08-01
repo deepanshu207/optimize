@@ -439,6 +439,38 @@ const LocalPriceDB = {
     return Math.min(20, Math.max(12, n * 3));
   },
 
+  /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
+  isLivePatternVariant(v) {
+    if (!v) return false;
+    if (v.analysisMode) return false;
+    const style = String(v.variantStyle || "").toLowerCase();
+    if (style && style !== "standard" && style !== "live_standard") return false;
+    const path = String(v.meta?.path || "").toLowerCase();
+    const mode = String(v.meta?.mode || "").toLowerCase();
+    if (path.includes("ultra") || mode.includes("ultra")) return false;
+    const blockedPaths = [
+      "studio_ultra",
+      "studio",
+      "tall",
+      "flatlay",
+      "framed",
+      "framed_low",
+      "framed_live",
+      "showcase",
+      "lifestyle_promo",
+      "tall_static",
+      "gown_static",
+      "collage_back",
+      "collage_front",
+    ];
+    if (path && blockedPaths.includes(path)) return false;
+    return true;
+  },
+
+  filterLivePatternPool(variants) {
+    return (variants || []).filter((v) => this.isLivePatternVariant(v));
+  },
+
   /** Save all priced variants from a completed run. */
   saveRun(variants, context = {}) {
     if (!variants?.length) return;
@@ -4234,7 +4266,7 @@ Please share payment details and license key.`;
 
   /**
    * Generate exactly 2 local variants for lowest shipping (no live Meesho API).
-   * Stable est order; filters outliers like est ₹69 when pool min is ₹49.
+   * Pool uses live-pattern variants only (standard generateVariation — no ultra/analysis).
    */
   async processImageLocalPrice(file) {
     const pickCount = LocalPriceDB.clampPickCount(
@@ -4296,7 +4328,7 @@ Please share payment details and license key.`;
         <div style="text-align:center;padding:24px;">
           <div style="font-size:40px;margin-bottom:8px;">📍</div>
           <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
-          <p style="color:#6b7280;font-size:12px;">No live API — using saved category tiers</p>
+          <p style="color:#6b7280;font-size:12px;">Live-pattern only (standard) — no ultra / analysis paths</p>
         </div>`;
     }
 
@@ -4314,11 +4346,6 @@ Please share payment details and license key.`;
       await this.ensureOriginalImageUrl(file);
       this.gatherSettings();
 
-      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
-        console.warn("Local price static analysis failed:", e);
-        return null;
-      });
-
       let rawResults = [];
       if (typeof MeeshoAPI.generateLocalVariations === "function") {
         const result = await MeeshoAPI.generateLocalVariations(
@@ -4334,46 +4361,29 @@ Please share payment details and license key.`;
                 null,
                 0,
                 elapsed,
-                { testLab: true, phaseLabel: "Local variants (no live check)" },
+                {
+                  testLab: true,
+                  phaseLabel: "Live-pattern variants (standard only)",
+                },
               );
             }
           },
           () => this.shouldStop,
+          { livePatternOnly: true },
         );
         if (result?.success) {
           rawResults = result.results || [];
         }
       }
 
-      const analysisOut = await analysisPromise;
-      if (analysisOut?.success && analysisOut.primary?.length) {
-        this.liveAnalysis = analysisOut.analysis;
-        const analysisMapped = (analysisOut.primary || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 20000),
+      rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
+      rawResults = LocalPriceDB.filterLivePatternPool(rawResults);
+
+      if (!rawResults.length) {
+        OptimizerUtils.showNotification(
+          "No live-pattern variants built — try another image",
+          "error",
         );
-        if (!rawResults.length) {
-          rawResults = analysisMapped.slice(0, LOCAL_POOL_SIZE);
-        } else {
-          rawResults = rawResults.map((r, i) => {
-            const mapped = this.mapResultFromApi(r, i);
-            if (!mapped.estShipping && analysisMapped[i]) {
-              mapped.estShipping =
-                analysisMapped[i].estShipping ||
-                analysisMapped[i].meta?.estInr ||
-                0;
-            }
-            return mapped;
-          });
-          const seen = new Set(rawResults.map((r) => r.variantId));
-          analysisMapped.forEach((a) => {
-            if (!seen.has(a.variantId)) {
-              rawResults.push(a);
-              seen.add(a.variantId);
-            }
-          });
-        }
-      } else {
-        rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
       }
 
       rawResults = LocalPriceDB.sortVariantsStable(rawResults);
