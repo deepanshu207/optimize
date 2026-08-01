@@ -1075,6 +1075,9 @@ class MeeshoShippingOptimizer {
     this._categoryAcPointerInWrap = false;
     this._categoryAcOpenTimer = null;
     this._categoryAcModalClickHandler = null;
+    this._categoryAcPinned = false;
+    this._categoryPageSyncedThisModal = false;
+    this._inertedPageNodes = null;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
     this.init();
@@ -1996,6 +1999,10 @@ class MeeshoShippingOptimizer {
     this.modal.appendChild(content);
     document.documentElement.appendChild(this.modal);
 
+    this._categoryPageSyncedThisModal = false;
+    this._categoryAcPinned = false;
+    this.inertMeeshoPageBehindModal();
+
     this.setupMainEvents();
     this.attachCategoryAutocompleteModalHandlers();
 
@@ -2009,8 +2016,34 @@ class MeeshoShippingOptimizer {
       if (el && this.currentShippingCost) {
         el.textContent = "₹" + this.currentShippingCost;
       }
-      this.scheduleMeeshoPageSync();
-    }, 100);
+      this.syncFromMeeshoPageOnce();
+    }, 150);
+  }
+
+  inertMeeshoPageBehindModal() {
+    this.restoreMeeshoPageInert();
+    this._inertedPageNodes = [];
+    document.querySelectorAll("body > *").forEach((el) => {
+      if (el.id === "opt-modal") return;
+      el.setAttribute("inert", "");
+      this._inertedPageNodes.push(el);
+    });
+  }
+
+  restoreMeeshoPageInert() {
+    if (this._inertedPageNodes?.length) {
+      this._inertedPageNodes.forEach((el) => el.removeAttribute("inert"));
+    }
+    this._inertedPageNodes = null;
+  }
+
+  syncFromMeeshoPageOnce() {
+    if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
+    if (this.isCategoryAutocompleteActive()) return;
+    if (!this._categoryUserPicked) {
+      this.applyPageCategoryIfAvailable({ modalSession: true });
+    }
+    void this.importPageImageIfNeeded();
   }
 
   closeModal() {
@@ -2018,9 +2051,12 @@ class MeeshoShippingOptimizer {
       this.mountEmbedded(this.embeddedRoot);
       return;
     }
+    this.restoreMeeshoPageInert();
     this.detachCategoryAutocompleteModalHandlers();
     this._categoryUserEditing = false;
-    this.hideCategoryAutocomplete();
+    this._categoryAcPinned = false;
+    this._categoryPageSyncedThisModal = false;
+    this.hideCategoryAutocomplete({ force: true });
     if (this.modal) {
       this.modal.remove();
       this.modal = null;
@@ -2043,10 +2079,8 @@ class MeeshoShippingOptimizer {
     this.detachCategoryAutocompleteModalHandlers();
     this._categoryAcModalClickHandler = (e) => {
       if (e.target.closest("#category-ac-wrap")) return;
-      const listEl = document.getElementById("category-ac-list");
-      if (!listEl?.classList.contains("open")) return;
       if (Date.now() < this._categoryAcIgnoreCloseUntil) return;
-      this.hideCategoryAutocomplete();
+      this.hideCategoryAutocomplete({ force: true });
     };
     this.modal.addEventListener("click", this._categoryAcModalClickHandler);
   }
@@ -2652,6 +2686,14 @@ Please share payment details and license key.`;
     const searchEl = document.getElementById("category-search");
     if (searchEl && document.activeElement === searchEl && !options.force) return false;
 
+    if (
+      document.getElementById("opt-modal") &&
+      !options.force &&
+      (this._categoryPageSyncedThisModal || this._categoryAcPinned)
+    ) {
+      return false;
+    }
+
     MeeshoAPI.syncCatalogPricing?.();
     const pageId = MeeshoAPI.detectCategoryId?.();
     if (!pageId) return false;
@@ -2670,11 +2712,15 @@ Please share payment details and license key.`;
     } else {
       this.applyCategoryByIdOnly(pageId, { source: "page" });
     }
+    if (options.modalSession || document.getElementById("opt-modal")) {
+      this._categoryPageSyncedThisModal = true;
+    }
     return true;
   }
 
   scheduleMeeshoPageSync(maxAttempts = 12, delayMs = 500) {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
+    if (document.getElementById("opt-modal")) return;
 
     let attempts = 0;
     const tick = () => {
@@ -3089,15 +3135,19 @@ Please share payment details and license key.`;
     const listEl = document.getElementById("category-ac-list");
     const search = document.getElementById("category-search");
     if (!listEl) return;
-    this._categoryAcIgnoreCloseUntil = Date.now() + 400;
+    this._categoryAcPinned = true;
+    this._categoryAcIgnoreCloseUntil = Date.now() + 800;
     listEl.classList.add("open");
     if (search) search.setAttribute("aria-expanded", "true");
   }
 
-  hideCategoryAutocomplete() {
+  hideCategoryAutocomplete(options = {}) {
+    const force = options.force === true;
+    if (this._categoryAcPinned && !force) return;
     const listEl = document.getElementById("category-ac-list");
     const search = document.getElementById("category-search");
     if (!listEl) return;
+    this._categoryAcPinned = false;
     listEl.classList.remove("open");
     if (search) search.setAttribute("aria-expanded", "false");
     this._categoryAcActiveIndex = -1;
@@ -3180,7 +3230,7 @@ Please share payment details and license key.`;
     const cat = this._categoryAcResults[index];
     if (!cat) return false;
     this.applyCategorySelection(cat, { source: "user" });
-    this.hideCategoryAutocomplete();
+    this.hideCategoryAutocomplete({ force: true });
     return true;
   }
 
@@ -3189,7 +3239,7 @@ Please share payment details and license key.`;
     if (!search) return;
 
     if (e.key === "Escape") {
-      this.hideCategoryAutocomplete();
+      this.hideCategoryAutocomplete({ force: true });
       if (this._categorySearchCommittedValue) {
         search.value = this._categorySearchCommittedValue;
       }
@@ -3235,10 +3285,10 @@ Please share payment details and license key.`;
       const result = this.resolveCategoryFromSearchInput(raw, 12);
       if (result.status === "resolved" && result.cat) {
         this.applyCategorySelection(result.cat, { source: "user" });
-        this.hideCategoryAutocomplete();
+        this.hideCategoryAutocomplete({ force: true });
       } else if (result.status === "ambiguous" && result.hits?.[0]) {
         this.applyCategorySelection(result.hits[0], { source: "user" });
-        this.hideCategoryAutocomplete();
+        this.hideCategoryAutocomplete({ force: true });
       } else {
         OptimizerUtils.showNotification(
           result.status === "ambiguous"
@@ -3302,24 +3352,32 @@ Please share payment details and license key.`;
           this.findCategoryById(id);
         if (cat) {
           this.applyCategorySelection(cat, { source: "user" });
-          this.hideCategoryAutocomplete();
+          this.hideCategoryAutocomplete({ force: true });
         }
       });
     }
 
-    search.onfocus = () => {
+    const openCategoryList = () => {
       this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
+      this._categoryAcIgnoreCloseUntil = Date.now() + 800;
       clearTimeout(this._categoryAcOpenTimer);
-      this._categoryAcIgnoreCloseUntil = Date.now() + 400;
       this._categoryAcOpenTimer = setTimeout(() => {
         this.updateCategoryAutocompleteSuggestions();
       }, 0);
     };
 
-    search.onmousedown = () => {
-      this._categoryUserEditing = true;
-      this._categoryAcIgnoreCloseUntil = Date.now() + 400;
+    search.onpointerdown = (e) => {
+      e.stopPropagation();
+      openCategoryList();
+    };
+
+    search.onfocus = () => {
+      openCategoryList();
+    };
+
+    search.onmousedown = (e) => {
+      e.stopPropagation();
+      openCategoryList();
     };
 
     search.oninput = () => {
@@ -3347,7 +3405,6 @@ Please share payment details and license key.`;
         ) {
           search.value = this._categorySearchCommittedValue;
         }
-        this.hideCategoryAutocomplete();
       }, 280);
     };
 
@@ -3397,11 +3454,6 @@ Please share payment details and license key.`;
       search.disabled = false;
     }
     if (clearBtn) clearBtn.style.display = "block";
-    // Keep list open when syncing value during page/default apply (not user dismiss)
-    if (this._categoryUserEditing || document.activeElement === search) {
-      return;
-    }
-    this.hideCategoryAutocomplete();
   }
 
   bindCategoryUI(categories) {
