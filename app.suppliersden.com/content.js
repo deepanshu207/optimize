@@ -49,6 +49,7 @@ function parseReportCsvInline(text) {
     if (type === "META") {
       meta[row[idx("key")]] = row[idx("value")];
     } else if (type === "VARIANT") {
+      const recommended = row[idx("recommended")] === "true";
       variants.push({
         variantId: row[idx("variant_id")],
         name: row[idx("name")],
@@ -59,11 +60,13 @@ function parseReportCsvInline(text) {
         duplicatePid: row[idx("duplicate_pid")] || "",
         noPid: row[idx("no_pid")] === "true",
         variantStyle: row[idx("variant_style")],
+        recommended,
         meta: {
           path: row[idx("path")],
           kb: row[idx("kb")],
           width: row[idx("width")],
           height: row[idx("height")],
+          recommended,
         },
       });
     } else if (type === "PRICE_TIER") {
@@ -123,9 +126,14 @@ function pickLocalStrategy(prices) {
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
   REPORTS_KEY: "meesho_local_price_reports",
+  FINGERPRINTS_KEY: "meesho_local_price_fingerprints",
   SEEDED_KEY: "meesho_local_price_seeded",
   MAX_ENTRIES: 200,
   MAX_REPORTS: 50,
+  MAX_FINGERPRINTS: 500,
+  PICK_COUNT_MIN: 2,
+  PICK_COUNT_MAX: 10,
+  PICK_COUNT_DEFAULT: 2,
 
   _read() {
     try {
@@ -158,6 +166,191 @@ const LocalPriceDB = {
     } catch {}
   },
 
+  _readFingerprints() {
+    try {
+      return JSON.parse(localStorage.getItem(this.FINGERPRINTS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  },
+
+  _writeFingerprints(rows) {
+    try {
+      localStorage.setItem(
+        this.FINGERPRINTS_KEY,
+        JSON.stringify(rows.slice(-this.MAX_FINGERPRINTS)),
+      );
+    } catch {}
+  },
+
+  _variantFingerprint(v, catId, source = "run", tierPrice = 0) {
+    const est = this.estOf(v);
+    return {
+      cat: String(catId || ""),
+      shipping: Number(tierPrice || v.shippingCost || 0),
+      est,
+      kb: Number(v.meta?.kb || v.meta?.actualKb || 0) ||
+        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0),
+      width: v.meta?.width || v.meta?.canvasW || "",
+      height: v.meta?.height || v.meta?.canvasH || "",
+      borderPx: v.meta?.borderPx ?? "",
+      style: v.variantStyle || v.meta?.style || v.meta?.path || "",
+      path: v.meta?.path || "",
+      name: v.name || "",
+      variantId: v.variantId || "",
+      recommended: !!v.recommended || !!v.meta?.recommended || !!v.localRecommended,
+      source,
+      ts: Date.now(),
+    };
+  },
+
+  /** Learn from lowest-shipping variants you import or save (CSV / live). */
+  saveFingerprints(variants, catId, source = "run", tierPrice = 0) {
+    if (!variants?.length || !catId) return;
+    const fps = this._readFingerprints();
+    variants.forEach((v) => {
+      const fp = this._variantFingerprint(v, catId, source, tierPrice || v.shippingCost);
+      if (fp.shipping > 0 || fp.est < 900) fps.push(fp);
+    });
+    this._writeFingerprints(fps);
+  },
+
+  /** Stats from your saved lowest-tier variants — used to score new picks. */
+  getLowestTierLearnedStats(catId) {
+    const profile = this.getCategoryProfile(catId);
+    if (!profile.hasData) return null;
+
+    const lowest =
+      profile.recommendedPrices?.[0] || profile.tiers?.[0] || null;
+    if (!lowest) return null;
+
+    const fps = this._readFingerprints().filter(
+      (f) =>
+        f.cat === String(catId) &&
+        (Number(f.shipping) === Number(lowest) || f.recommended),
+    );
+    const entries = this._read().filter(
+      (e) => e.cat === String(catId) && Number(e.price) === Number(lowest),
+    );
+
+    const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
+    const ests = fps.map((f) => Number(f.est)).filter((e) => e > 0 && e < 900);
+    const styles = fps.map((f) => f.style).filter(Boolean);
+    const dominantStyle = styles.length
+      ? styles.sort(
+          (a, b) =>
+            styles.filter((s) => s === b).length -
+            styles.filter((s) => s === a).length,
+        )[0]
+      : "standard";
+
+    const minEst = ests.length ? Math.min(...ests) : null;
+    const maxEst = ests.length ? Math.max(...ests) : null;
+    const medianKb = kbs.length
+      ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)]
+      : null;
+
+    return {
+      lowestShipping: lowest,
+      fingerprintCount: fps.length,
+      historyCount: entries.length,
+      minEst,
+      maxEst,
+      medianKb,
+      dominantStyle,
+      estTolerance:
+        minEst != null && maxEst != null
+          ? Math.max(5, maxEst - minEst + 3)
+          : 5,
+    };
+  },
+
+  scoreVariantForLocalPick(v, catId, profile) {
+    const est = this.estOf(v);
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+
+    let score = 1000 - est;
+    const stats = this.getLowestTierLearnedStats(catId);
+
+    if (stats) {
+      if (stats.minEst != null && est <= stats.minEst + stats.estTolerance) {
+        score += 60;
+      }
+      if (stats.medianKb && kb > 0) {
+        score += Math.max(0, 40 - Math.abs(kb - stats.medianKb));
+      }
+      if (stats.dominantStyle && style.includes(stats.dominantStyle.toLowerCase())) {
+        score += 35;
+      }
+      if (Number(v.shippingCost) === Number(stats.lowestShipping)) {
+        score += 25;
+      }
+    } else if (profile?.recommendedPrices?.length) {
+      score += 20;
+    }
+
+    return score;
+  },
+
+  /**
+   * Pick N variants that best match your saved lowest-shipping patterns.
+   */
+  pickLearnedVariants(variants, catId, count = 2) {
+    const profile = this.getCategoryProfile(catId);
+    const sorted = this.sortVariantsStable(variants);
+    if (!sorted.length) return [];
+
+    const lowBand = this.filterLowEstBand(sorted);
+    const candidates = lowBand.length ? lowBand : sorted;
+
+    const scored = candidates.map((v) => ({
+      v,
+      est: this.estOf(v),
+      score: this.scoreVariantForLocalPick(v, catId, profile),
+    }));
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.est !== b.est) return a.est - b.est;
+      const rankA = Number(a.v.meta?.rank ?? a.v.meta?.attempt ?? 0);
+      const rankB = Number(b.v.meta?.rank ?? b.v.meta?.attempt ?? 0);
+      if (rankA !== rankB) return rankA - rankB;
+      return String(a.v.variantId || "").localeCompare(String(b.v.variantId || ""));
+    });
+
+    const picked = [];
+    const seen = new Set();
+    for (const row of scored) {
+      if (picked.length >= count) break;
+      const id = String(row.v.variantId || "");
+      if (id && seen.has(id)) continue;
+      row.v.meta = {
+        ...(row.v.meta || {}),
+        learnedScore: row.score,
+        learnedRank: picked.length + 1,
+      };
+      picked.push(row.v);
+      if (id) seen.add(id);
+    }
+    return picked;
+  },
+
+  clampPickCount(n) {
+    const parsed = parseInt(n, 10);
+    if (!Number.isFinite(parsed)) return this.PICK_COUNT_DEFAULT;
+    return Math.min(this.PICK_COUNT_MAX, Math.max(this.PICK_COUNT_MIN, parsed));
+  },
+
+  poolSizeForPickCount(pickCount) {
+    const n = this.clampPickCount(pickCount);
+    return Math.min(20, Math.max(12, n * 3));
+  },
+
   /** Save all priced variants from a completed run. */
   saveRun(variants, context = {}) {
     if (!variants?.length) return;
@@ -181,6 +374,12 @@ const LocalPriceDB = {
       });
     });
     this._write(entries);
+    if (cat) {
+      const profile = this.getCategoryProfile(cat);
+      const tier =
+        profile.recommendedPrices?.[0] || profile.tiers?.[0] || 0;
+      this.saveFingerprints(priced, cat, "live", tier);
+    }
   },
 
   /** Import a live report CSV (VARIANT + META + PRICE_TIER rows). */
@@ -195,6 +394,21 @@ const LocalPriceDB = {
 
     if (priced.length) {
       this.saveRun(priced, { categoryId: catId });
+    }
+
+    const lowestTier =
+      parsed.recommendedPrices?.[0] ||
+      parsed.uniquePrices?.[0] ||
+      0;
+    if (catId && parsed.variants.length && lowestTier) {
+      const atLowest = parsed.variants.filter(
+        (v) =>
+          Number(v.shippingCost) === Number(lowestTier) ||
+          v.meta?.recommended,
+      );
+      if (atLowest.length) {
+        this.saveFingerprints(atLowest, catId, "csv", lowestTier);
+      }
     }
 
     const reports = this._readReports();
@@ -305,7 +519,6 @@ const LocalPriceDB = {
     return tagged;
   },
 
-  PICK_COUNT: 2,
   EST_OUTLIER_BAND: 5,
 
   csvEscape(val) {
@@ -436,7 +649,8 @@ const LocalPriceDB = {
           "",
           "",
           isPick ? "display_pick" : `est=${est}`,
-          ...pad(6),
+          v.meta?.learnedScore ?? "",
+          ...pad(5),
         ]),
       );
     }
@@ -464,46 +678,51 @@ const LocalPriceDB = {
   },
 
   /**
-   * Pick exactly 2 variants — lowest static est, stable order, no outliers.
-   * single_lowest (kurti): 2 picks at lowest est band, tagged lowest live tier.
-   * rupee_pair: 2 picks at the ₹1-apart pair tiers.
+   * Pick 2–10 variants matching saved lowest-shipping patterns + static est band.
    */
-  buildLocalPicks(variants, catId) {
+  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT) {
     const profile = this.getCategoryProfile(catId);
-    const count = this.PICK_COUNT;
+    const count = this.clampPickCount(pickCount);
     const sorted = this.sortVariantsStable(variants);
 
     if (!sorted.length) return [];
 
-    const lowBand = this.filterLowEstBand(sorted);
-
-    if (!profile.hasData) {
-      return lowBand.slice(0, count).map((v, i) =>
-        this._tagLocalVariant(v, this.estOf(v), i < count),
-      );
-    }
-
-    const tiers = profile.tiers || [];
     const lowestTier =
-      profile.recommendedPrices?.[0] || tiers[0] || this.estOf(sorted[0]);
+      profile.recommendedPrices?.[0] ||
+      profile.tiers?.[0] ||
+      this.estOf(sorted[0]);
 
     if (
       profile.strategy === "rupee_pair" &&
-      profile.recommendedPrices.length >= 2
+      profile.recommendedPrices.length >= 2 &&
+      count >= 2
     ) {
       const [low, high] = profile.recommendedPrices;
+      const learned = this.pickLearnedVariants(variants, catId, count);
       const picks = [];
-      const lowPick = lowBand[0];
+      const lowPick = learned[0];
       if (lowPick) picks.push(this._tagLocalVariant(lowPick, low, true));
       const highPick =
-        lowBand.find((v) => v.variantId !== lowPick?.variantId) || lowBand[1];
-      if (highPick) picks.push(this._tagLocalVariant(highPick, high, true));
+        learned.find((v) => v.variantId !== lowPick?.variantId) || learned[1];
+      if (highPick && count > 1) {
+        picks.push(this._tagLocalVariant(highPick, high, true));
+      }
+      for (let i = 2; i < learned.length && picks.length < count; i++) {
+        const v = learned[i];
+        if (v.variantId === lowPick?.variantId || v.variantId === highPick?.variantId) {
+          continue;
+        }
+        picks.push(this._tagLocalVariant(v, low, true));
+      }
       return picks.slice(0, count);
     }
 
-    return lowBand.slice(0, count).map((v) =>
-      this._tagLocalVariant(v, lowestTier, true),
-    );
+    const learned = this.pickLearnedVariants(variants, catId, count);
+    if (!profile.hasData) {
+      return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
+    }
+
+    return learned.map((v) => this._tagLocalVariant(v, lowestTier, true));
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -644,6 +863,7 @@ const LocalPriceDB = {
   clear() {
     localStorage.removeItem(this.KEY);
     localStorage.removeItem(this.REPORTS_KEY);
+    localStorage.removeItem(this.FINGERPRINTS_KEY);
     localStorage.removeItem(this.SEEDED_KEY);
   },
 
@@ -2108,6 +2328,20 @@ Please share payment details and license key.`;
     }
 
     void LocalPriceDB.seedIfEmpty().then(() => this.refreshLocalPriceUI());
+
+    const pickSelect = document.getElementById("local-price-pick-count");
+    if (pickSelect) {
+      pickSelect.onchange = () => this.updateLocalPriceGenerateLabel();
+      this.updateLocalPriceGenerateLabel();
+    }
+  }
+
+  updateLocalPriceGenerateLabel() {
+    const btn = document.getElementById("local-price-generate-btn");
+    const n = LocalPriceDB.clampPickCount(
+      document.getElementById("local-price-pick-count")?.value,
+    );
+    if (btn) btn.textContent = `📍 Generate ${n} Local Variants`;
   }
 
   refreshLocalPriceUI() {
@@ -2117,6 +2351,7 @@ Please share payment details and license key.`;
     const catId = categorySelect?.value || "";
     const summary = LocalPriceDB.summary(catId);
     const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
+    const learned = catId ? LocalPriceDB.getLowestTierLearnedStats(catId) : null;
 
     if (summary) {
       const tierText =
@@ -2126,10 +2361,16 @@ Please share payment details and license key.`;
       const recText = summary.recommendedPrices?.length
         ? ` → recommend ₹${summary.recommendedPrices.join(" + ₹")}`
         : "";
-      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)`;
+      const learnText = learned?.fingerprintCount
+        ? ` · ${learned.fingerprintCount} learned low-shipping refs`
+        : "";
+      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)${learnText}`;
       hint.style.color = "#047857";
     } else if (profile?.hasData) {
-      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}`;
+      const learnText = learned?.fingerprintCount
+        ? ` · ${learned.fingerprintCount} learned refs (est/KB/style)`
+        : "";
+      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}`;
       hint.style.color = "#047857";
     } else {
       hint.textContent =
@@ -3896,7 +4137,10 @@ Please share payment details and license key.`;
    * Stable est order; filters outliers like est ₹69 when pool min is ₹49.
    */
   async processImageLocalPrice(file) {
-    const LOCAL_POOL_SIZE = 6;
+    const pickCount = LocalPriceDB.clampPickCount(
+      document.getElementById("local-price-pick-count")?.value,
+    );
+    const LOCAL_POOL_SIZE = LocalPriceDB.poolSizeForPickCount(pickCount);
 
     if (this.isProcessing) return;
     this.isProcessing = true;
@@ -4021,6 +4265,13 @@ Please share payment details and license key.`;
             }
             return mapped;
           });
+          const seen = new Set(rawResults.map((r) => r.variantId));
+          analysisMapped.forEach((a) => {
+            if (!seen.has(a.variantId)) {
+              rawResults.push(a);
+              seen.add(a.variantId);
+            }
+          });
         }
       } else {
         rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
@@ -4028,7 +4279,7 @@ Please share payment details and license key.`;
 
       rawResults = LocalPriceDB.sortVariantsStable(rawResults);
       this.localPricePoolResults = rawResults;
-      const display = LocalPriceDB.buildLocalPicks(rawResults, catId);
+      const display = LocalPriceDB.buildLocalPicks(rawResults, catId, pickCount);
       display.forEach((row) => this.freezeRowPricing(row, {
         estShipping: row.meta?.staticEst ?? row.estShipping,
         shippingCost: 0,
