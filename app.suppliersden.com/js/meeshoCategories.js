@@ -277,6 +277,10 @@ const MeeshoCategories = {
     return this._list;
   },
 
+
+  async ensureLoaded() {
+    return this.getList();
+  },
 };
 
 window.MeeshoCategories = MeeshoCategories;

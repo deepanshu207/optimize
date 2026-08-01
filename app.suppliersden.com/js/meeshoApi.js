@@ -748,7 +748,16 @@ const MeeshoAPI = {
 
     const minFull = MeeshoCategories?.FULL_CATEGORY_MIN || 3000;
 
-    // Extension: bundled JSON is the reliable full tree (3777 leaf categories).
+    // Embedded LIST (extension bundle) — no network; reliable on Kiwi after browser restart.
+    const embedded = this.getEmbeddedCategories();
+    if (embedded?.length >= minFull && !forceLive) {
+      this.cache.categories = embedded;
+      this._lastCategoryFetchWasEmbedded = true;
+      console.log("✅ Using embedded categories:", embedded.length);
+      return embedded;
+    }
+
+    // Extension lite path: JSON fetch + storage cache (fallback if lite script is used).
     if (!window.WEB_OPTIMIZER_MODE && !forceLive) {
       if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.ensureLoaded) {
         try {
@@ -764,14 +773,6 @@ const MeeshoAPI = {
       }
       const fromJson = await this.loadEmbeddedCategoriesFromJson();
       if (fromJson?.length) return fromJson;
-    }
-
-    const embedded = this.getEmbeddedCategories();
-    if (embedded?.length >= minFull && !forceLive) {
-      this.cache.categories = embedded;
-      this._lastCategoryFetchWasEmbedded = true;
-      console.log("✅ Using embedded categories:", embedded.length);
-      return embedded;
     }
 
     const imported = this.getImportedCategories();
@@ -878,6 +879,14 @@ const MeeshoAPI = {
   },
 
   loadEmbeddedCategoriesFromJson: async function () {
+    const minFull = MeeshoCategories?.FULL_CATEGORY_MIN || 3000;
+    const already = this.getEmbeddedCategories();
+    if (already?.length >= minFull) {
+      this.cache.categories = already;
+      this._lastCategoryFetchWasEmbedded = true;
+      return already;
+    }
+
     try {
       const urls = [];
       if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
