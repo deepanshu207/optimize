@@ -1077,6 +1077,7 @@ class MeeshoShippingOptimizer {
     this._categoryAcModalClickHandler = null;
     this._categoryAcPinned = false;
     this._categoryPageSyncedThisModal = false;
+    this._categoryQuickPicksCache = null;
     this._inertedPageNodes = null;
     this._uploadUserPicked = false;
     this._uploadUserCleared = false;
@@ -2651,12 +2652,25 @@ Please share payment details and license key.`;
     return { status: "ambiguous", hits, query };
   }
 
+  /** Women apparel shortcuts on empty focus — keep small for fast open on mobile */
+  static CATEGORY_QUICK_PICK_LIMIT = 60;
+
+  getCategoryQuickPickList() {
+    if (this._categoryQuickPicksCache?.length) return this._categoryQuickPicksCache;
+    const women = this.getWomenClothCategoryList();
+    this._categoryQuickPicksCache = women.slice(
+      0,
+      MeeshoShippingOptimizer.CATEGORY_QUICK_PICK_LIMIT,
+    );
+    return this._categoryQuickPicksCache;
+  }
+
   filterCategoriesForSearch(raw, limit = 100) {
     const parsed = this.parseCategorySearchQuery(raw);
     const list = this.getActiveCategoryList();
 
     if (!parsed.text && parsed.mode !== "id") {
-      return list;
+      return this.getCategoryQuickPickList();
     }
 
     if (parsed.mode === "id") {
@@ -3025,6 +3039,7 @@ Please share payment details and license key.`;
     MeeshoCategories._list = categories;
     window.MEESHO_EMBEDDED_CATEGORIES = categories;
     this._clothCategoryCache = null;
+    this._categoryQuickPicksCache = null;
   }
 
   getDefaultCategorySlice(limit) {
@@ -3083,7 +3098,13 @@ Please share payment details and license key.`;
 
   getCategoryPickerHintText() {
     const total = this.getActiveCategoryList().length || MeeshoCategories?.COUNT || 3777;
-    return `${total} categories — scroll the list or type to search`;
+    const quick = this.getCategoryQuickPickList().length;
+    const women =
+      typeof MeeshoCategories !== "undefined" &&
+      MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+        ? MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+        : this.getWomenClothCategoryList().length;
+    return `${total} categories searchable · ${quick} quick picks (${women} women apparel)`;
   }
 
   getCategoryAutocompleteQuery() {
@@ -3104,11 +3125,19 @@ Please share payment details and license key.`;
     const allTotal = list.length || MeeshoCategories?.COUNT || 3777;
 
     if (!query) {
+      const quick = this.getCategoryQuickPickList();
+      const womenTotal =
+        typeof MeeshoCategories !== "undefined" &&
+        MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+          ? MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+          : this.getWomenClothCategoryList().length;
       return {
-        results: list,
+        results: quick,
         meta: {
-          kind: "all",
-          allTotal: allTotal,
+          kind: "women",
+          womenTotal,
+          quickCount: quick.length,
+          allTotal,
         },
       };
     }
@@ -3160,10 +3189,9 @@ Please share payment details and license key.`;
     }
 
     let html = "";
-    if (meta.kind === "all") {
-      html += `<li class="category-ac-header">All ${meta.allTotal} categories — type to filter</li>`;
-    } else if (meta.kind === "women") {
-      html += `<li class="category-ac-header">Women apparel (${meta.womenTotal}) — type to search all ${meta.allTotal}</li>`;
+    if (meta.kind === "women") {
+      const shown = meta.quickCount ?? meta.womenTotal;
+      html += `<li class="category-ac-header">Quick picks (${shown} women apparel) — type to search all ${meta.allTotal}</li>`;
     } else if (meta.kind === "search") {
       const more =
         meta.matchCount >= 100
@@ -3464,6 +3492,7 @@ Please share payment details and license key.`;
 
     this.allCategories = categories;
     this.syncCategoryListToMeeshoCategories(categories);
+    this._categoryQuickPicksCache = null;
 
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
     const previousId = parseInt(
@@ -3491,7 +3520,9 @@ Please share payment details and license key.`;
     console.log(
       "✅ Loaded",
       categories.length,
-      "categories · full list in dropdown",
+      "categories ·",
+      this.getCategoryQuickPickList().length,
+      "quick picks · type to search all",
     );
 
     if (!window.WEB_OPTIMIZER_MODE) {

@@ -96,7 +96,7 @@ const OptimizerUI = {
                     right: 0;
                     top: 100%;
                     margin-top: 2px;
-                    max-height: min(50vh, 360px);
+                    max-height: 260px;
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
@@ -394,7 +394,7 @@ const OptimizerUI = {
                         </div>
                         <input type="hidden" id="category-select" value="">
                         <p class="category-picker-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-picker-hint">All categories in the list · type to filter</p>
+                        <p class="category-picker-hint">Type to search all categories · quick picks when empty</p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>
