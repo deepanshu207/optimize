@@ -86,6 +86,17 @@ function getShippingCap(profile) {
 }
 assert(getShippingCap(profile) === 60, "cap is 60 for 59+60 pair");
 
+const withGap = globalThis.pickLocalStrategy([59, 64, 65, 79]);
+assert(withGap.strategy === "single_lowest", "59,64,65 → floor single (not 64+65 pair)");
+assert(withGap.recommendedPrices[0] === 59, "floor single is 59");
+
+const floorPair = globalThis.pickLocalStrategy([59, 60, 64, 65]);
+assert(floorPair.strategy === "rupee_pair", "59,60,64,65 → floor rupee_pair");
+assert(
+  floorPair.recommendedPrices[0] === 59 && floorPair.recommendedPrices[1] === 60,
+  "floor pair is 59+60 not 64+65",
+);
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

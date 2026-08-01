@@ -115,6 +115,18 @@ assert(txt.includes("PRICE TIERS"), "txt has price tiers");
 const pairs = findAllRupeePairs([46, 47, 60, 61]);
 assert(pairs.length === 2, "finds all rupee pairs");
 
+// 59 exists with higher ₹1 pair — floor wins
+const ex59 = pickRecommendedVariants([v(59), v(64), v(65)]);
+assert(ex59.strategy === "single_lowest", "59,64,65 → single lowest 59");
+assert(ex59.picks[0].shippingCost === 59, "picks 59 not 64");
+
+const ex59pair = pickRecommendedVariants([v(59), v(60), v(64), v(65)]);
+assert(ex59pair.strategy === "rupee_pair", "59,60,64,65 → floor pair");
+assert(
+  ex59pair.picks.map((p) => p.shippingCost).join(",") === "59,60",
+  "picks 59+60 not 64+65",
+);
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

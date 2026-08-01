@@ -1083,7 +1083,9 @@ const OptimizerUI = {
         best.meta?.kb ||
         (best.blob?.size ? Math.ceil(best.blob.size / 1024) : "—");
       const liveTier =
-        localProfile?.recommendedPrices?.[0] ||
+        (localProfile?.tiers?.length
+          ? Math.min(...localProfile.tiers.map((p) => Number(p)).filter((n) => n > 0))
+          : null) ||
         LocalPriceDB.resolveLearnedTier(
           String(localProfile?.categoryId || ""),
         ) ||
@@ -1154,10 +1156,20 @@ const OptimizerUI = {
     }
 
     if (hasLive && !localPriceMode) {
-      const best = results[0];
+      const pricedLive = results.filter((r) => Number(r.shippingCost) > 0);
+      const lowestLivePrice = pricedLive.length
+        ? Math.min(...pricedLive.map((r) => Number(r.shippingCost)))
+        : null;
+      const best =
+        lowestLivePrice != null
+          ? pricedLive.find((r) => Number(r.shippingCost) === lowestLivePrice) ||
+            results[0]
+          : results[0];
       const totalResults = results.length;
-      const testedCount = results.filter((r) => r.shippingCost > 0).length;
-      const bestPrice = best.shippingCost > 0 ? best.shippingCost : null;
+      const testedCount = pricedLive.length;
+      const bestPrice =
+        best.shippingCost > 0 ? best.shippingCost : null;
+      const bestVariantId = best.variantId || "";
 
       html += `
             <div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:15px;margin-bottom:15px;text-align:center;">
@@ -1202,7 +1214,10 @@ const OptimizerUI = {
         html += this.renderResultCard(r, i, {
           baselineShipping: baseline,
           manualMode,
-          isBest: i === 0 && r.shippingCost > 0,
+          isBest:
+            lowestLivePrice != null &&
+            Number(r.shippingCost) === lowestLivePrice &&
+            (r.variantId === bestVariantId || (!bestVariantId && i === 0)),
         });
       });
 

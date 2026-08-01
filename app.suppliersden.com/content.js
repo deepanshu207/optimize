@@ -109,19 +109,18 @@ function pickLocalStrategy(prices) {
   if (!sorted.length) {
     return { strategy: "none", recommendedPrices: [], reason: "No price data." };
   }
-  for (let i = 0; i < sorted.length - 1; i++) {
-    if (sorted[i + 1] - sorted[i] === 1) {
-      return {
-        strategy: "rupee_pair",
-        recommendedPrices: [sorted[i], sorted[i + 1]],
-        reason: `₹1 pair at ₹${sorted[i]} & ₹${sorted[i + 1]} — test both.`,
-      };
-    }
+  const lowest = sorted[0];
+  if (sorted.includes(lowest + 1)) {
+    return {
+      strategy: "rupee_pair",
+      recommendedPrices: [lowest, lowest + 1],
+      reason: `₹1 pair at floor — ₹${lowest} & ₹${lowest + 1} (lowest tiers).`,
+    };
   }
   return {
     strategy: "single_lowest",
-    recommendedPrices: [sorted[0]],
-    reason: `No ₹1 gap (${sorted.join(", ")}) — recommend only ₹${sorted[0]}.`,
+    recommendedPrices: [lowest],
+    reason: `No ₹1 gap at floor (${sorted.join(", ")}) — recommend only ₹${lowest}.`,
   };
 }
 
@@ -1150,14 +1149,14 @@ const LocalPriceDB = {
     };
   },
 
-  /** Lowest live-learned tier for category (never static file est). */
+  /** Lowest live-learned tier for category (global floor, not rupee-pair high band). */
   resolveLearnedTier(catId, profile = null) {
     const p = profile || this.getCategoryProfile(catId);
-    if (p?.recommendedPrices?.length) {
-      return Math.min(...p.recommendedPrices.map((x) => Number(x)).filter((n) => n > 0));
-    }
     if (p?.tiers?.length) {
       return Math.min(...p.tiers.map((x) => Number(x)).filter((n) => n > 0));
+    }
+    if (p?.recommendedPrices?.length) {
+      return Math.min(...p.recommendedPrices.map((x) => Number(x)).filter((n) => n > 0));
     }
     return 0;
   },
@@ -1577,8 +1576,13 @@ const LocalPriceDB = {
   /** Best local price estimate: lowest price seen ≥ 2 times, or overall lowest. */
   bestLocalPrice(catFilter = "") {
     const profile = catFilter ? this.getCategoryProfile(catFilter) : null;
+    if (profile?.tiers?.length) {
+      return Math.min(...profile.tiers.map((p) => Number(p)).filter((p) => p > 0));
+    }
     if (profile?.recommendedPrices?.length) {
-      return profile.recommendedPrices[0];
+      return Math.min(
+        ...profile.recommendedPrices.map((p) => Number(p)).filter((p) => p > 0),
+      );
     }
 
     const entries = this._read();

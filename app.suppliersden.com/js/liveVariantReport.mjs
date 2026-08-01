@@ -51,10 +51,10 @@ export function uniqueSortedPrices(variants) {
  * Returns [lowPrice, highPrice] or null.
  */
 export function findLowestRupeePair(prices) {
-  for (let i = 0; i < prices.length - 1; i++) {
-    if (prices[i + 1] - prices[i] === 1) {
-      return [prices[i], prices[i + 1]];
-    }
+  if (!prices.length) return null;
+  const lowest = prices[0];
+  if (prices.includes(lowest + 1)) {
+    return [lowest, lowest + 1];
   }
   return null;
 }
