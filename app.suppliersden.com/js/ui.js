@@ -96,7 +96,7 @@ const OptimizerUI = {
                     right: 0;
                     top: 100%;
                     margin-top: 2px;
-                    max-height: 260px;
+                    max-height: min(50vh, 360px);
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     background: #fff;
@@ -114,6 +114,8 @@ const OptimizerUI = {
                     cursor: pointer;
                     border-bottom: 1px solid #f3f4f6;
                     font-size: 12px;
+                    content-visibility: auto;
+                    contain-intrinsic-size: auto 44px;
                 }
                 .category-ac-item:hover,
                 .category-ac-item.active {
@@ -392,7 +394,7 @@ const OptimizerUI = {
                         </div>
                         <input type="hidden" id="category-select" value="">
                         <p class="category-picker-hint" id="category-count-hint">Loading categories…</p>
-                        <p class="category-picker-hint">Type to search all categories · women apparel quick picks when empty</p>
+                        <p class="category-picker-hint">All categories in the list · type to filter</p>
                         <div id="category-error" style="display:none;margin-top:8px;padding:8px;background:rgba(239,68,68,0.15);border-radius:6px;border:1px solid rgba(239,68,68,0.3);">
                             <span style="font-size:11px;color:#ef4444;">⚠️ Categories not loaded. Click 🔄 Refresh or reload page.</span>
                         </div>

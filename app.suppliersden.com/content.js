@@ -2656,7 +2656,7 @@ Please share payment details and license key.`;
     const list = this.getActiveCategoryList();
 
     if (!parsed.text && parsed.mode !== "id") {
-      return this.getWomenClothCategoryList().slice(0, 60);
+      return list;
     }
 
     if (parsed.mode === "id") {
@@ -3083,12 +3083,7 @@ Please share payment details and license key.`;
 
   getCategoryPickerHintText() {
     const total = this.getActiveCategoryList().length || MeeshoCategories?.COUNT || 3777;
-    const women =
-      typeof MeeshoCategories !== "undefined" &&
-      MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
-        ? MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
-        : this.getWomenClothCategoryList().length;
-    return `${total} categories searchable · ${women} women apparel quick picks`;
+    return `${total} categories — scroll the list or type to search`;
   }
 
   getCategoryAutocompleteQuery() {
@@ -3109,13 +3104,11 @@ Please share payment details and license key.`;
     const allTotal = list.length || MeeshoCategories?.COUNT || 3777;
 
     if (!query) {
-      const women = this.getWomenClothCategoryList();
       return {
-        results: women.slice(0, 60),
+        results: list,
         meta: {
-          kind: "women",
-          womenTotal: women.length,
-          allTotal,
+          kind: "all",
+          allTotal: allTotal,
         },
       };
     }
@@ -3167,7 +3160,9 @@ Please share payment details and license key.`;
     }
 
     let html = "";
-    if (meta.kind === "women") {
+    if (meta.kind === "all") {
+      html += `<li class="category-ac-header">All ${meta.allTotal} categories — type to filter</li>`;
+    } else if (meta.kind === "women") {
       html += `<li class="category-ac-header">Women apparel (${meta.womenTotal}) — type to search all ${meta.allTotal}</li>`;
     } else if (meta.kind === "search") {
       const more =
@@ -3177,22 +3172,25 @@ Please share payment details and license key.`;
       html += `<li class="category-ac-header">${meta.matchCount} match${meta.matchCount === 1 ? "" : "es"} for “${this.escapeCategoryHtml(meta.query)}”${more}</li>`;
     }
 
-    this._categoryAcResults.forEach((cat, index) => {
-      const path = cat.path || cat.parentName || "";
-      const active = index === this._categoryAcActiveIndex ? " active" : "";
-      html += `<li class="category-ac-item${active}" role="option" data-index="${index}" data-id="${cat.id}" aria-selected="${index === this._categoryAcActiveIndex}">`;
-      html += `<div class="category-ac-item-name"><span>${this.escapeCategoryHtml(cat.name)}</span><span class="category-ac-item-id">ID ${cat.id}</span></div>`;
-      if (path) {
-        html += `<div class="category-ac-item-path">${this.escapeCategoryHtml(path)}</div>`;
-      }
-      html += "</li>";
-    });
+    const itemsHtml = this._categoryAcResults
+      .map((cat, index) => {
+        const path = cat.path || cat.parentName || "";
+        const active = index === this._categoryAcActiveIndex ? " active" : "";
+        let item = `<li class="category-ac-item${active}" role="option" data-index="${index}" data-id="${cat.id}" aria-selected="${index === this._categoryAcActiveIndex}">`;
+        item += `<div class="category-ac-item-name"><span>${this.escapeCategoryHtml(cat.name)}</span><span class="category-ac-item-id">ID ${cat.id}</span></div>`;
+        if (path) {
+          item += `<div class="category-ac-item-path">${this.escapeCategoryHtml(path)}</div>`;
+        }
+        item += "</li>";
+        return item;
+      })
+      .join("");
 
     if (meta.kind === "search" && meta.matchCount >= 100) {
       html += `<li class="category-ac-footer">Showing top 100 of ${meta.allTotal} — refine your search</li>`;
     }
 
-    listEl.innerHTML = html;
+    listEl.innerHTML = html + itemsHtml;
     listEl.querySelectorAll(".category-ac-item").forEach((item) => {
       item.setAttribute("tabindex", "-1");
     });
@@ -3466,7 +3464,6 @@ Please share payment details and license key.`;
 
     this.allCategories = categories;
     this.syncCategoryListToMeeshoCategories(categories);
-    this._womenCategoryCache = this.getWomenClothCategoryList();
 
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
     const previousId = parseInt(
@@ -3494,9 +3491,7 @@ Please share payment details and license key.`;
     console.log(
       "✅ Loaded",
       categories.length,
-      "categories · autocomplete with",
-      this._womenCategoryCache.length,
-      "women quick picks",
+      "categories · full list in dropdown",
     );
 
     if (!window.WEB_OPTIMIZER_MODE) {
