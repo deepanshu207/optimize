@@ -124,7 +124,19 @@ const OptimizerUI = {
     return `
                     <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
-                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers</p>
+                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Run live generate first → auto-learns lowest shipping for better local picks</p>
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                            <label style="font-size:10px;color:#047857;flex:1;">Variants to show</label>
+                            <select id="local-price-pick-count" class="opt-select" style="flex:1;font-size:12px;padding:6px 8px;">
+                                <option value="2" selected>2 lowest</option>
+                                <option value="3">3 lowest</option>
+                                <option value="4">4 lowest</option>
+                                <option value="5">5 lowest</option>
+                                <option value="6">6 lowest</option>
+                                <option value="8">8 lowest</option>
+                                <option value="10">10 lowest</option>
+                            </select>
+                        </div>
                         <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate 2 Local Variants</button>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
                             <button type="button" id="local-price-save-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save</button>
@@ -475,25 +487,28 @@ const OptimizerUI = {
     const isLocalPick = !!r.localRecommended;
     const isBest = isLocalPick || !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
-    const frozenEst =
+    const staticEst =
+      r.meta?.staticEst ??
       r._frozenPricing?.estShipping ??
       r._frozenPricing?.metaEstInr ??
       r.meta?.estInr ??
       r.estShipping ??
       0;
+    const liveTier = r.localEstShipping || r.meta?.localTier || 0;
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
-    const estInr = frozenEst;
     const priceLabel =
-      localPriceMode && estInr > 0
-      ? "local ₹" + estInr
-      : testLabMode || analysisMode
+      localPriceMode && staticEst > 0 && liveTier > 0
+        ? `est ₹${staticEst} → live ₹${liveTier}`
+        : localPriceMode && staticEst > 0
+        ? "est ₹" + staticEst
+        : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
-        : "est ₹" + estInr
+        : "est ₹" + staticEst
       : frozenShip > 0
       ? "₹" + frozenShip
-      : estInr > 0
-      ? "est ₹" + estInr
+      : staticEst > 0
+      ? "est ₹" + staticEst
       : manualMode
       ? "—"
       : "Ready";
@@ -1021,19 +1036,21 @@ const OptimizerUI = {
 
     if (localPriceMode && results.length > 0) {
       const best = results[0];
-      const bestEst = best.localEstShipping || best.estShipping || "—";
+      const bestStatic = best.meta?.staticEst ?? best.estShipping ?? "—";
+      const bestLive = best.localEstShipping || localProfile?.recommendedPrices?.[0] || "—";
       const recPrices = localProfile?.recommendedPrices || [];
       const tierText = localProfile?.tiers?.length
-        ? `tiers ₹${localProfile.tiers.join(", ")}`
-        : "est from image analysis";
+        ? `learned tiers ₹${localProfile.tiers.join(", ")}`
+        : "static analysis only";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local Price Mode (no live check)</div>
-                <div style="font-size:26px;font-weight:700;color:#047857;">est ₹${bestEst}</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} variants · ${tierText}</div>
+                <div style="font-size:11px;color:#047857;">📍 Local Price (no live API check)</div>
+                <div style="font-size:22px;font-weight:700;color:#047857;">est ₹${bestStatic} → live ₹${bestLive}</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} picks · ${tierText}</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Static est varies by file KB, frame & badges. Learned live tier is same for category.</div>
                 ${
                   recPrices.length
-                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Recommend: ₹${recPrices.join(" + ₹")}</div>`
+                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Upload on Meesho at ₹${recPrices.join(" + ₹")}</div>`
                     : ""
                 }
                 ${
@@ -1279,12 +1296,17 @@ const OptimizerUI = {
       localPriceMode && results.length > 0
         ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
         : "";
+    const liveFromLocalBtn =
+      localPriceMode && results.length > 0
+        ? `<button id="generate-live-from-results-btn" class="opt-btn opt-btn-primary" style="width:100%;padding:12px;margin-bottom:8px;font-size:13px;font-weight:700;">🚀 Generate Live Variants (learn for local)</button>`
+        : "";
     const reportBtn =
       hasLive && livePricedCount > 0 && !localPriceMode
         ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
         : "";
 
     html += `
+            ${liveFromLocalBtn}
             ${localCsvBtn}
             ${reportBtn}
             <div style="display:flex;gap:8px;">
