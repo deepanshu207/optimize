@@ -2374,14 +2374,7 @@ Please share payment details and license key.`;
 
     const categorySelect = document.getElementById("category-select");
     if (categorySelect) {
-      categorySelect.onchange = () => {
-        const categoryId = parseInt(categorySelect.value);
-        if (categoryId && typeof MeeshoAPI !== "undefined") {
-          MeeshoAPI.setCategory(categoryId);
-          console.log("📁 Category:", categoryId);
-        }
-        this.refreshLocalPriceUI();
-      };
+      this.wireCategorySelectChange();
     }
 
     this.wireClearUploadButton();
@@ -2566,6 +2559,8 @@ Please share payment details and license key.`;
 
   filterCategoriesForSearch(raw, limit = 100) {
     const parsed = this.parseCategorySearchQuery(raw);
+    const list = this.getActiveCategoryList();
+
     if (!parsed.text && parsed.mode !== "id") {
       return this.getDefaultCategorySlice();
     }
@@ -2575,22 +2570,23 @@ Please share payment details and license key.`;
       return cat ? [cat] : [];
     }
 
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.searchInList) {
+      return MeeshoCategories.searchInList(parsed.text, list, limit);
+    }
+
     if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.search) {
+      this.syncCategoryListToMeeshoCategories(list);
       return MeeshoCategories.search(parsed.text, limit);
     }
 
     const query = parsed.text.toLowerCase();
-    return (this.allCategories || [])
+    return list
       .filter((cat) => this.categoryMatchesQuery(cat, query))
       .slice(0, limit);
   }
 
   applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
-    if (this._categoryUserEditing && !options.force) return false;
-
-    const searchEl = document.getElementById("category-search");
-    if (searchEl && document.activeElement === searchEl && !options.force) return false;
 
     MeeshoAPI.syncCatalogPricing?.();
     const pageId = MeeshoAPI.detectCategoryId?.();
@@ -2620,23 +2616,6 @@ Please share payment details and license key.`;
     const tick = () => {
       if (this._categoryUserPicked && this._uploadUserPicked) return;
 
-      const searchEl = document.getElementById("category-search");
-      if (
-        this._categoryUserEditing &&
-        searchEl &&
-        document.activeElement === searchEl
-      ) {
-        if (attempts < maxAttempts) setTimeout(tick, delayMs);
-        return;
-      }
-      if (
-        this._categoryUserEditing &&
-        searchEl &&
-        document.activeElement !== searchEl
-      ) {
-        this._categoryUserEditing = false;
-      }
-
       attempts++;
       const gotCategory =
         !this._categoryUserPicked && this.applyPageCategoryIfAvailable();
@@ -2652,14 +2631,6 @@ Please share payment details and license key.`;
 
   syncFromMeeshoPage() {
     if (window.WEB_OPTIMIZER_MODE || !this.isCatalogPage?.()) return;
-    const searchEl = document.getElementById("category-search");
-    if (
-      this._categoryUserEditing &&
-      searchEl &&
-      document.activeElement === searchEl
-    ) {
-      return;
-    }
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.syncCatalogPricing?.();
       MeeshoAPI.detectCatalogImageUrl?.();
@@ -2769,10 +2740,15 @@ Please share payment details and license key.`;
   findCategoryById(id) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
-      return MeeshoCategories.findById(parsed);
+    const list = this.getActiveCategoryList();
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findByIdInList) {
+      return MeeshoCategories.findByIdInList(parsed, list);
     }
-    return this.allCategories?.find((c) => c.id === parsed) || null;
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.findById) {
+      const fromLib = MeeshoCategories.findById(parsed);
+      if (fromLib) return fromLib;
+    }
+    return list.find((c) => c.id === parsed) || null;
   }
 
   formatCategoryUi(cat, options = {}) {
@@ -2901,162 +2877,187 @@ Please share payment details and license key.`;
     return { error: true };
   }
 
+  getActiveCategoryList() {
+    if (this.allCategories?.length) return this.allCategories;
+    if (typeof MeeshoCategories !== "undefined" && MeeshoCategories.getList) {
+      const list = MeeshoCategories.getList();
+      if (list?.length) return list;
+    }
+    return [];
+  }
+
+  syncCategoryListToMeeshoCategories(categories) {
+    if (!categories?.length || typeof MeeshoCategories === "undefined") return;
+    MeeshoCategories._list = categories;
+    window.MEESHO_EMBEDDED_CATEGORIES = categories;
+    this._clothCategoryCache = null;
+  }
+
   getDefaultCategorySlice(limit) {
+    const list = this.getActiveCategoryList();
+    if (!list.length) return [];
+
+    if (!this._clothCategoryCache || this._clothCategoryCacheSource !== list.length) {
+      if (
+        typeof MeeshoCategories !== "undefined" &&
+        MeeshoCategories.getDefaultListFrom
+      ) {
+        this._clothCategoryCache = MeeshoCategories.getDefaultListFrom(list, limit);
+      } else if (
+        typeof MeeshoCategories !== "undefined" &&
+        MeeshoCategories.getClothRelatedFromList
+      ) {
+        const cloth = MeeshoCategories.getClothRelatedFromList(list);
+        this._clothCategoryCache =
+          limit && limit > 0 && cloth.length > limit
+            ? cloth.slice(0, limit)
+            : cloth;
+      } else {
+        this._clothCategoryCache = list.slice(0, limit || 50);
+      }
+      this._clothCategoryCacheSource = list.length;
+    }
+
+    if (limit && limit > 0 && this._clothCategoryCache.length > limit) {
+      return this._clothCategoryCache.slice(0, limit);
+    }
+    return this._clothCategoryCache;
+  }
+
+  getWomenClothCategoryList() {
+    const list = this.getActiveCategoryList();
     if (
       typeof MeeshoCategories !== "undefined" &&
-      MeeshoCategories.getDefaultList
+      MeeshoCategories.getWomenClothRelatedFromList
     ) {
-      return MeeshoCategories.getDefaultList(limit);
+      return MeeshoCategories.getWomenClothRelatedFromList(list);
     }
-    return (this.allCategories || []).slice(0, limit || 50);
+    return list.filter((c) => c.rootName === "Women Fashion");
   }
 
-  getCategoryDropdownHintText(totalCount) {
-    const total = totalCount || this.allCategories?.length || 0;
-    const clothCount =
-      typeof MeeshoCategories !== "undefined" &&
-      MeeshoCategories.CLOTH_RELATED_COUNT
-        ? MeeshoCategories.CLOTH_RELATED_COUNT
-        : typeof MeeshoCategories !== "undefined" &&
-            MeeshoCategories.getClothRelatedList
-          ? MeeshoCategories.getClothRelatedList().length
-          : 0;
-    if (clothCount && total >= 3000) {
-      return `${clothCount} apparel categories in list — type to search all ${total}`;
-    }
-    if (total >= 3000) {
-      return `${total} leaf categories loaded — type to search all`;
-    }
-    return `${total} categories loaded`;
+  escapeCategoryHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/"/g, "&quot;");
   }
 
-  // Load categories into dropdown
-  bindCategoryUI(categories) {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
+  buildWomenCategoryPickerHTML(womenList) {
+    const bySection = new Map();
+    for (const cat of womenList || []) {
+      const section = cat.sectionName || cat.rootName || "Women";
+      if (!bySection.has(section)) bySection.set(section, []);
+      bySection.get(section).push(cat);
+    }
+
+    let html = '<option value="">— Select women category —</option>';
+    for (const [section, cats] of bySection.entries()) {
+      html += `<optgroup label="${this.escapeCategoryHtml(section)}">`;
+      for (const cat of cats) {
+        const label = `${cat.name} (ID ${cat.id})`;
+        html += `<option value="${cat.id}">${this.escapeCategoryHtml(label)}</option>`;
+      }
+      html += "</optgroup>";
+    }
+    return html;
+  }
+
+  syncCategorySelectValue(id, cat) {
+    const select = document.getElementById("category-select");
+    const parsed = parseInt(id, 10);
+    if (!select || !Number.isFinite(parsed) || parsed <= 0) return;
+
+    const existing = select.querySelector(`option[value="${parsed}"]`);
+    if (existing) {
+      select.value = String(parsed);
+      return;
+    }
+
+    const known = cat || this.findCategoryById(parsed);
+    const opt = document.createElement("option");
+    opt.value = String(parsed);
+    opt.textContent = known
+      ? `${known.name} (ID ${parsed})`
+      : `Category ID ${parsed}`;
+    opt.dataset.external = "1";
+    select.appendChild(opt);
+    select.value = String(parsed);
+  }
+
+  wireCategorySelectChange() {
     const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
+    if (!categorySelect) return;
+
+    categorySelect.onchange = () => {
+      const categoryId = parseInt(categorySelect.value, 10);
+      if (!categoryId) {
+        this._categoryUserPicked = false;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+        const selectedCategory = document.getElementById("selected-category");
+        if (selectedCategory) selectedCategory.style.display = "none";
+        this.refreshCategoryApiPreview();
+        this.refreshLocalPriceUI();
+        return;
+      }
+
+      const cat = this.findCategoryById(categoryId);
+      if (cat) {
+        this.applyCategorySelection(cat, { source: "user" });
+      } else {
+        this.applyCategoryByIdOnly(categoryId, { source: "user" });
+      }
+      this.refreshLocalPriceUI();
+    };
+  }
+
+  getCategoryPickerHintText() {
+    const womenCount =
+      typeof MeeshoCategories !== "undefined" &&
+      MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+        ? MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT
+        : this.getWomenClothCategoryList().length;
+    return `${womenCount} women apparel categories — ethnic, western, footwear & more`;
+  }
+
+  bindCategoryUI(categories) {
+    const categorySelect = document.getElementById("category-select");
     const refreshBtn = document.getElementById("refresh-categories");
     const categoryError = document.getElementById("category-error");
 
-    if (!categorySearch || !categoryDropdown || !categories?.length) return false;
+    if (!categorySelect || !categories?.length) return false;
 
     this.allCategories = categories;
+    this.syncCategoryListToMeeshoCategories(categories);
+    this._womenCategoryCache = this.getWomenClothCategoryList();
+
     const embedded = MeeshoAPI?._lastCategoryFetchWasEmbedded;
-    categorySearch.placeholder = `🔍 Search ${categories.length} categories by name or ID…`;
+    const previousValue = categorySelect.value;
+    categorySelect.innerHTML = this.buildWomenCategoryPickerHTML(
+      this._womenCategoryCache,
+    );
+    categorySelect.disabled = false;
+
     const countHint = document.getElementById("category-count-hint");
     if (countHint) {
-      countHint.textContent = this.getCategoryDropdownHintText(categories.length);
+      countHint.textContent = this.getCategoryPickerHintText();
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
-    categorySearch.onfocus = () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-      const raw = categorySearch.value.trim();
-      if (!raw) {
-        this.renderCategoryDropdown(this.getDefaultCategorySlice());
-        categoryDropdown.style.display = "block";
-      }
-    };
+    this.wireCategorySelectChange();
 
-    categorySearch.onblur = () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== categorySearch) {
-          this._categoryUserEditing = false;
-        }
-      }, 200);
-    };
-
-    categorySearch.onkeydown = (e) => {
-      if (e.key === "Escape") {
-        categoryDropdown.style.display = "none";
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const raw = categorySearch.value.trim();
-        if (!raw) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat) {
-          this.applyCategorySelection(result.cat, { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else if (result.status === "ambiguous" && result.hits?.[0]) {
-          this.applyCategorySelection(result.hits[0], { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else {
-          OptimizerUtils.showNotification(
-            `No category found for "${raw}"`,
-            "error",
-          );
-        }
-        return;
-      }
-      if (
-        this._categorySearchCommittedValue &&
-        categorySearch.value === this._categorySearchCommittedValue &&
-        e.key.length === 1 &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey
-      ) {
-        categorySearch.value = e.key;
-        this._categorySearchCommittedValue = "";
-        e.preventDefault();
-        categorySearch.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    };
-
-    categorySearch.oninput = () => {
-      this._categoryUserEditing = true;
-      const raw = categorySearch.value.trim();
-      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-
-      if (!raw) {
-        this.renderCategoryDropdown(this.getDefaultCategorySlice());
-      } else {
-        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
-      }
-      categoryDropdown.style.display = "block";
-    };
-
-    if (categoryClear) {
-      categoryClear.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        categorySearch.value = "";
-        categoryClear.style.display = "none";
-        this._categorySearchCommittedValue = "";
-        this._categoryUserEditing = true;
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        const selectedCategoryDetail = document.getElementById("selected-category-detail");
-        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
-        this._categoryUserPicked = false;
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.renderCategoryDropdown(this.getDefaultCategorySlice());
-        this.refreshCategoryApiPreview();
-        this.applyPageCategoryIfAvailable();
-        categorySearch.focus();
-      };
+    if (previousValue) {
+      this.syncCategorySelectValue(parseInt(previousValue, 10));
     }
 
-    if (!this._categoryClickBound) {
-      this._categoryClickBound = true;
-      document.addEventListener("click", (e) => {
-        if (
-          !e.target.closest("#category-search") &&
-          !e.target.closest("#category-dropdown")
-        ) {
-          categoryDropdown.style.display = "none";
-        }
-      });
-    }
+    console.log(
+      "✅ Loaded",
+      categories.length,
+      "categories ·",
+      this._womenCategoryCache.length,
+      "women apparel in dropdown",
+    );
 
-    console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
       this.applyDefaultCategoryIfNeeded();
       this.scheduleMeeshoPageSync();
@@ -3066,82 +3067,23 @@ Please share payment details and license key.`;
     return true;
   }
 
-  renderCategoryDropdown(categories) {
-    const dropdown = document.getElementById("category-dropdown");
-    if (!dropdown) return;
-
-    if (!categories?.length) {
-      dropdown.innerHTML =
-        '<div class="category-empty">No matching categories — try name or ID</div>';
-      dropdown.style.display = "block";
-      return;
-    }
-
-    let html = "";
-    categories.forEach((cat) => {
-      const path = cat.path || cat.parentName || "";
-      const safeName = String(cat.name || "").replace(/"/g, "&quot;");
-      const safePath = String(path).replace(/"/g, "&quot;");
-      html += `
-                <div class="cat-item" data-id="${cat.id}" data-name="${safeName}" data-path="${safePath}">
-                    <div class="cat-item-name">
-                      <span>${cat.name}</span>
-                      <span class="cat-item-id">ID ${cat.id}</span>
-                    </div>
-                    <div class="cat-item-path">${path || "Leaf category (sscat_id)"}</div>
-                </div>
-            `;
-    });
-    dropdown.innerHTML = html;
-    dropdown.style.display = "block";
-
-    dropdown.querySelectorAll(".cat-item").forEach((item) => {
-      item.onmouseenter = () => {
-        item.style.background = "rgba(102,126,234,0.12)";
-      };
-      item.onmouseleave = () => {
-        item.style.background = "transparent";
-      };
-      item.onclick = () => {
-        const id = parseInt(item.dataset.id, 10);
-        const cat =
-          this.allCategories?.find((c) => c.id === id) ||
-          this.findCategoryById(id) || {
-            id,
-            name: item.dataset.name,
-            path: item.dataset.path,
-            parentName: item.dataset.path,
-          };
-        this.applyCategorySelection(cat, { source: "user" });
-        this._categoryUserPicked = true;
-        const categoryDropdown = document.getElementById("category-dropdown");
-        if (categoryDropdown) categoryDropdown.style.display = "none";
-      };
-    });
-  }
-
   async loadCategoryDropdown() {
-    const categorySearch = document.getElementById("category-search");
-    const categoryDropdown = document.getElementById("category-dropdown");
+    const loadGen = (this._categoryLoadGen = (this._categoryLoadGen || 0) + 1);
     const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
-    const selectedCategoryName = document.getElementById(
-      "selected-category-name"
-    );
     const refreshBtn = document.getElementById("refresh-categories");
     const categoryError = document.getElementById("category-error");
 
-    if (!categorySearch || !categoryDropdown) return;
+    if (!categorySelect) return;
 
     if (typeof MeeshoAPI === "undefined") {
-      categorySearch.placeholder = "API not available";
+      categorySelect.innerHTML =
+        '<option value="">API not available — reload extension</option>';
+      categorySelect.disabled = true;
       if (refreshBtn) refreshBtn.style.display = "block";
       if (categoryError) categoryError.style.display = "block";
       return;
     }
 
-    // Refresh button handler
     if (refreshBtn) {
       refreshBtn.onclick = async () => {
         refreshBtn.textContent = "⏳...";
@@ -3160,32 +3102,43 @@ Please share payment details and license key.`;
       };
     }
 
-    categorySearch.placeholder = "Loading categories...";
+    categorySelect.innerHTML = '<option value="">Loading women categories…</option>';
+    categorySelect.disabled = true;
 
     try {
       const categories = await this.ensureFullCategories();
+
+      if (loadGen !== this._categoryLoadGen) return;
 
       if (categories?.length && this.bindCategoryUI(categories)) {
         return;
       }
 
       if (window.WEB_OPTIMIZER_MODE) {
-        categorySearch.placeholder = "Optional — skip to generate variants";
+        categorySelect.innerHTML =
+          '<option value="">Optional — skip to generate variants</option>';
+        categorySelect.disabled = false;
         if (categoryError) categoryError.style.display = "none";
         if (refreshBtn) refreshBtn.style.display = "block";
         return;
       }
 
-      categorySearch.placeholder = "Not loaded — click Refresh";
+      categorySelect.innerHTML =
+        '<option value="">Not loaded — click Refresh</option>';
+      categorySelect.disabled = true;
       if (refreshBtn) refreshBtn.style.display = "block";
       if (categoryError) categoryError.style.display = "block";
     } catch (error) {
       console.error("Failed to load categories:", error);
       if (window.WEB_OPTIMIZER_MODE) {
-        categorySearch.placeholder = "Optional — skip to generate variants";
+        categorySelect.innerHTML =
+          '<option value="">Optional — skip to generate variants</option>';
+        categorySelect.disabled = false;
         if (categoryError) categoryError.style.display = "none";
       } else {
-        categorySearch.placeholder = "Failed - Click Refresh";
+        categorySelect.innerHTML =
+          '<option value="">Failed — click Refresh</option>';
+        categorySelect.disabled = true;
         if (categoryError) categoryError.style.display = "block";
       }
       if (refreshBtn) refreshBtn.style.display = "block";
@@ -3194,10 +3147,6 @@ Please share payment details and license key.`;
 
   applyCategorySelection(catOrId, options = {}) {
     const categorySelect = document.getElementById("category-select");
-    const categorySearch = document.getElementById("category-search");
-    const categoryClear =
-      document.getElementById("category-clear-btn") ||
-      document.getElementById("category-clear");
 
     const cat =
       typeof catOrId === "object"
@@ -3211,17 +3160,8 @@ Please share payment details and license key.`;
       this._categoryUserPicked = true;
     }
 
-    this._categoryUserEditing = false;
-    clearTimeout(this._categoryEditingTimer);
-
-    if (categorySelect) categorySelect.value = String(cat.id);
-    if (categorySearch) {
-      const displayValue = `${cat.name} (${cat.id})`;
-      categorySearch.value = displayValue;
-      this._categorySearchCommittedValue = displayValue;
-    }
+    this.syncCategorySelectValue(cat.id, cat);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
-    if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.setCategory(cat.id);
     }
@@ -3234,11 +3174,6 @@ Please share payment details and license key.`;
   }
 
   applyCategoryByIdOnly(id, options = {}) {
-    const categorySelect = document.getElementById("category-select");
-    const categorySearch = document.getElementById("category-search");
-    const categoryClear =
-      document.getElementById("category-clear-btn") ||
-      document.getElementById("category-clear");
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return false;
 
@@ -3249,17 +3184,8 @@ Please share payment details and license key.`;
 
     const display = this.formatCategoryIdUi(parsed, { source: options.source });
 
-    this._categoryUserEditing = false;
-    clearTimeout(this._categoryEditingTimer);
-
-    if (categorySelect) categorySelect.value = String(parsed);
-    if (categorySearch) {
-      const displayValue = `ID ${parsed}`;
-      categorySearch.value = displayValue;
-      this._categorySearchCommittedValue = displayValue;
-    }
+    this.syncCategorySelectValue(parsed);
     this.paintCategorySelection(display, { showSelected: options.showSelected !== false });
-    if (categoryClear) categoryClear.style.display = "block";
     if (typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.setCategory(parsed);
     }
@@ -3275,40 +3201,15 @@ Please share payment details and license key.`;
    * Live API category priority: optimizer dropdown → Meesho page sscat → Kurtis default.
    */
   resolveCategoryForLiveApi(categorySelect) {
-    const searchEl = document.getElementById("category-search");
-    const raw = searchEl?.value?.trim() || "";
-    const selectedId = parseInt(categorySelect?.value, 10);
-
-    if (raw && (this._categoryUserEditing || !selectedId)) {
-      const result = this.resolveCategoryFromSearchInput(raw, 12);
-      if (result.status === "resolved" && result.cat) {
-        this.applyCategorySelection(result.cat, { source: "user" });
-        const resolved = {
-          id: result.cat.id,
-          source: "user",
-          cat: result.cat,
-        };
-        if (typeof MeeshoAPI !== "undefined") {
-          MeeshoAPI.setCategory(resolved.id);
-        }
-        return resolved;
-      }
-      if (result.status === "ambiguous") {
-        return {
-          error: true,
-          message: `Pick a category from the list (${result.hits.length} matches for "${raw}")`,
-        };
-      }
-      if (result.status === "not_found") {
-        return {
-          error: true,
-          message: `No category found for "${raw}" — try name or numeric ID`,
-        };
-      }
-    }
-
     const resolved = this.peekCategoryForLiveApi(categorySelect);
     if (resolved.error) return resolved;
+
+    if (!resolved.id && !window.WEB_OPTIMIZER_MODE && !this.isManualShippingMode()) {
+      return {
+        error: true,
+        message: "Select a women category from the dropdown",
+      };
+    }
 
     if (resolved.id) {
       if (resolved.cat) {

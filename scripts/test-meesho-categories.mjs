@@ -40,22 +40,26 @@ assert(
 );
 assert(ethnic.length >= 20, `Ethnic Wear section has ${ethnic.length} categories`);
 
-const defaults = MeeshoCategories.getDefaultList();
+const defaults = MeeshoCategories.getWomenClothRelatedList();
 assert(
-  defaults.every((c) => MeeshoCategories.isClothRelatedCategory(c)),
-  "default dropdown slice is apparel/cloth categories only",
+  defaults.every((c) => MeeshoCategories.isWomenClothRelatedCategory(c)),
+  "women cloth list contains only women apparel categories",
 );
 assert(
-  defaults.length === MeeshoCategories.CLOTH_RELATED_COUNT,
-  `default slice returns all ${MeeshoCategories.CLOTH_RELATED_COUNT} cloth categories`,
+  defaults.length === MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT,
+  `women cloth list returns all ${MeeshoCategories.WOMEN_CLOTH_RELATED_COUNT} categories`,
 );
 assert(
-  defaults.some((c) => c.rootName === "Men Fashion"),
-  "default list includes Men Fashion",
+  defaults.some((c) => c.sectionName === "Ethnic Wear"),
+  "women list includes Ethnic Wear",
 );
 assert(
-  defaults.some((c) => c.sectionName === "Kids Clothing"),
-  "default list includes Kids Clothing",
+  defaults.some((c) => c.id === 10004),
+  "women list includes Kurtis 10004",
+);
+assert(
+  !defaults.some((c) => c.rootName === "Men Fashion"),
+  "women list excludes Men Fashion",
 );
 
 const kurtisDisplay = MeeshoCategories.formatDisplay(kurtis, { source: "default" });

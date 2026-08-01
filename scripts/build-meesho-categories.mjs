@@ -96,7 +96,17 @@ function isClothRelatedCategory(cat) {
   return false;
 }
 
+function isWomenClothRelatedCategory(cat) {
+  if (!cat) return false;
+  const root = String(cat.rootName || "");
+  const section = String(cat.sectionName || "");
+  if (root === "Women Fashion") return true;
+  if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+  return false;
+}
+
 const clothRelatedCount = categories.filter(isClothRelatedCategory).length;
+const womenClothRelatedCount = categories.filter(isWomenClothRelatedCategory).length;
 
 const SHARED_METHODS = `
   parseTree(raw) {
@@ -163,14 +173,15 @@ const SHARED_METHODS = `
     return false;
   },
 
-  getClothRelatedList() {
+  getClothRelatedFromList(sourceList) {
+    const list = sourceList || this.getList();
     const ROOT_ORDER = {
       "Women Fashion": 0,
       "Men Fashion": 1,
       Women: 2,
       "Kids & Toys": 3,
     };
-    return this.getList()
+    return list
       .filter((c) => this.isClothRelatedCategory(c))
       .sort((a, b) => {
         const ra = ROOT_ORDER[a.rootName] ?? 99;
@@ -186,10 +197,56 @@ const SHARED_METHODS = `
       });
   },
 
-  getDefaultList(limit) {
-    const cloth = this.getClothRelatedList();
+  getClothRelatedList() {
+    return this.getClothRelatedFromList(this.getList());
+  },
+
+  isWomenClothRelatedCategory(cat) {
+    if (!cat) return false;
+    const root = String(cat.rootName || "");
+    const section = String(cat.sectionName || "");
+    if (root === "Women Fashion") return true;
+    if (root === "Women" && /wear|inner|sleep|ethnic/i.test(section)) return true;
+    return false;
+  },
+
+  getWomenClothRelatedFromList(sourceList) {
+    const list = sourceList || this.getList();
+    const SECTION_ORDER = [
+      "Ethnic Wear",
+      "Western Wear",
+      "Women Ethnic Wear",
+      "Women Western Wear",
+      "Inner & Sleepwear",
+      "Women Inner & Sleep Wear",
+      "Footwear",
+      "Sports & Activewear",
+      "Accessories",
+      "Maternity",
+    ];
+    return list
+      .filter((c) => this.isWomenClothRelatedCategory(c))
+      .sort((a, b) => {
+        const sa = String(a.sectionName || "");
+        const sb = String(b.sectionName || "");
+        const ia = SECTION_ORDER.indexOf(sa);
+        const ib = SECTION_ORDER.indexOf(sb);
+        if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        const pa = String(a.parentName || "");
+        const pb = String(b.parentName || "");
+        if (pa !== pb) return pa.localeCompare(pb);
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  },
+
+  getWomenClothRelatedList() {
+    return this.getWomenClothRelatedFromList(this.getList());
+  },
+
+  getDefaultListFrom(sourceList, limit) {
+    const cloth = this.getClothRelatedFromList(sourceList);
     if (!cloth.length) {
-      const list = this.getList();
+      const list = sourceList || this.getList();
       const cap = limit && limit > 0 ? limit : 50;
       return list.slice(0, cap);
     }
@@ -197,6 +254,10 @@ const SHARED_METHODS = `
       return cloth.slice(0, limit);
     }
     return cloth;
+  },
+
+  getDefaultList(limit) {
+    return this.getDefaultListFrom(this.getList(), limit);
   },
 
   getDefaultCategoryId() {
@@ -208,10 +269,15 @@ const SHARED_METHODS = `
     return women?.id || list[0]?.id || null;
   },
 
-  findById(id) {
+  findByIdInList(id, sourceList) {
     const parsed = parseInt(id, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return this.getList().find((c) => c.id === parsed) || null;
+    const list = sourceList || this.getList();
+    return list.find((c) => c.id === parsed) || null;
+  },
+
+  findById(id) {
+    return this.findByIdInList(id, this.getList());
   },
 
   normalizeSearchText(text) {
@@ -223,14 +289,14 @@ const SHARED_METHODS = `
       .trim();
   },
 
-  search(query, limit = 100) {
+  searchInList(query, sourceList, limit = 100) {
     const raw = String(query || "").trim();
     if (!raw) return [];
 
-    const list = this.getList();
+    const list = sourceList || this.getList();
     const idOnly = raw.match(/^\\d{3,6}$/);
     if (idOnly) {
-      const exact = this.findById(idOnly[0]);
+      const exact = this.findByIdInList(idOnly[0], list);
       return exact ? [exact] : [];
     }
 
@@ -260,6 +326,10 @@ const SHARED_METHODS = `
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit).map((row) => row.cat);
+  },
+
+  search(query, limit = 100) {
+    return this.searchInList(query, this.getList(), limit);
   },
 
   findByLabel(label) {
@@ -314,6 +384,7 @@ const MeeshoCategories = {
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
   CLOTH_RELATED_COUNT: ${clothRelatedCount},
+  WOMEN_CLOTH_RELATED_COUNT: ${womenClothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: ${JSON.stringify(categories)},
   _list: null,
@@ -334,6 +405,7 @@ const MeeshoCategories = {
   COUNT: ${categories.length},
   WOMEN_FASHION_COUNT: ${womenFashionCount},
   CLOTH_RELATED_COUNT: ${clothRelatedCount},
+  WOMEN_CLOTH_RELATED_COUNT: ${womenClothRelatedCount},
   FULL_CATEGORY_MIN: 3000,
   LIST: [],
   _list: null,
