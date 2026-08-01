@@ -1906,11 +1906,24 @@ const MeeshoAPI = {
           productCtx.drawImage(img, 0, 0);
           const productOnly = productCanvas.toDataURL("image/jpeg", quality);
 
-          const border = ultraLow
-            ? 8 + Math.floor(Math.random() * 12)
-            : lowBias
-            ? 16 + Math.floor(Math.random() * 20)
-            : 20 + Math.floor(Math.random() * 60);
+          const border = (() => {
+            const maxB =
+              opts.borderMax != null && Number(opts.borderMax) > 0
+                ? Number(opts.borderMax)
+                : null;
+            if (maxB != null) {
+              if (ultraLow) {
+                return 8 + Math.floor(Math.random() * Math.max(4, maxB - 8));
+              }
+              if (lowBias) {
+                return Math.min(maxB, 16 + Math.floor(Math.random() * 20));
+              }
+              return Math.min(maxB, 20 + Math.floor(Math.random() * 60));
+            }
+            if (ultraLow) return 8 + Math.floor(Math.random() * 12);
+            if (lowBias) return 16 + Math.floor(Math.random() * 20);
+            return 20 + Math.floor(Math.random() * 60);
+          })();
           const finalW = w + border * 2;
           const finalH = h + border * 2;
 

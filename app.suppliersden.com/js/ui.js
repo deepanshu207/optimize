@@ -1082,15 +1082,21 @@ const OptimizerUI = {
       const bestKb =
         best.meta?.kb ||
         (best.blob?.size ? Math.ceil(best.blob.size / 1024) : "—");
-      const tierText = localProfile?.hasData
-        ? "matched to your live history for this category"
-        : "run Live once to learn this category";
+      const liveTier =
+        localProfile?.recommendedPrices?.[0] ||
+        LocalPriceDB.resolveLearnedTier(
+          String(localProfile?.categoryId || ""),
+        ) ||
+        null;
+      const tierText = liveTier
+        ? `matched to live ₹${liveTier} pattern (KB/border)`
+        : "run Live first to learn ₹ pattern";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local variants (no live price check)</div>
+                <div style="font-size:11px;color:#047857;">📍 Local variants (from live learn — not a Meesho check)</div>
                 <div style="font-size:22px;font-weight:700;color:#047857;">${results.length} picks · ~${bestKb} KB</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">Lowest file weight first · ${tierText}</div>
-                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Shipping is not shown here — only Live generate returns real Meesho ₹.</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;">${tierText}</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Same image + same live ₹ tier → we copy KB/border from your live winners. Confirm with Live generate.</div>
                 ${
                   localProfile?.strategyReason
                     ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`

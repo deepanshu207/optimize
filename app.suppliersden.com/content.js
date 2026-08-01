@@ -362,6 +362,7 @@ const LocalPriceDB = {
       const kb = Number(e.kb);
       if (kb > 0) kbs.push(kb);
     });
+    const borders = fps.map((f) => Number(f.borderPx)).filter((b) => b > 0);
     const ests = fps.map((f) => Number(f.est)).filter((e) => e > 0 && e < 900);
     const styles = fps.map((f) => f.style).filter(Boolean);
     const dominantStyle = styles.length
@@ -377,6 +378,9 @@ const LocalPriceDB = {
     const medianKb = kbs.length
       ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)]
       : null;
+    const medianBorder = borders.length
+      ? borders.sort((a, b) => a - b)[Math.floor(borders.length / 2)]
+      : null;
 
     if (!fps.length && !entries.length) return null;
 
@@ -388,6 +392,7 @@ const LocalPriceDB = {
       minEst,
       maxEst,
       medianKb,
+      medianBorder,
       dominantStyle,
       estTolerance:
         minEst != null && maxEst != null
@@ -498,8 +503,100 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
-  scoreVariantForLocalPick(v, catId, profile, tierPrice = null, analysisPrimary = null) {
-    const est = this.estOf(v);
+  /** Live-learned generation hints (KB / border from Meesho-verified runs). */
+  getLiveGenerationHints(catId) {
+    const id = String(catId || "");
+    const tier = this.resolveLearnedTier(id);
+    if (!tier) return null;
+    const stats = this.getTierLearnedStats(id, tier);
+    if (!stats) {
+      return {
+        tier,
+        ultraLow: tier <= 65,
+        lowBias: true,
+        borderMax: tier <= 65 ? 22 : null,
+      };
+    }
+    const borderMax =
+      stats.medianBorder != null
+        ? Math.min(80, stats.medianBorder + 8)
+        : tier <= 65
+          ? 22
+          : null;
+    return {
+      tier,
+      medianKb: stats.medianKb,
+      medianBorder: stats.medianBorder,
+      dominantStyle: stats.dominantStyle,
+      ultraLow: tier <= 60 && stats.medianKb != null && stats.medianKb <= 45,
+      lowBias: true,
+      borderMax,
+      kbTolerance: stats.medianKb != null ? Math.max(8, Math.ceil(stats.medianKb * 0.15)) : 12,
+    };
+  },
+
+  /** Keep pool variants near live-verified file weight (not static est). */
+  filterLiveKbBand(variants, catId, tierPrice = null) {
+    const tier = Number(tierPrice) || this.resolveLearnedTier(catId);
+    const stats = tier
+      ? this.getTierLearnedStats(catId, tier)
+      : this.getLowestTierLearnedStats(catId);
+    if (!stats?.medianKb) return variants || [];
+    const tol = Math.max(8, Math.ceil(stats.medianKb * 0.2));
+    const minKb = Math.max(1, stats.medianKb - tol);
+    const maxKb = stats.medianKb + tol;
+    return (variants || []).filter((v) => {
+      const kb =
+        Number(v.meta?.kb || 0) ||
+        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+      return kb > 0 && kb >= minKb && kb <= maxKb;
+    });
+  },
+
+  scoreLiveReferenceAlignment(v, liveRefs, tierStats) {
+    let score = 0;
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const border = Number(v.meta?.borderPx ?? 0);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+
+    if (tierStats?.medianKb && kb > 0) {
+      score += Math.max(0, 120 - Math.abs(kb - tierStats.medianKb) * 4);
+    }
+    if (tierStats?.medianBorder && border > 0) {
+      score += Math.max(0, 70 - Math.abs(border - tierStats.medianBorder) * 4);
+    }
+    if (
+      tierStats?.dominantStyle &&
+      style.includes(String(tierStats.dominantStyle).toLowerCase())
+    ) {
+      score += 45;
+    }
+
+    for (const ref of liveRefs || []) {
+      const rKb =
+        Number(ref.meta?.kb || 0) ||
+        (ref.blob?.size ? Math.ceil(ref.blob.size / 1024) : 0);
+      const rBorder = Number(ref.meta?.borderPx ?? 0);
+      if (rKb > 0 && kb > 0) {
+        const d = Math.abs(kb - rKb);
+        if (d <= 3) score += 90;
+        else if (d <= 6) score += 55;
+        else if (d <= 10) score += 25;
+      }
+      if (rBorder > 0 && border > 0 && Math.abs(border - rBorder) <= 6) {
+        score += 40;
+      }
+      if (ref.liveVerified || ref.isVerified) score += 15;
+      if (ref.recommended || ref.meta?.recommended) score += 20;
+    }
+    return score;
+  },
+
+  scoreVariantForLocalPick(v, catId, profile, tierPrice = null, liveRefs = null) {
     const kb =
       Number(v.meta?.kb || 0) ||
       (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
@@ -507,23 +604,19 @@ const LocalPriceDB = {
       v.variantStyle || v.meta?.style || v.meta?.path || "",
     ).toLowerCase();
 
-    let score = 1000 - est;
-    const stats = tierPrice
-      ? this.getTierLearnedStats(catId, tierPrice)
+    const tier = tierPrice || this.resolveLearnedTier(catId);
+    const stats = tier
+      ? this.getTierLearnedStats(catId, tier)
       : this.getLowestTierLearnedStats(catId);
 
+    let score = this.scoreLiveReferenceAlignment(v, liveRefs, stats);
+
     if (stats) {
-      if (stats.minEst != null && est <= stats.minEst + stats.estTolerance) {
-        score += 60;
-      }
       if (stats.medianKb && kb > 0) {
-        score += Math.max(0, 40 - Math.abs(kb - stats.medianKb));
+        score += Math.max(0, 50 - Math.abs(kb - stats.medianKb));
       }
       if (stats.dominantStyle && style.includes(stats.dominantStyle.toLowerCase())) {
         score += 35;
-      }
-      if (Number(v.shippingCost) === Number(stats.lowestShipping)) {
-        score += 25;
       }
       if (tierPrice && this.matchesTierPattern(v, catId, tierPrice)) {
         score += 55;
@@ -531,11 +624,7 @@ const LocalPriceDB = {
         score += 45;
       }
     } else if (profile?.recommendedPrices?.length) {
-      score += 20;
-    }
-
-    if (analysisPrimary?.length) {
-      score += this.scoreAnalysisAlignment(v, analysisPrimary);
+      score += 10;
     }
 
     return score;
@@ -558,7 +647,7 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
-  pickVariantForTier(variants, catId, tierPrice, excludeIds = new Set(), analysisPrimary = null) {
+  pickVariantForTier(variants, catId, tierPrice, excludeIds = new Set(), liveRefs = null) {
     const profile = this.getCategoryProfile(catId);
     const candidates = (variants || []).filter(
       (v) => !excludeIds.has(String(v.variantId || "")),
@@ -573,7 +662,7 @@ const LocalPriceDB = {
         catId,
         profile,
         tierPrice,
-        analysisPrimary,
+        liveRefs,
       );
       if (score > bestScore) {
         bestScore = score;
@@ -610,29 +699,32 @@ const LocalPriceDB = {
   /**
    * Pick N variants that best match your saved lowest-shipping patterns.
    */
-  pickLearnedVariants(variants, catId, count = 2, analysisPrimary = null) {
+  pickLearnedVariants(variants, catId, count = 2, liveRefs = null) {
     const profile = this.getCategoryProfile(catId);
+    const tier = this.resolveLearnedTier(catId, profile);
     const sorted = this.sortVariantsStable(variants);
     if (!sorted.length) return [];
 
-    const lowBand = this.filterLowEstBand(sorted);
-    const candidates = lowBand.length ? lowBand : sorted;
+    const liveBand = this.filterLiveKbBand(sorted, catId, tier);
+    const candidates = liveBand.length ? liveBand : sorted;
 
     const scored = candidates.map((v) => ({
       v,
-      est: this.estOf(v),
+      kb:
+        Number(v.meta?.kb || 0) ||
+        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0),
       score: this.scoreVariantForLocalPick(
         v,
         catId,
         profile,
-        null,
-        analysisPrimary,
+        tier || null,
+        liveRefs,
       ),
     }));
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      if (a.est !== b.est) return a.est - b.est;
+      if (a.kb !== b.kb) return a.kb - b.kb;
       const rankA = Number(a.v.meta?.rank ?? a.v.meta?.attempt ?? 0);
       const rankB = Number(b.v.meta?.rank ?? b.v.meta?.attempt ?? 0);
       if (rankA !== rankB) return rankA - rankB;
@@ -1042,16 +1134,15 @@ const LocalPriceDB = {
   /**
    * Pick 2–10 variants: one per recommended live tier (e.g. ₹59 + ₹60), learned from history.
    */
-  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, analysisPrimary = null) {
+  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, liveRefs = null) {
     const profile = this.getCategoryProfile(catId);
     const count = this.clampPickCount(pickCount);
     const sortedAll = this.sortVariantsStable(variants);
-    const lowBand = this.filterLowEstBand(sortedAll);
-    const sorted = lowBand.length ? lowBand : sortedAll;
+    const learnedTier = this.resolveLearnedTier(catId, profile);
+    const liveBand = this.filterLiveKbBand(sortedAll, catId, learnedTier);
+    const sorted = liveBand.length ? liveBand : sortedAll;
 
     if (!sorted.length) return [];
-
-    const learnedTier = this.resolveLearnedTier(catId, profile);
     const tierTargets = this.buildTierTargets(profile, count);
     const recommendedSet = new Set(
       (profile.recommendedPrices || []).map((p) => Number(p)),
@@ -1067,11 +1158,11 @@ const LocalPriceDB = {
           catId,
           tier,
           seen,
-          analysisPrimary,
+          liveRefs,
         );
         if (!v) {
           const pool = sorted.filter((x) => !seen.has(String(x.variantId || "")));
-          const fallback = this.pickLearnedVariants(pool, catId, 1, analysisPrimary);
+          const fallback = this.pickLearnedVariants(pool, catId, 1, liveRefs);
           v = fallback[0];
         }
         if (!v) continue;
@@ -1089,7 +1180,7 @@ const LocalPriceDB = {
         remaining,
         catId,
         count - picked.length,
-        analysisPrimary,
+        liveRefs,
       );
       for (const v of learned) {
         if (picked.length >= count) break;
@@ -1107,11 +1198,22 @@ const LocalPriceDB = {
     }
 
     if (!picked.length) {
-      const learned = this.pickLearnedVariants(sorted, catId, count, analysisPrimary);
+      const learned = this.pickLearnedVariants(sorted, catId, count, liveRefs);
       return learned.map((v) => this._tagLocalVariant(v, learnedTier, true));
     }
 
-    return this.sortVariantsStable(picked).slice(0, count);
+    const tierStats = learnedTier
+      ? this.getTierLearnedStats(catId, learnedTier)
+      : this.getLowestTierLearnedStats(catId);
+    const ranked = picked
+      .map((v) => ({
+        v,
+        score: this.scoreLiveReferenceAlignment(v, liveRefs, tierStats),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.v);
+
+    return ranked.slice(0, count);
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -5181,7 +5283,7 @@ Please share payment details and license key.`;
         <div style="text-align:center;padding:24px;">
           <div style="font-size:40px;margin-bottom:8px;">📍</div>
           <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
-          <p style="color:#6b7280;font-size:12px;">Live analysis + live-pattern pool (parallel)</p>
+          <p style="color:#6b7280;font-size:12px;">Building variants to match your live Meesho ₹ pattern (KB / border)</p>
         </div>`;
     }
 
@@ -5199,12 +5301,18 @@ Please share payment details and license key.`;
       await this.ensureOriginalImageUrl(file);
       this.gatherSettings();
 
-      const analysisPromise = profile.hasData
-        ? Promise.resolve(null)
-        : this.runLiveStaticAnalysis(file).catch((e) => {
-            console.warn("Live analysis parallel failed:", e);
-            return null;
-          });
+      const liveRefs = this.getLiveRefsForLocal(effectiveCatId);
+      const liveHints = LocalPriceDB.getLiveGenerationHints(effectiveCatId);
+      const targetTier =
+        liveHints?.tier || profile.recommendedPrices?.[0] || 59;
+
+      if (!profile.hasData && !liveRefs.length) {
+        OptimizerUtils.showNotification(
+          "Run Live generate first — local only copies patterns from live Meesho ₹ runs",
+          "error",
+          8000,
+        );
+      }
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5217,13 +5325,13 @@ Please share payment details and license key.`;
                   processingArea.innerHTML = this.getSmartModeHTML(
                     attempt,
                     max,
-                    profile.recommendedPrices[0] || 59,
+                    targetTier,
                     null,
                     0,
                     elapsed,
                     {
                       testLab: true,
-                      phaseLabel: "Live analysis + variant pool (parallel)",
+                      phaseLabel: `Match live ₹${targetTier} pattern (KB/border)`,
                     },
                   );
                 }
@@ -5232,24 +5340,15 @@ Please share payment details and license key.`;
               {
                 livePatternOnly: true,
                 variantOptions: (i) => {
-                  if (!profile.hasData) {
-                    return i % 2 === 0 ? { lowBias: true } : null;
-                  }
-                  const low59 =
-                    profile.recommendedPrices?.[0] === 59 ||
-                    profile.recommendedPrices?.includes(59);
-                  if (low59) {
-                    if (i % 3 === 0) return { ultraLow: true };
-                    if (i % 3 === 1) return { lowBias: true };
-                    return { lowBias: true };
-                  }
-                  if (
-                    profile.strategy === "rupee_pair" &&
-                    profile.recommendedPrices.length >= 2
-                  ) {
-                    if (i % 3 === 0) return { ultraLow: true };
-                    if (i % 3 === 1) return { lowBias: true };
-                    return null;
+                  if (liveHints) {
+                    const opts = {
+                      lowBias: liveHints.lowBias,
+                      borderMax: liveHints.borderMax,
+                    };
+                    if (liveHints.ultraLow && i % 2 === 0) {
+                      opts.ultraLow = true;
+                    }
+                    return opts;
                   }
                   return i % 2 === 0 ? { lowBias: true } : null;
                 },
@@ -5260,18 +5359,9 @@ Please share payment details and license key.`;
             })
           : Promise.resolve(null);
 
-      const [analysisOut, result] = await Promise.all([
-        analysisPromise,
-        variationPromise,
-      ]);
+      const result = await variationPromise;
 
       let rawResults = result?.success ? result.results || [] : [];
-      if (analysisOut?.success) {
-        this.liveAnalysis = analysisOut.analysis;
-        this.analysisPrimaryResults = (analysisOut.primary || []).map((r, i) =>
-          this.mapResultFromApi(r, i + 40000),
-        );
-      }
 
       rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
       rawResults = LocalPriceDB.filterLivePatternPool(rawResults);
@@ -5285,12 +5375,11 @@ Please share payment details and license key.`;
 
       rawResults = LocalPriceDB.sortVariantsStable(rawResults);
       this.localPricePoolResults = rawResults;
-      const analysisPrimary = analysisOut?.primary || this.analysisPrimaryResults || [];
       const display = LocalPriceDB.buildLocalPicks(
         rawResults,
         effectiveCatId,
         pickCount,
-        analysisPrimary,
+        liveRefs,
       );
       display.forEach((row) =>
         this.freezeRowPricing(row, {
@@ -5309,9 +5398,10 @@ Please share payment details and license key.`;
         (display[0]?.blob?.size
           ? Math.ceil(display[0].blob.size / 1024)
           : "—");
+      const tierLabel = targetTier ? `₹${targetTier}` : "live";
       OptimizerUtils.showNotification(
-        profile.hasData
-          ? `📍 ${display.length} local picks (lowest file weight ~${bestKb}KB) — run Live to confirm Meesho shipping`
+        profile.hasData || liveRefs.length
+          ? `📍 ${display.length} picks matched to live ${tierLabel} pattern (~${bestKb}KB) — verify on Live`
           : `📍 ${display.length} local picks — run Live once on this category`,
         "success",
         8000,
@@ -5703,6 +5793,26 @@ Please share payment details and license key.`;
       if (catalog?.customerShipping > 0) return catalog.customerShipping;
     }
     return 0;
+  }
+
+  getLiveRefsForLocal(catId) {
+    const tier = LocalPriceDB.resolveLearnedTier(catId);
+    const matchTier = (r) =>
+      tier > 0 ? Number(r.shippingCost) === tier : Number(r.shippingCost) > 0;
+    const pools = [
+      ...(this.lastLivePricedResults || []),
+      ...(this._liveLearnResults || []),
+    ];
+    const seen = new Set();
+    const priced = [];
+    for (const r of pools) {
+      if (!matchTier(r) || r.localOnly || r.meta?.localPrice) continue;
+      const id = String(r.variantId || "");
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      priced.push(r);
+    }
+  return priced;
   }
 
   buildLiveReportContext() {
