@@ -215,22 +215,146 @@ const LocalPriceDB = {
     this._writeFingerprints(fps);
   },
 
+  getEffectiveTarget(catId, userTarget) {
+    const cap = this.getShippingCap(catId);
+    const user = Number(userTarget) || 80;
+    if (cap != null) return Math.min(user, cap);
+    return user;
+  },
+
+  /** Max live ₹ to show/recommend for this category (e.g. 60 when pair is 59+60). */
+  getShippingCap(catId) {
+    const profile = this.getCategoryProfile(catId);
+    if (!profile.hasData) return null;
+    if (profile.recommendedPrices?.length >= 2) {
+      return Math.max(...profile.recommendedPrices.map((p) => Number(p)));
+    }
+    if (profile.recommendedPrices?.length) {
+      return Number(profile.recommendedPrices[0]);
+    }
+    if (profile.tiers?.length) {
+      return Number(profile.tiers[0]);
+    }
+    return null;
+  },
+
+  scoreLiveVariant(v) {
+    let score = 0;
+    if (v.isVerified) score += 100;
+    if (v.liveVerified) score += 50;
+    if (v.duplicatePid) score += 25;
+    if (!v.noPid) score += 10;
+    if (v.manualPrice) score += 5;
+    return score;
+  },
+
+  pickBestAtShippingPrice(variants, price) {
+    const tier = Number(price);
+    const at = (variants || []).filter((v) => Number(v.shippingCost) === tier);
+    if (!at.length) return null;
+    return [...at].sort(
+      (a, b) => this.scoreLiveVariant(b) - this.scoreLiveVariant(a),
+    )[0];
+  },
+
+  pickRecommendedFromPool(variants) {
+    const priced = (variants || []).filter((v) => Number(v.shippingCost) > 0);
+    const prices = [...new Set(priced.map((v) => Number(v.shippingCost)))]
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    const strategy = pickLocalStrategy(prices);
+    const picks = [];
+    const targets = strategy.recommendedPrices?.length
+      ? strategy.recommendedPrices
+      : prices.length
+        ? [prices[0]]
+        : [];
+    targets.forEach((price) => {
+      const pick = this.pickBestAtShippingPrice(priced, price);
+      if (pick) picks.push(pick);
+    });
+    return { picks, strategy, prices };
+  },
+
+  /**
+   * Filter live results to category cap; mark recommended picks (₹1 pair or lowest).
+   */
+  applyLiveResultPolicy(variants, catId) {
+    const cap = this.getShippingCap(catId);
+    const priced = (variants || []).filter((v) => Number(v.shippingCost) > 0);
+    const withinCap = cap
+      ? priced.filter((v) => Number(v.shippingCost) <= cap)
+      : priced;
+    const pool = withinCap.length ? withinCap : priced;
+    const { picks, strategy, prices } = this.pickRecommendedFromPool(pool);
+    const pickIds = new Set(picks.map((p) => String(p.variantId || "")));
+
+    const display = [...pool]
+      .sort((a, b) => {
+        const aRec = pickIds.has(String(a.variantId)) ? 0 : 1;
+        const bRec = pickIds.has(String(b.variantId)) ? 0 : 1;
+        if (aRec !== bRec) return aRec - bRec;
+        const aVer = a.isVerified ? 0 : 1;
+        const bVer = b.isVerified ? 0 : 1;
+        if (aVer !== bVer) return aVer - bVer;
+        return Number(a.shippingCost) - Number(b.shippingCost);
+      })
+      .map((v) => {
+        const recommended = pickIds.has(String(v.variantId));
+        return {
+          ...v,
+          recommended,
+          meta: { ...(v.meta || {}), recommended },
+        };
+      });
+
+    return {
+      display,
+      withinCap,
+      allPriced: priced,
+      recommendation: { picks, strategy, prices, cap },
+      hiddenHighCount: priced.length - withinCap.length,
+    };
+  },
+
+  syncTargetShippingSelect(catId) {
+    const cap = this.getShippingCap(catId);
+    const sel = document.getElementById("target-shipping");
+    const testSel = document.getElementById("test-target-shipping");
+    if (!cap) return cap;
+    const capStr = String(cap);
+    [sel, testSel].forEach((el) => {
+      if (!el) return;
+      const hasOpt = [...el.options].some((o) => o.value === capStr);
+      if (hasOpt && Number(el.value) > cap) {
+        el.value = capStr;
+      }
+    });
+    return cap;
+  },
+
   /** Stats from your saved lowest-tier variants — used to score new picks. */
   getLowestTierLearnedStats(catId) {
     const profile = this.getCategoryProfile(catId);
     if (!profile.hasData) return null;
-
     const lowest =
       profile.recommendedPrices?.[0] || profile.tiers?.[0] || null;
     if (!lowest) return null;
+    return this.getTierLearnedStats(catId, lowest);
+  },
+
+  /** Fingerprints + KB/est stats for one live shipping tier (e.g. ₹59 vs ₹60). */
+  getTierLearnedStats(catId, tierPrice) {
+    const tier = Number(tierPrice);
+    if (!tier || !catId) return null;
 
     const fps = this._readFingerprints().filter(
       (f) =>
         f.cat === String(catId) &&
-        (Number(f.shipping) === Number(lowest) || f.recommended),
+        Number(f.shipping) === tier,
     );
     const entries = this._read().filter(
-      (e) => e.cat === String(catId) && Number(e.price) === Number(lowest),
+      (e) => e.cat === String(catId) && Number(e.price) === tier,
     );
 
     const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
@@ -254,8 +378,11 @@ const LocalPriceDB = {
       ? kbs.sort((a, b) => a - b)[Math.floor(kbs.length / 2)]
       : null;
 
+    if (!fps.length && !entries.length) return null;
+
     return {
-      lowestShipping: lowest,
+      tierShipping: tier,
+      lowestShipping: tier,
       fingerprintCount: fps.length,
       historyCount: entries.length,
       minEst,
@@ -287,6 +414,13 @@ const LocalPriceDB = {
 
     this.saveFingerprints(priced, catId, "live", 0);
 
+    priced.forEach((v) => {
+      const ship = Number(v.shippingCost);
+      if (ship > 0) {
+        this.saveFingerprints([v], catId, `live_tier_${ship}`, ship);
+      }
+    });
+
     const atLowest = priced.filter(
       (v) => Number(v.shippingCost) === Number(lowest),
     );
@@ -297,6 +431,21 @@ const LocalPriceDB = {
     const uniquePrices = [...new Set(priced.map((v) => Number(v.shippingCost)))]
       .filter((p) => p > 0)
       .sort((a, b) => a - b);
+
+    const mergedTiers = [...new Set([
+      ...(this.getCategoryProfile(catId).tiers || []),
+      ...uniquePrices,
+    ])]
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    const strategyPick = pickLocalStrategy(mergedTiers);
+
+    strategyPick.recommendedPrices.forEach((tier) => {
+      const atTier = priced.filter((v) => Number(v.shippingCost) === Number(tier));
+      if (atTier.length) {
+        this.saveFingerprints(atTier, catId, `live_rec_${tier}`, tier);
+      }
+    });
     const reports = this._readReports();
     reports.push({
       ts: Date.now(),
@@ -304,15 +453,14 @@ const LocalPriceDB = {
       categoryName: context.categoryName || "",
       categoryPath: context.categoryPath || "",
       source: "live_learn",
-      strategy: profile.strategy || pickLocalStrategy(uniquePrices).strategy,
+      strategy: strategyPick.strategy,
       strategyReason:
         context.learnNote ||
-        `Learned from ${priced.length} live variants (${atLowest.length} at ₹${lowest}).`,
+        `Learned from ${priced.length} live variants (${atLowest.length} at ₹${lowest}). ${strategyPick.reason}`,
       uniquePrices,
-      recommendedPrices:
-        profile.recommendedPrices?.length
-          ? profile.recommendedPrices
-          : [lowest],
+      recommendedPrices: strategyPick.recommendedPrices.length
+        ? strategyPick.recommendedPrices
+        : [lowest],
       variantCount: priced.length,
       variantSnapshots: priced.map((v) => ({
         shippingCost: v.shippingCost,
@@ -350,7 +498,7 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
-  scoreVariantForLocalPick(v, catId, profile) {
+  scoreVariantForLocalPick(v, catId, profile, tierPrice = null, analysisPrimary = null) {
     const est = this.estOf(v);
     const kb =
       Number(v.meta?.kb || 0) ||
@@ -360,7 +508,9 @@ const LocalPriceDB = {
     ).toLowerCase();
 
     let score = 1000 - est;
-    const stats = this.getLowestTierLearnedStats(catId);
+    const stats = tierPrice
+      ? this.getTierLearnedStats(catId, tierPrice)
+      : this.getLowestTierLearnedStats(catId);
 
     if (stats) {
       if (stats.minEst != null && est <= stats.minEst + stats.estTolerance) {
@@ -375,20 +525,92 @@ const LocalPriceDB = {
       if (Number(v.shippingCost) === Number(stats.lowestShipping)) {
         score += 25;
       }
-      if (this.matchesLiveLowestPattern(v, catId)) {
+      if (tierPrice && this.matchesTierPattern(v, catId, tierPrice)) {
+        score += 55;
+      } else if (!tierPrice && this.matchesLiveLowestPattern(v, catId)) {
         score += 45;
       }
     } else if (profile?.recommendedPrices?.length) {
       score += 20;
     }
 
+    if (analysisPrimary?.length) {
+      score += this.scoreAnalysisAlignment(v, analysisPrimary);
+    }
+
     return score;
+  },
+
+  matchesTierPattern(v, catId, tierPrice) {
+    const stats = this.getTierLearnedStats(catId, tierPrice);
+    if (!stats?.fingerprintCount) return false;
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+    const kbOk =
+      stats.medianKb && kb > 0 && Math.abs(kb - stats.medianKb) <= 18;
+    const styleOk =
+      stats.dominantStyle &&
+      style.includes(String(stats.dominantStyle).toLowerCase());
+    return kbOk && styleOk;
+  },
+
+  pickVariantForTier(variants, catId, tierPrice, excludeIds = new Set(), analysisPrimary = null) {
+    const profile = this.getCategoryProfile(catId);
+    const candidates = (variants || []).filter(
+      (v) => !excludeIds.has(String(v.variantId || "")),
+    );
+    if (!candidates.length) return null;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const v of candidates) {
+      const score = this.scoreVariantForLocalPick(
+        v,
+        catId,
+        profile,
+        tierPrice,
+        analysisPrimary,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = v;
+      }
+    }
+    return best;
+  },
+
+  buildTierTargets(profile, count) {
+    const cap =
+      profile?.recommendedPrices?.length
+        ? Math.max(...profile.recommendedPrices.map((p) => Number(p)))
+        : profile?.tiers?.length
+          ? Number(profile.tiers[0])
+          : null;
+    let rec =
+      profile?.recommendedPrices?.length
+        ? profile.recommendedPrices
+        : profile?.tiers?.length
+          ? [profile.tiers[0]]
+          : [];
+    if (cap != null) {
+      rec = rec.filter((p) => Number(p) <= cap);
+    }
+    if (!rec.length) return [];
+    const targets = [];
+    for (let i = 0; i < count; i++) {
+      targets.push(rec[i % rec.length]);
+    }
+    return targets;
   },
 
   /**
    * Pick N variants that best match your saved lowest-shipping patterns.
    */
-  pickLearnedVariants(variants, catId, count = 2) {
+  pickLearnedVariants(variants, catId, count = 2, analysisPrimary = null) {
     const profile = this.getCategoryProfile(catId);
     const sorted = this.sortVariantsStable(variants);
     if (!sorted.length) return [];
@@ -399,7 +621,13 @@ const LocalPriceDB = {
     const scored = candidates.map((v) => ({
       v,
       est: this.estOf(v),
-      score: this.scoreVariantForLocalPick(v, catId, profile),
+      score: this.scoreVariantForLocalPick(
+        v,
+        catId,
+        profile,
+        null,
+        analysisPrimary,
+      ),
     }));
 
     scored.sort((a, b) => {
@@ -436,7 +664,7 @@ const LocalPriceDB = {
 
   poolSizeForPickCount(pickCount) {
     const n = this.clampPickCount(pickCount);
-    return Math.min(20, Math.max(12, n * 3));
+    return Math.min(24, Math.max(16, n * 4));
   },
 
   /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
@@ -596,14 +824,12 @@ const LocalPriceDB = {
       categoryId: id,
       tiers,
       tierCounts,
-      strategy: latest?.strategy || strategyPick.strategy,
-      strategyReason: latest?.strategyReason || strategyPick.reason,
-      recommendedPrices:
-        latest?.recommendedPrices?.length
-          ? latest.recommendedPrices
-          : strategyPick.recommendedPrices,
+      strategy: strategyPick.strategy,
+      strategyReason: strategyPick.reason,
+      recommendedPrices: strategyPick.recommendedPrices,
       runCount: reports.length,
       hasData: tiers.length > 0,
+      latestReportTs: latest?.ts || 0,
     };
   },
 
@@ -798,51 +1024,86 @@ const LocalPriceDB = {
   },
 
   /**
-   * Pick 2–10 variants matching saved lowest-shipping patterns + static est band.
+   * Pick 2–10 variants: one per recommended live tier (e.g. ₹59 + ₹60), learned from history.
    */
-  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT) {
+  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, analysisPrimary = null) {
     const profile = this.getCategoryProfile(catId);
     const count = this.clampPickCount(pickCount);
     const sorted = this.sortVariantsStable(variants);
 
     if (!sorted.length) return [];
 
-    const lowestTier =
-      profile.recommendedPrices?.[0] ||
-      profile.tiers?.[0] ||
-      this.estOf(sorted[0]);
+    const tierTargets = this.buildTierTargets(profile, count);
+    const recommendedSet = new Set(
+      (profile.recommendedPrices || []).map((p) => Number(p)),
+    );
+    const picked = [];
+    const seen = new Set();
 
-    if (
-      profile.strategy === "rupee_pair" &&
-      profile.recommendedPrices.length >= 2 &&
-      count >= 2
-    ) {
-      const [low, high] = profile.recommendedPrices;
-      const learned = this.pickLearnedVariants(variants, catId, count);
-      const picks = [];
-      const lowPick = learned[0];
-      if (lowPick) picks.push(this._tagLocalVariant(lowPick, low, true));
-      const highPick =
-        learned.find((v) => v.variantId !== lowPick?.variantId) || learned[1];
-      if (highPick && count > 1) {
-        picks.push(this._tagLocalVariant(highPick, high, true));
-      }
-      for (let i = 2; i < learned.length && picks.length < count; i++) {
-        const v = learned[i];
-        if (v.variantId === lowPick?.variantId || v.variantId === highPick?.variantId) {
-          continue;
+    if (tierTargets.length && profile.hasData) {
+      for (const tier of tierTargets) {
+        if (picked.length >= count) break;
+        let v = this.pickVariantForTier(
+          sorted,
+          catId,
+          tier,
+          seen,
+          analysisPrimary,
+        );
+        if (!v) {
+          const pool = sorted.filter((x) => !seen.has(String(x.variantId || "")));
+          const fallback = this.pickLearnedVariants(pool, catId, 1, analysisPrimary);
+          v = fallback[0];
         }
-        picks.push(this._tagLocalVariant(v, low, true));
+        if (!v) continue;
+        const id = String(v.variantId || "");
+        if (id && seen.has(id)) continue;
+        const recommended = recommendedSet.has(Number(tier));
+        picked.push(this._tagLocalVariant(v, tier, recommended));
+        if (id) seen.add(id);
       }
-      return picks.slice(0, count);
     }
 
-    const learned = this.pickLearnedVariants(variants, catId, count);
-    if (!profile.hasData) {
-      return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
+    if (picked.length < count) {
+      const remaining = sorted.filter((x) => !seen.has(String(x.variantId || "")));
+      const learned = this.pickLearnedVariants(
+        remaining,
+        catId,
+        count - picked.length,
+        analysisPrimary,
+      );
+      const fallbackTier =
+        profile.recommendedPrices?.[0] ||
+        profile.tiers?.[0] ||
+        this.estOf(sorted[0]);
+      for (const v of learned) {
+        if (picked.length >= count) break;
+        const id = String(v.variantId || "");
+        if (id && seen.has(id)) continue;
+        picked.push(
+          this._tagLocalVariant(
+            v,
+            profile.hasData ? fallbackTier : this.estOf(v),
+            true,
+          ),
+        );
+        if (id) seen.add(id);
+      }
     }
 
-    return learned.map((v) => this._tagLocalVariant(v, lowestTier, true));
+    if (!picked.length) {
+      const learned = this.pickLearnedVariants(sorted, catId, count, analysisPrimary);
+      if (!profile.hasData) {
+        return learned.map((v) => this._tagLocalVariant(v, this.estOf(v), true));
+      }
+      const tier =
+        profile.recommendedPrices?.[0] ||
+        profile.tiers?.[0] ||
+        this.estOf(sorted[0]);
+      return learned.map((v) => this._tagLocalVariant(v, tier, true));
+    }
+
+    return picked.slice(0, count);
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -993,24 +1254,116 @@ const LocalPriceDB = {
       localStorage.setItem(this.SEEDED_KEY, "1");
       return;
     }
+    await this.fetchSeedReportsForCategory("10004");
+  },
 
-    let url = "data/seed-reports/kurti-10004.csv";
-    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      url = chrome.runtime.getURL(url);
-    }
-
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const text = await res.text();
-      const result = this.importCsv(text);
-      if (result.ok) {
-        localStorage.setItem(this.SEEDED_KEY, "1");
-        console.log("[LocalPriceDB] Seeded kurti profile:", result);
+  getPublicSeedBases() {
+    const bases = [];
+    const path =
+      (typeof CONFIG !== "undefined" && CONFIG.PUBLIC_SEED_REPORTS_PATH) ||
+      "/data/seed-reports";
+    if (typeof window !== "undefined" && window.location?.origin) {
+      const origin = window.location.origin;
+      if (
+        !origin.startsWith("chrome-extension") &&
+        !origin.startsWith("moz-extension")
+      ) {
+        bases.push(`${origin}${path}`);
       }
-    } catch (e) {
-      console.warn("[LocalPriceDB] Seed skipped:", e);
     }
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+      bases.push(
+        chrome.runtime.getURL("data/seed-reports").replace(/\/$/, ""),
+      );
+    }
+    return bases;
+  },
+
+  getSeedReportFileNames(catId) {
+    const id = String(catId || "");
+    const names = [];
+    if (id === "10004") names.push("kurti-10004.csv");
+    if (id) names.push(`${id}.csv`);
+    if (!names.length) names.push("kurti-10004.csv");
+    return [...new Set(names)];
+  },
+
+  getSeedReportUrls(catId) {
+    const bases = this.getPublicSeedBases();
+    const names = this.getSeedReportFileNames(catId);
+    const urls = [];
+    for (const base of bases) {
+      for (const name of names) {
+        urls.push(`${base}/${name}`);
+      }
+    }
+    return urls;
+  },
+
+  async fetchSeedReportsForCategory(catId) {
+    const urls = this.getSeedReportUrls(catId);
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) continue;
+        const text = await res.text();
+        if (!text.includes("record_type")) continue;
+        const result = this.importCsv(text);
+        if (result.ok) {
+          localStorage.setItem(this.SEEDED_KEY, "1");
+          console.log("[LocalPriceDB] Loaded public seed report:", url, result);
+          return result;
+        }
+      } catch (e) {
+        console.warn("[LocalPriceDB] Public seed fetch failed:", url, e.message);
+      }
+    }
+    return null;
+  },
+
+  async ensureCategorySeed(catId) {
+    const id = String(catId || "");
+    if (id && this.getCategoryProfile(id).hasData) {
+      return this.getCategoryProfile(id);
+    }
+    const fetched = await this.fetchSeedReportsForCategory(id || "10004");
+    if (fetched?.ok) {
+      return this.getCategoryProfile(fetched.categoryId || id);
+    }
+    if (!this._readReports().length) {
+      await this.seedIfEmpty();
+    }
+    return id ? this.getCategoryProfile(id) : this.getCategoryProfile("");
+  },
+
+  scoreAnalysisAlignment(v, analysisPrimary) {
+    if (!analysisPrimary?.length) return 0;
+    const kb =
+      Number(v.meta?.kb || 0) ||
+      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const est = this.estOf(v);
+    const style = String(
+      v.variantStyle || v.meta?.style || v.meta?.path || "",
+    ).toLowerCase();
+    let boost = 0;
+    for (const a of analysisPrimary) {
+      const aKb = Number(a.meta?.kb || 0);
+      const aEst = Number(a.estShipping ?? a.meta?.estInr ?? 0);
+      const aPath = String(a.meta?.path || "").toLowerCase();
+      if (aKb > 0 && kb > 0 && Math.abs(kb - aKb) <= 6) {
+        boost = Math.max(boost, 35);
+      }
+      if (aEst > 0 && est < 900 && Math.abs(est - aEst) <= 4) {
+        boost = Math.max(boost, 28);
+      }
+      if (aPath && style && (style.includes(aPath) || aPath.includes(style))) {
+        boost = Math.max(boost, 20);
+      }
+      if (a.meta?.recommended || a.meta?.lowest) {
+        boost = Math.max(boost, 15);
+      }
+    }
+    return boost;
   },
 };
 
@@ -1042,6 +1395,7 @@ class MeeshoShippingOptimizer {
     this.localPriceMode = false;
     this.localPriceProfile = null;
     this.localPricePoolResults = [];
+    this._liveLearnResults = [];
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -2468,7 +2822,7 @@ Please share payment details and license key.`;
         if (categoryId && typeof MeeshoAPI !== "undefined") {
           MeeshoAPI.setCategory(categoryId);
         }
-        this.refreshLocalPriceUI();
+        void this.refreshLocalPriceFromPublicSeed(categorySelect.value || "");
       };
     }
 
@@ -2536,6 +2890,9 @@ Please share payment details and license key.`;
     }
 
     void LocalPriceDB.seedIfEmpty().then(() => this.refreshLocalPriceUI());
+    void LocalPriceDB.ensureCategorySeed(
+      document.getElementById("category-select")?.value || "10004",
+    ).then(() => this.refreshLocalPriceUI());
 
     const pickSelect = document.getElementById("local-price-pick-count");
     if (pickSelect) {
@@ -2557,6 +2914,7 @@ Please share payment details and license key.`;
     if (!hint) return;
     const categorySelect = document.getElementById("category-select");
     const catId = categorySelect?.value || "";
+    const cap = catId ? LocalPriceDB.syncTargetShippingSelect(catId) : null;
     const summary = LocalPriceDB.summary(catId);
     const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
     const learned = catId ? LocalPriceDB.getLowestTierLearnedStats(catId) : null;
@@ -2572,19 +2930,25 @@ Please share payment details and license key.`;
       const learnText = learned?.fingerprintCount
         ? ` · ${learned.fingerprintCount} learned low-shipping refs`
         : "";
-      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)${learnText}`;
+      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)${learnText}${cap ? ` · cap ≤₹${cap}` : ""}`;
       hint.style.color = "#047857";
     } else if (profile?.hasData) {
       const learnText = learned?.fingerprintCount
         ? ` · ${learned.fingerprintCount} learned refs (est/KB/style)`
         : "";
-      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}`;
+      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}${cap ? ` · live cap ≤₹${cap}` : ""}`;
       hint.style.color = "#047857";
     } else {
       hint.textContent =
-        "Import CSV reports or run live → save to build local tiers per category";
+        "Auto-loads public seed from /data/seed-reports (no CSV) · live refines tiers";
       hint.style.color = "#6b7280";
     }
+  }
+
+  async refreshLocalPriceFromPublicSeed(catId) {
+    if (!catId) return;
+    await LocalPriceDB.ensureCategorySeed(catId);
+    this.refreshLocalPriceUI();
   }
 
   categoryMatchesQuery(cat, query) {
@@ -3535,6 +3899,7 @@ Please share payment details and license key.`;
     } else {
       this.refreshCategoryApiPreview();
     }
+    this.refreshLocalPriceUI();
     return true;
   }
 
@@ -4404,6 +4769,7 @@ Please share payment details and license key.`;
     this.isProcessing = true;
     this.shouldStop = false;
     this.lastProcessedFile = file;
+    this._liveLearnResults = [];
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
@@ -4437,12 +4803,21 @@ Please share payment details and license key.`;
     sections.forEach((s) => (s.style.display = "none"));
 
     // ALWAYS use Smart Mode
-    const targetShipping =
+    const categorySelectEl = document.getElementById("category-select");
+    const liveCatId = categorySelectEl?.value || resolved?.id || "";
+    const userTargetShipping =
       parseInt(document.getElementById("target-shipping")?.value) || 80;
+    const targetShipping = LocalPriceDB.getEffectiveTarget(
+      liveCatId,
+      userTargetShipping,
+    );
+    const shippingCap = LocalPriceDB.getShippingCap(liveCatId);
     const maxAttempts =
       parseInt(document.getElementById("max-attempts")?.value, 10) || 20;
 
-    console.log(`🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`);
+    console.log(
+      `🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${shippingCap ? `, cap ≤₹${shippingCap}` : ""}`,
+    );
 
     if (processingArea) {
       processingArea.style.display = "block";
@@ -4534,7 +4909,8 @@ Please share payment details and license key.`;
               "success"
             );
           },
-          () => this.shouldStop
+          () => this.shouldStop,
+          { maxShippingCap: shippingCap },
         );
       }
 
@@ -4598,13 +4974,35 @@ Please share payment details and license key.`;
         this.analysisPrimaryResults.length > 0
       ) {
         if (result.success && result.results.length > 0) {
-          this.currentResults = result.results.map((r, i) =>
-            this.mapResultFromApi(r, i)
+          const mapped = result.results.map((r, i) =>
+            this.mapResultFromApi(r, i),
           );
-          this.framedExtraResults = (result.framedExtras || []).map((r, i) =>
-            this.mapResultFromApi(r, i + 10000)
+          const framedMapped = (result.framedExtras || []).map((r, i) =>
+            this.mapResultFromApi(r, i + 10000),
           );
+          const policy = LocalPriceDB.applyLiveResultPolicy(mapped, liveCatId);
+          this._liveLearnResults = policy.allPriced;
+          this.currentResults = policy.display;
+          this.framedExtraResults = framedMapped;
           this.showFramedExtras = false;
+
+          if (policy.hiddenHighCount > 0 && shippingCap) {
+            OptimizerUtils.showNotification(
+              `Hidden ${policy.hiddenHighCount} variant(s) above ₹${shippingCap} cap for this category`,
+              "info",
+              5000,
+            );
+          }
+          const recPrices = (policy.recommendation?.picks || [])
+            .map((p) => `₹${p.shippingCost}`)
+            .join(" + ");
+          if (recPrices && policy.recommendation?.picks?.length) {
+            OptimizerUtils.showNotification(
+              `★ Recommended: ${recPrices} (${policy.recommendation.strategy})`,
+              "success",
+              6000,
+            );
+          }
 
           if (result.localOnly) {
             OptimizerUtils.showNotification(
@@ -4735,6 +5133,8 @@ Please share payment details and license key.`;
 
     const categorySelect = document.getElementById("category-select");
     const catId = categorySelect?.value || "";
+
+    await LocalPriceDB.ensureCategorySeed(catId || "10004");
     const profile = catId
       ? LocalPriceDB.getCategoryProfile(catId)
       : LocalPriceDB.getCategoryProfile("");
@@ -4743,9 +5143,9 @@ Please share payment details and license key.`;
 
     if (!profile.hasData) {
       OptimizerUtils.showNotification(
-        "No local tiers for this category — import a CSV report or run live first, then save.",
-        "error",
-        8000,
+        "Loading public seed reports… if this persists, run live once on this category.",
+        "info",
+        6000,
       );
     } else {
       OptimizerUtils.showNotification(
@@ -4761,7 +5161,7 @@ Please share payment details and license key.`;
         <div style="text-align:center;padding:24px;">
           <div style="font-size:40px;margin-bottom:8px;">📍</div>
           <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
-          <p style="color:#6b7280;font-size:12px;">Live-pattern only (standard) — no ultra / analysis paths</p>
+          <p style="color:#6b7280;font-size:12px;">Live analysis + live-pattern pool (parallel)</p>
         </div>`;
     }
 
@@ -4779,34 +5179,68 @@ Please share payment details and license key.`;
       await this.ensureOriginalImageUrl(file);
       this.gatherSettings();
 
-      let rawResults = [];
-      if (typeof MeeshoAPI.generateLocalVariations === "function") {
-        const result = await MeeshoAPI.generateLocalVariations(
-          blob,
-          LOCAL_POOL_SIZE,
-          (attempt, max) => {
-            if (processingArea && !this.shouldStop) {
-              const elapsed = Math.floor((Date.now() - startTime) / 1000);
-              processingArea.innerHTML = this.getSmartModeHTML(
-                attempt,
-                max,
-                profile.recommendedPrices[0] || 59,
-                null,
-                0,
-                elapsed,
-                {
-                  testLab: true,
-                  phaseLabel: "Live-pattern variants (standard only)",
+      const analysisPromise = this.runLiveStaticAnalysis(file).catch((e) => {
+        console.warn("Live analysis parallel failed:", e);
+        return null;
+      });
+
+      const variationPromise =
+        typeof MeeshoAPI.generateLocalVariations === "function"
+          ? MeeshoAPI.generateLocalVariations(
+              blob,
+              LOCAL_POOL_SIZE,
+              (attempt, max) => {
+                if (processingArea && !this.shouldStop) {
+                  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                  processingArea.innerHTML = this.getSmartModeHTML(
+                    attempt,
+                    max,
+                    profile.recommendedPrices[0] || 59,
+                    null,
+                    0,
+                    elapsed,
+                    {
+                      testLab: true,
+                      phaseLabel: "Live analysis + variant pool (parallel)",
+                    },
+                  );
+                }
+              },
+              () => this.shouldStop,
+              {
+                livePatternOnly: true,
+                variantOptions: (i) => {
+                  if (!profile.hasData) {
+                    return i % 2 === 0 ? { lowBias: true } : null;
+                  }
+                  if (
+                    profile.strategy === "rupee_pair" &&
+                    profile.recommendedPrices.length >= 2
+                  ) {
+                    if (i % 3 === 0) return { ultraLow: true };
+                    if (i % 3 === 1) return { lowBias: true };
+                    return null;
+                  }
+                  return i % 2 === 0 ? { lowBias: true } : null;
                 },
-              );
-            }
-          },
-          () => this.shouldStop,
-          { livePatternOnly: true },
+              },
+            ).catch((e) => {
+              console.warn("Local variation pool failed:", e);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const [analysisOut, result] = await Promise.all([
+        analysisPromise,
+        variationPromise,
+      ]);
+
+      let rawResults = result?.success ? result.results || [] : [];
+      if (analysisOut?.success) {
+        this.liveAnalysis = analysisOut.analysis;
+        this.analysisPrimaryResults = (analysisOut.primary || []).map((r, i) =>
+          this.mapResultFromApi(r, i + 40000),
         );
-        if (result?.success) {
-          rawResults = result.results || [];
-        }
       }
 
       rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
@@ -4821,7 +5255,13 @@ Please share payment details and license key.`;
 
       rawResults = LocalPriceDB.sortVariantsStable(rawResults);
       this.localPricePoolResults = rawResults;
-      const display = LocalPriceDB.buildLocalPicks(rawResults, catId, pickCount);
+      const analysisPrimary = analysisOut?.primary || this.analysisPrimaryResults || [];
+      const display = LocalPriceDB.buildLocalPicks(
+        rawResults,
+        catId,
+        pickCount,
+        analysisPrimary,
+      );
       display.forEach((row) => this.freezeRowPricing(row, {
         estShipping: row.meta?.staticEst ?? row.estShipping,
         shippingCost: 0,
@@ -4833,12 +5273,20 @@ Please share payment details and license key.`;
       this.currentResults = display;
 
       const recPrices = profile.recommendedPrices || [];
+      const pickedTiers = [...new Set(
+        display.map((d) => d.localEstShipping).filter((p) => Number(p) > 0),
+      )].sort((a, b) => a - b);
       const bestStatic = display[0]?.meta?.staticEst ?? display[0]?.estShipping ?? "—";
-      const bestLive = display[0]?.localEstShipping || recPrices[0] || "—";
+      const liveRec =
+        pickedTiers.length
+          ? pickedTiers.map((t) => `₹${t}`).join(" + ")
+          : recPrices.length
+            ? recPrices.map((t) => `₹${t}`).join(" + ")
+            : "—";
       OptimizerUtils.showNotification(
         profile.hasData
-          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ₹${bestLive}`
-          : `📍 ${display.length} picks (static est only — import CSV for live tier)`,
+          ? `📍 ${display.length} picks · static est ₹${bestStatic} → recommend live ${liveRec}`
+          : `📍 ${display.length} picks (analysis est — run live once to lock tiers)`,
         "success",
         8000,
       );
@@ -5305,7 +5753,11 @@ Please share payment details and license key.`;
 
   /** Auto-save priced results to local DB after every report or generate run. */
   saveToLocalPriceDB() {
-    const all = [...(this.currentResults || []), ...(this.framedExtraResults || [])];
+    const pricedLive =
+      this._liveLearnResults?.length
+        ? this._liveLearnResults
+        : (this.currentResults || []).filter((r) => r.shippingCost > 0);
+    const all = [...pricedLive, ...(this.framedExtraResults || [])];
     const context = this.buildLiveReportContext();
     return LocalPriceDB.learnFromLiveVariants(all, {
       ...context,

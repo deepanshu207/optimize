@@ -1332,9 +1332,12 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
+    options = {},
   ) {
+    const maxShippingCap =
+      options.maxShippingCap != null ? Number(options.maxShippingCap) : null;
     console.log(
-      `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
+      `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${maxShippingCap ? `, cap ≤₹${maxShippingCap}` : ""}`,
     );
     this.syncCatalogPricing();
 
@@ -1410,6 +1413,17 @@ const MeeshoAPI = {
 
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
+
+        if (
+          maxShippingCap != null &&
+          Number.isFinite(maxShippingCap) &&
+          shipping > maxShippingCap
+        ) {
+          console.log(
+            `⏭️ [${attempt}] ₹${shipping} > category cap ₹${maxShippingCap} — skipped`,
+          );
+          continue;
+        }
 
         const result = {
           name: `Var-${attempt}`,
@@ -2987,19 +3001,38 @@ const MeeshoAPI = {
       if (onProgress) onProgress(i, count, null, 0);
 
       try {
-        const variation = await this.generateVariation(originalBlob, i);
+        const genOpts =
+          typeof options.variantOptions === "function"
+            ? options.variantOptions(i)
+            : null;
+        const variation = await this.generateVariation(
+          originalBlob,
+          i,
+          null,
+          genOpts,
+        );
         if (!variation?.dataUrl) continue;
+        const kb = variation.blob?.size
+          ? Math.max(1, Math.ceil(variation.blob.size / 1024))
+          : 0;
+        const est = this.roughEstShippingFromBlob(variation.blob);
         results.push({
           name: "Var-" + i,
           dataUrl: variation.dataUrl,
           layers: variation.layers,
           pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
           variantStyle: variation.variantStyle || "standard",
+          blob: variation.blob || null,
           meta: {
             ...(variation.meta || {}),
             path: "standard",
             style: "standard",
+            kb,
+            estInr: est,
+            rank: i,
+            attempt: i,
           },
+          estShipping: est,
           shippingCost: 0,
           isVerified: false,
           localOnly: true,
