@@ -125,7 +125,7 @@ const OptimizerUI = {
                     <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
                         <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers</p>
-                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate Local Price (2 lowest)</button>
+                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate 2 Local Variants</button>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">
                             <button type="button" id="local-price-save-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save</button>
                             <button type="button" id="local-price-view-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#065f46;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View</button>
@@ -484,7 +484,7 @@ const OptimizerUI = {
     const estInr = frozenEst;
     const priceLabel =
       localPriceMode && estInr > 0
-      ? "local ₹" + estInr
+      ? "est ₹" + estInr
       : testLabMode || analysisMode
       ? frozenShip > 0
         ? "₹" + frozenShip
@@ -1020,30 +1020,21 @@ const OptimizerUI = {
 
     if (localPriceMode && results.length > 0) {
       const best = results[0];
-      const bestEst = best.localEstShipping || best.estShipping || "—";
-      const recPrices = localProfile?.recommendedPrices || [];
-      const tierText = localProfile?.tiers?.length
-        ? `tiers ₹${localProfile.tiers.join(", ")}`
-        : "est from image analysis";
+      const bestEst =
+        best._frozenPricing?.estShipping ??
+        best.estShipping ??
+        best.meta?.estInr ??
+        "—";
       html += `
             <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local Price Mode (no live check)</div>
+                <div style="font-size:11px;color:#047857;">📍 Local variants (static est — not live Meesho)</div>
                 <div style="font-size:26px;font-weight:700;color:#047857;">est ₹${bestEst}</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} picks · ${tierText}${
+                <div style="font-size:10px;color:#666;margin-top:4px;">${results.length} lowest-est picks${
                   localProfile?.categoryName
                     ? ` · ${localProfile.categoryName}`
                     : ""
                 }</div>
-                ${
-                  recPrices.length
-                    ? `<div style="font-size:11px;color:#065f46;margin-top:6px;font-weight:600;">Recommend: ₹${recPrices.join(" + ₹")}</div>`
-                    : ""
-                }
-                ${
-                  localProfile?.strategyReason
-                    ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`
-                    : ""
-                }
+                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.3;">Image analysis only — CSV is for Save/View, not these labels</div>
             </div>`;
     }
 

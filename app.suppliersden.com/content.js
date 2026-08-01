@@ -285,9 +285,10 @@ const LocalPriceDB = {
   },
 
   /**
-   * Drop image-est outliers above the floor band (e.g. est ₹69 when floor is ₹49).
+   * Drop static-est outliers far above the floor (e.g. ₹69 when others are ₹49).
+   * Does not use CSV tier data — image analysis only.
    */
-  _filterLowestEstBand(sorted, profile) {
+  _filterLowestEstBand(sorted) {
     if (!sorted?.length) return [];
     const ests = sorted
       .map((v) => this._rawEst(v))
@@ -295,102 +296,49 @@ const LocalPriceDB = {
     if (!ests.length) return sorted.slice(0, 2);
 
     const minEst = Math.min(...ests);
-    const tiers = profile?.tiers || [];
-    let tolerance = 12;
-    if (tiers.length >= 2) {
-      const gap = tiers[1] - tiers[0];
-      if (gap > 0 && gap < 50) tolerance = Math.max(gap * 2, 8);
-    }
+    const tolerance = Math.max(12, Math.round(minEst * 0.15));
 
     const band = sorted.filter((v) => {
       const est = this._rawEst(v);
       if (!est || est >= 900) return false;
       return est - minEst <= tolerance;
     });
-    return band.length ? band : [sorted[0]];
-  },
-
-  /** Tag a variant with a local tier estimate (no live price). */
-  _tagLocalVariant(v, tierPrice, recommended, rawEst = 0) {
-    return {
-      ...v,
-      localEstShipping: tierPrice,
-      localRecommended: recommended,
-      estShipping: tierPrice,
-      shippingCost: 0,
-      isVerified: false,
-      localOnly: true,
-      meta: {
-        ...(v.meta || {}),
-        localPrice: true,
-        localTier: tierPrice,
-        localEstimated: true,
-        rawStaticEst: rawEst || this._rawEst(v),
-      },
-    };
+    if (band.length >= 2) return band;
+    return sorted.slice(0, 2);
   },
 
   /**
-   * Pick 2 variants for local generate — lowest shipping focus.
-   * Filters out higher-est outliers (e.g. ₹69) when floor cluster is ₹49.
-   * single_lowest (kurti): 2 picks at lowest tier (₹59).
-   * rupee_pair: exactly 2 picks at the ₹1-apart pair.
+   * Pick N variants with lowest static est — no CSV tier remapping.
+   * Cards show actual est ₹ from image analysis (e.g. est ₹49).
    */
-  buildLocalPicks(variants, catId) {
-    const SINGLE_LOWEST_COUNT = 2;
-    const profile = this.getCategoryProfile(catId);
-
+  pickLowestEstVariants(variants, count = 2) {
     const sorted = [...(variants || [])].sort(
       (a, b) => this._rawEst(a) - this._rawEst(b),
     );
-
     if (!sorted.length) return [];
 
-    if (!profile.hasData) {
-      return sorted.slice(0, SINGLE_LOWEST_COUNT).map((v, i) =>
-        this._tagLocalVariant(
-          v,
-          this._rawEst(v),
-          i < SINGLE_LOWEST_COUNT,
-          this._rawEst(v),
-        ),
-      );
-    }
+    const band = this._filterLowestEstBand(sorted);
+    return band.slice(0, count).map((v) => {
+      const est = this._rawEst(v);
+      return {
+        ...v,
+        estShipping: est,
+        localRecommended: true,
+        localOnly: true,
+        isVerified: false,
+        shippingCost: 0,
+        meta: {
+          ...(v.meta || {}),
+          localPick: true,
+          staticEstOnly: true,
+        },
+      };
+    });
+  },
 
-    const tiers = profile.tiers || [];
-    const lowestTier =
-      profile.recommendedPrices?.[0] || tiers[0] || this._rawEst(sorted[0]) || 0;
-
-    if (
-      profile.strategy === "rupee_pair" &&
-      profile.recommendedPrices.length >= 2
-    ) {
-      const [low, high] = profile.recommendedPrices;
-      const band = this._filterLowestEstBand(sorted, profile);
-      const picks = [];
-      const lowPick = band[0] || sorted[0];
-      if (lowPick) {
-        picks.push(
-          this._tagLocalVariant(lowPick, low, true, this._rawEst(lowPick)),
-        );
-      }
-      const highPick =
-        band.find((v) => v.variantId !== lowPick?.variantId) ||
-        sorted.find((v) => v.variantId !== lowPick?.variantId) ||
-        sorted[1];
-      if (highPick) {
-        picks.push(
-          this._tagLocalVariant(highPick, high, true, this._rawEst(highPick)),
-        );
-      }
-      return picks.slice(0, 2);
-    }
-
-    // single_lowest — kurti: 2 lowest-est variants in floor band, all tagged at lowest tier
-    const band = this._filterLowestEstBand(sorted, profile);
-    return band.slice(0, SINGLE_LOWEST_COUNT).map((v) =>
-      this._tagLocalVariant(v, lowestTier, true, this._rawEst(v)),
-    );
+  /** @deprecated CSV tier mapping — not used for local generate display */
+  buildLocalPicks(variants, catId) {
+    return this.pickLowestEstVariants(variants, 2);
   },
 
   /** Map generated variants to local tier estimates from category history. */
@@ -3810,11 +3758,27 @@ Please share payment details and license key.`;
   }
 
   /**
-   * Generate 2 local variants for lowest shipping (no live Meesho API).
-   * Uses selected category profile — kurti → 2 picks at ₹59, skips est outliers.
+   * Local generate — 2 variants, static image est only (no live API, no CSV tier remap).
    */
+  getLocalPriceProgressHTML(attempt, total, catLabel = "") {
+    const pct = total > 0 ? Math.round((attempt / total) * 100) : 0;
+    return `
+      <div style="text-align:center;padding:24px;">
+        <div style="font-size:36px;margin-bottom:8px;">📍</div>
+        <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Building 2 local variants</h3>
+        <p style="color:#6b7280;font-size:13px;margin:0;">Image variant ${attempt} of ${total}</p>
+        <div style="background:rgba(0,0,0,0.08);border-radius:8px;height:8px;margin:12px 0;overflow:hidden;">
+          <div style="background:#047857;height:100%;width:${pct}%;transition:width 0.3s;"></div>
+        </div>
+        <p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.4;">
+          ${catLabel ? `Category: ${catLabel} · ` : ""}static est only — not live Meesho · showing 2 lowest
+        </p>
+      </div>`;
+  }
+
   async processImageLocalPrice(file) {
-    const LOCAL_POOL_SIZE = 6;
+    const LOCAL_BUILD_COUNT = 3;
+    const LOCAL_PICK_COUNT = 2;
 
     if (this.isProcessing) return;
     this.isProcessing = true;
@@ -3845,55 +3809,30 @@ Please share payment details and license key.`;
     this.gatherSettings();
     const catCtx = this.getLocalPriceCategoryContext();
     if (catCtx.error) {
-      OptimizerUtils.showNotification(catCtx.error, "error", 8000);
+      OptimizerUtils.showNotification(catCtx.error, "error", 6000);
     }
 
     const catId = catCtx.catId;
-    const profile = catCtx.profile || LocalPriceDB.getCategoryProfile("");
     const catLabel = catCtx.display?.title || (catId ? `ID ${catId}` : "");
 
     this.localPriceProfile = {
-      ...profile,
       categoryId: catId,
       categoryName: catLabel,
       categoryPath: catCtx.display?.path || "",
+      staticEstOnly: true,
     };
 
     if (!catId) {
       OptimizerUtils.showNotification(
-        "Select a category first (e.g. Kurtis · 10004) — local tiers depend on category.",
-        "error",
-        8000,
-      );
-    } else if (!profile.hasData) {
-      OptimizerUtils.showNotification(
-        `No local tiers for ${catLabel} — import CSV or run live, then save.`,
-        "error",
-        8000,
-      );
-    } else {
-      OptimizerUtils.showNotification(
-        `📍 ${catLabel} · tiers ₹${profile.tiers.join(", ")} · ${profile.strategyReason}`,
+        "Tip: select category (e.g. Kurtis · 10004) so live tests match your listing.",
         "info",
-        6000,
+        5000,
       );
     }
 
     if (processingArea) {
       processingArea.style.display = "block";
-      processingArea.innerHTML = `
-        <div style="text-align:center;padding:24px;">
-          <div style="font-size:40px;margin-bottom:8px;">📍</div>
-          <h3 style="margin:0 0 6px;color:#047857;font-size:16px;">Generating Local Price Variants</h3>
-          <p style="color:#6b7280;font-size:12px;">${catLabel ? `Category: ${catLabel}` : "Select category"} · no live API</p>
-        </div>`;
-    }
-
-    if (!catId) {
-      if (processingArea) processingArea.style.display = "none";
-      if (localGenBtn) localGenBtn.disabled = false;
-      this.isProcessing = false;
-      return;
+      processingArea.innerHTML = this.getLocalPriceProgressHTML(0, LOCAL_BUILD_COUNT, catLabel);
     }
 
     const startTime = Date.now();
@@ -3918,18 +3857,13 @@ Please share payment details and license key.`;
       if (typeof MeeshoAPI.generateLocalVariations === "function") {
         const result = await MeeshoAPI.generateLocalVariations(
           blob,
-          LOCAL_POOL_SIZE,
+          LOCAL_BUILD_COUNT,
           (attempt, max) => {
             if (processingArea && !this.shouldStop) {
-              const elapsed = Math.floor((Date.now() - startTime) / 1000);
-              processingArea.innerHTML = this.getSmartModeHTML(
+              processingArea.innerHTML = this.getLocalPriceProgressHTML(
                 attempt,
                 max,
-                profile.recommendedPrices[0] || 59,
-                null,
-                0,
-                elapsed,
-                { testLab: true, phaseLabel: `Local · ${catLabel}` },
+                catLabel,
               );
             }
           },
@@ -3947,7 +3881,7 @@ Please share payment details and license key.`;
           this.mapResultFromApi(r, i + 20000),
         );
         if (!rawResults.length) {
-          rawResults = analysisMapped.slice(0, LOCAL_POOL_SIZE);
+          rawResults = analysisMapped.slice(0, LOCAL_BUILD_COUNT);
         } else {
           rawResults = rawResults.map((r, i) => {
             const mapped = this.mapResultFromApi(r, i);
@@ -3969,18 +3903,12 @@ Please share payment details and license key.`;
         rawResults = rawResults.map((r, i) => this.mapResultFromApi(r, i));
       }
 
-      const display = LocalPriceDB.buildLocalPicks(rawResults, catId);
-
-      display.sort(
-        (a, b) =>
-          (a.localEstShipping || a.estShipping || 999) -
-          (b.localEstShipping || b.estShipping || 999),
-      );
+      const display = LocalPriceDB.pickLowestEstVariants(rawResults, LOCAL_PICK_COUNT);
 
       this.currentResults = display.map((row) => {
-        const tier = row.localEstShipping || row.estShipping || 0;
+        const est = LocalPriceDB._rawEst(row) || row.estShipping || 0;
         return this.freezeRowPricing(row, {
-          estShipping: tier,
+          estShipping: est,
           shippingCost: 0,
           meta: row.meta,
           pricingImageUrl: row.pricingImageUrl,
@@ -3988,19 +3916,16 @@ Please share payment details and license key.`;
         });
       });
 
-      const recPrices = profile.recommendedPrices || [];
       const bestEst =
-        this.currentResults[0]?.localEstShipping ||
         this.currentResults[0]?.estShipping ||
+        this.currentResults[0]?._frozenPricing?.estShipping ||
         "—";
       OptimizerUtils.showNotification(
-        !catId
-          ? "Select category before generating local price."
-          : profile.hasData
-          ? `📍 ${catLabel}: ${this.currentResults.length} picks · recommend ₹${recPrices.join(" + ₹")} · local ₹${bestEst}`
-          : `📍 ${this.currentResults.length} picks (import CSV for ${catLabel} tiers)`,
-        catId && profile.hasData ? "success" : "error",
-        8000,
+        `📍 ${this.currentResults.length} local variants · est ₹${bestEst} (static analysis, not live)${
+          catLabel ? ` · ${catLabel}` : ""
+        }`,
+        "success",
+        6000,
       );
     } catch (err) {
       console.error("Local price generate failed:", err);
