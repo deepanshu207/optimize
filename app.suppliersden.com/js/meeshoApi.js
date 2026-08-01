@@ -1332,9 +1332,12 @@ const MeeshoAPI = {
     onProgress,
     onFound,
     shouldStopFn,
+    options = {},
   ) {
+    const maxShippingCap =
+      options.maxShippingCap != null ? Number(options.maxShippingCap) : null;
     console.log(
-      `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`,
+      `🎯 Smart Search: Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${maxShippingCap ? `, cap ≤₹${maxShippingCap}` : ""}`,
     );
     this.syncCatalogPricing();
 
@@ -1410,6 +1413,17 @@ const MeeshoAPI = {
 
         const pid = priceData.duplicatePid;
         const shipping = priceData.shippingCharges;
+
+        if (
+          maxShippingCap != null &&
+          Number.isFinite(maxShippingCap) &&
+          shipping > maxShippingCap
+        ) {
+          console.log(
+            `⏭️ [${attempt}] ₹${shipping} > category cap ₹${maxShippingCap} — skipped`,
+          );
+          continue;
+        }
 
         const result = {
           name: `Var-${attempt}`,

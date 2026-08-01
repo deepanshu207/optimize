@@ -77,6 +77,15 @@ assert(targets2.join(",") === "59,60", "2 picks → 59,60 targets");
 const targets4 = buildTierTargets(profile, 4);
 assert(targets4.join(",") === "59,60,59,60", "4 picks cycle pair");
 
+function getShippingCap(profile) {
+  if (!profile?.recommendedPrices?.length) return null;
+  if (profile.recommendedPrices.length >= 2) {
+    return Math.max(...profile.recommendedPrices);
+  }
+  return profile.recommendedPrices[0];
+}
+assert(getShippingCap(profile) === 60, "cap is 60 for 59+60 pair");
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

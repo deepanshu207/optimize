@@ -215,6 +215,124 @@ const LocalPriceDB = {
     this._writeFingerprints(fps);
   },
 
+  getEffectiveTarget(catId, userTarget) {
+    const cap = this.getShippingCap(catId);
+    const user = Number(userTarget) || 80;
+    if (cap != null) return Math.min(user, cap);
+    return user;
+  },
+
+  /** Max live ₹ to show/recommend for this category (e.g. 60 when pair is 59+60). */
+  getShippingCap(catId) {
+    const profile = this.getCategoryProfile(catId);
+    if (!profile.hasData) return null;
+    if (profile.recommendedPrices?.length >= 2) {
+      return Math.max(...profile.recommendedPrices.map((p) => Number(p)));
+    }
+    if (profile.recommendedPrices?.length) {
+      return Number(profile.recommendedPrices[0]);
+    }
+    if (profile.tiers?.length) {
+      return Number(profile.tiers[0]);
+    }
+    return null;
+  },
+
+  scoreLiveVariant(v) {
+    let score = 0;
+    if (v.isVerified) score += 100;
+    if (v.liveVerified) score += 50;
+    if (v.duplicatePid) score += 25;
+    if (!v.noPid) score += 10;
+    if (v.manualPrice) score += 5;
+    return score;
+  },
+
+  pickBestAtShippingPrice(variants, price) {
+    const tier = Number(price);
+    const at = (variants || []).filter((v) => Number(v.shippingCost) === tier);
+    if (!at.length) return null;
+    return [...at].sort(
+      (a, b) => this.scoreLiveVariant(b) - this.scoreLiveVariant(a),
+    )[0];
+  },
+
+  pickRecommendedFromPool(variants) {
+    const priced = (variants || []).filter((v) => Number(v.shippingCost) > 0);
+    const prices = [...new Set(priced.map((v) => Number(v.shippingCost)))]
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    const strategy = pickLocalStrategy(prices);
+    const picks = [];
+    const targets = strategy.recommendedPrices?.length
+      ? strategy.recommendedPrices
+      : prices.length
+        ? [prices[0]]
+        : [];
+    targets.forEach((price) => {
+      const pick = this.pickBestAtShippingPrice(priced, price);
+      if (pick) picks.push(pick);
+    });
+    return { picks, strategy, prices };
+  },
+
+  /**
+   * Filter live results to category cap; mark recommended picks (₹1 pair or lowest).
+   */
+  applyLiveResultPolicy(variants, catId) {
+    const cap = this.getShippingCap(catId);
+    const priced = (variants || []).filter((v) => Number(v.shippingCost) > 0);
+    const withinCap = cap
+      ? priced.filter((v) => Number(v.shippingCost) <= cap)
+      : priced;
+    const pool = withinCap.length ? withinCap : priced;
+    const { picks, strategy, prices } = this.pickRecommendedFromPool(pool);
+    const pickIds = new Set(picks.map((p) => String(p.variantId || "")));
+
+    const display = [...pool]
+      .sort((a, b) => {
+        const aRec = pickIds.has(String(a.variantId)) ? 0 : 1;
+        const bRec = pickIds.has(String(b.variantId)) ? 0 : 1;
+        if (aRec !== bRec) return aRec - bRec;
+        const aVer = a.isVerified ? 0 : 1;
+        const bVer = b.isVerified ? 0 : 1;
+        if (aVer !== bVer) return aVer - bVer;
+        return Number(a.shippingCost) - Number(b.shippingCost);
+      })
+      .map((v) => {
+        const recommended = pickIds.has(String(v.variantId));
+        return {
+          ...v,
+          recommended,
+          meta: { ...(v.meta || {}), recommended },
+        };
+      });
+
+    return {
+      display,
+      withinCap,
+      allPriced: priced,
+      recommendation: { picks, strategy, prices, cap },
+      hiddenHighCount: priced.length - withinCap.length,
+    };
+  },
+
+  syncTargetShippingSelect(catId) {
+    const cap = this.getShippingCap(catId);
+    const sel = document.getElementById("target-shipping");
+    const testSel = document.getElementById("test-target-shipping");
+    if (!cap) return cap;
+    const capStr = String(cap);
+    [sel, testSel].forEach((el) => {
+      if (!el) return;
+      const hasOpt = [...el.options].some((o) => o.value === capStr);
+      if (hasOpt && Number(el.value) > cap) {
+        el.value = capStr;
+      }
+    });
+    return cap;
+  },
+
   /** Stats from your saved lowest-tier variants — used to score new picks. */
   getLowestTierLearnedStats(catId) {
     const profile = this.getCategoryProfile(catId);
@@ -456,12 +574,21 @@ const LocalPriceDB = {
   },
 
   buildTierTargets(profile, count) {
-    const rec =
+    const cap =
+      profile?.recommendedPrices?.length
+        ? Math.max(...profile.recommendedPrices.map((p) => Number(p)))
+        : profile?.tiers?.length
+          ? Number(profile.tiers[0])
+          : null;
+    let rec =
       profile?.recommendedPrices?.length
         ? profile.recommendedPrices
         : profile?.tiers?.length
           ? [profile.tiers[0]]
           : [];
+    if (cap != null) {
+      rec = rec.filter((p) => Number(p) <= cap);
+    }
     if (!rec.length) return [];
     const targets = [];
     for (let i = 0; i < count; i++) {
@@ -1149,6 +1276,7 @@ class MeeshoShippingOptimizer {
     this.localPriceMode = false;
     this.localPriceProfile = null;
     this.localPricePoolResults = [];
+    this._liveLearnResults = [];
     this.lastProcessedFile = null;
     // Test Lab state — mirrors Live, isolated from currentResults
     this.testLabCurrentResults = [];
@@ -2664,6 +2792,7 @@ Please share payment details and license key.`;
     if (!hint) return;
     const categorySelect = document.getElementById("category-select");
     const catId = categorySelect?.value || "";
+    const cap = catId ? LocalPriceDB.syncTargetShippingSelect(catId) : null;
     const summary = LocalPriceDB.summary(catId);
     const profile = catId ? LocalPriceDB.getCategoryProfile(catId) : null;
     const learned = catId ? LocalPriceDB.getLowestTierLearnedStats(catId) : null;
@@ -2679,13 +2808,13 @@ Please share payment details and license key.`;
       const learnText = learned?.fingerprintCount
         ? ` · ${learned.fingerprintCount} learned low-shipping refs`
         : "";
-      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)${learnText}`;
+      hint.textContent = `📦 Local best ₹${summary.best} · ${tierText}${recText} (${summary.runs} reports)${learnText}${cap ? ` · cap ≤₹${cap}` : ""}`;
       hint.style.color = "#047857";
     } else if (profile?.hasData) {
       const learnText = learned?.fingerprintCount
         ? ` · ${learned.fingerprintCount} learned refs (est/KB/style)`
         : "";
-      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}`;
+      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}${cap ? ` · live cap ≤₹${cap}` : ""}`;
       hint.style.color = "#047857";
     } else {
       hint.textContent =
@@ -3642,6 +3771,7 @@ Please share payment details and license key.`;
     } else {
       this.refreshCategoryApiPreview();
     }
+    this.refreshLocalPriceUI();
     return true;
   }
 
@@ -4511,6 +4641,7 @@ Please share payment details and license key.`;
     this.isProcessing = true;
     this.shouldStop = false;
     this.lastProcessedFile = file;
+    this._liveLearnResults = [];
     this.currentResults = [];
     this.framedExtraResults = [];
     this.showFramedExtras = false;
@@ -4544,12 +4675,21 @@ Please share payment details and license key.`;
     sections.forEach((s) => (s.style.display = "none"));
 
     // ALWAYS use Smart Mode
-    const targetShipping =
+    const categorySelectEl = document.getElementById("category-select");
+    const liveCatId = categorySelectEl?.value || resolved?.id || "";
+    const userTargetShipping =
       parseInt(document.getElementById("target-shipping")?.value) || 80;
+    const targetShipping = LocalPriceDB.getEffectiveTarget(
+      liveCatId,
+      userTargetShipping,
+    );
+    const shippingCap = LocalPriceDB.getShippingCap(liveCatId);
     const maxAttempts =
       parseInt(document.getElementById("max-attempts")?.value, 10) || 20;
 
-    console.log(`🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}`);
+    console.log(
+      `🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${shippingCap ? `, cap ≤₹${shippingCap}` : ""}`,
+    );
 
     if (processingArea) {
       processingArea.style.display = "block";
@@ -4641,7 +4781,8 @@ Please share payment details and license key.`;
               "success"
             );
           },
-          () => this.shouldStop
+          () => this.shouldStop,
+          { maxShippingCap: shippingCap },
         );
       }
 
@@ -4705,13 +4846,35 @@ Please share payment details and license key.`;
         this.analysisPrimaryResults.length > 0
       ) {
         if (result.success && result.results.length > 0) {
-          this.currentResults = result.results.map((r, i) =>
-            this.mapResultFromApi(r, i)
+          const mapped = result.results.map((r, i) =>
+            this.mapResultFromApi(r, i),
           );
-          this.framedExtraResults = (result.framedExtras || []).map((r, i) =>
-            this.mapResultFromApi(r, i + 10000)
+          const framedMapped = (result.framedExtras || []).map((r, i) =>
+            this.mapResultFromApi(r, i + 10000),
           );
+          const policy = LocalPriceDB.applyLiveResultPolicy(mapped, liveCatId);
+          this._liveLearnResults = policy.allPriced;
+          this.currentResults = policy.display;
+          this.framedExtraResults = framedMapped;
           this.showFramedExtras = false;
+
+          if (policy.hiddenHighCount > 0 && shippingCap) {
+            OptimizerUtils.showNotification(
+              `Hidden ${policy.hiddenHighCount} variant(s) above ₹${shippingCap} cap for this category`,
+              "info",
+              5000,
+            );
+          }
+          const recPrices = (policy.recommendation?.picks || [])
+            .map((p) => `₹${p.shippingCost}`)
+            .join(" + ");
+          if (recPrices && policy.recommendation?.picks?.length) {
+            OptimizerUtils.showNotification(
+              `★ Recommended: ${recPrices} (${policy.recommendation.strategy})`,
+              "success",
+              6000,
+            );
+          }
 
           if (result.localOnly) {
             OptimizerUtils.showNotification(
@@ -5436,7 +5599,11 @@ Please share payment details and license key.`;
 
   /** Auto-save priced results to local DB after every report or generate run. */
   saveToLocalPriceDB() {
-    const all = [...(this.currentResults || []), ...(this.framedExtraResults || [])];
+    const pricedLive =
+      this._liveLearnResults?.length
+        ? this._liveLearnResults
+        : (this.currentResults || []).filter((r) => r.shippingCost > 0);
+    const all = [...pricedLive, ...(this.framedExtraResults || [])];
     const context = this.buildLiveReportContext();
     return LocalPriceDB.learnFromLiveVariants(all, {
       ...context,
