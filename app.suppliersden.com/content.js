@@ -2234,6 +2234,7 @@ Please share payment details and license key.`;
   applyPageCategoryIfAvailable(options = {}) {
     if (this._categoryUserPicked || typeof MeeshoAPI === "undefined") return false;
     if (this._categoryUserEditing && !options.force) return false;
+    if (this.isCategoryDropdownOpen() && !options.force) return false;
 
     const searchEl = document.getElementById("category-search");
     if (searchEl && document.activeElement === searchEl && !options.force) return false;
@@ -2267,6 +2268,10 @@ Please share payment details and license key.`;
       if (this._categoryUserPicked && this._uploadUserPicked) return;
 
       const searchEl = document.getElementById("category-search");
+      if (this.isCategoryDropdownOpen()) {
+        if (attempts < maxAttempts) setTimeout(tick, delayMs);
+        return;
+      }
       if (
         this._categoryUserEditing &&
         searchEl &&
@@ -2278,7 +2283,8 @@ Please share payment details and license key.`;
       if (
         this._categoryUserEditing &&
         searchEl &&
-        document.activeElement !== searchEl
+        document.activeElement !== searchEl &&
+        !this.isCategoryDropdownOpen()
       ) {
         this._categoryUserEditing = false;
       }
@@ -2556,13 +2562,292 @@ Please share payment details and license key.`;
     return (this.allCategories || []).slice(0, limit);
   }
 
+  static CATEGORY_BROWSE_LIMIT = 50;
+  static CATEGORY_SEARCH_LIMIT = 150;
+
+  isCategoryDropdownOpen() {
+    const dropdown = document.getElementById("category-dropdown");
+    return dropdown && dropdown.style.display !== "none" && dropdown.innerHTML.trim();
+  }
+
+  isInsideCategorySearchUI(target) {
+    return !!target?.closest?.(
+      ".category-search-wrap, #category-search, #category-dropdown, #category-clear, #category-clear-btn",
+    );
+  }
+
+  closeCategoryDropdown() {
+    const dropdown = document.getElementById("category-dropdown");
+    if (!dropdown) return;
+    dropdown.style.display = "none";
+    dropdown.innerHTML = "";
+  }
+
+  openCategoryDropdown(query = "") {
+    const raw = String(query || "").trim();
+    const cats = raw
+      ? this.filterCategoriesForSearch(
+          raw,
+          MeeshoShippingOptimizer.CATEGORY_SEARCH_LIMIT,
+        )
+      : this.getDefaultCategorySlice(MeeshoShippingOptimizer.CATEGORY_BROWSE_LIMIT);
+    this.renderCategoryDropdown(cats);
+  }
+
+  showCategoryBrowseDropdown() {
+    this.openCategoryDropdown("");
+  }
+
+  openCategoryDropdownForCurrentInput(search) {
+    const el = search || document.getElementById("category-search");
+    if (!el) return;
+    const committed = this._categorySearchCommittedValue;
+    const raw = el.value.trim();
+    if (!raw || (committed && el.value === committed)) {
+      this.showCategoryBrowseDropdown();
+    } else {
+      this.openCategoryDropdown(raw);
+    }
+  }
+
+  prepareSearchInput(search) {
+    if (!search) return;
+    search.readOnly = false;
+    search.disabled = false;
+    search.setAttribute("autocomplete", "off");
+    search.setAttribute("autocorrect", "off");
+    search.setAttribute("autocapitalize", "none");
+    search.setAttribute("spellcheck", "false");
+    if (!search.getAttribute("inputmode")) {
+      search.setAttribute("inputmode", "search");
+    }
+  }
+
+  focusSearchInput(search) {
+    if (!search) return;
+    this.prepareSearchInput(search);
+    try {
+      search.focus({ preventScroll: false });
+    } catch {
+      search.focus();
+    }
+    setTimeout(() => {
+      try {
+        search.focus({ preventScroll: false });
+      } catch {
+        search.focus();
+      }
+    }, 50);
+  }
+
+  handleCategoryItemPick(item) {
+    const id = parseInt(item.dataset.id, 10);
+    const cat =
+      this.allCategories?.find((c) => c.id === id) ||
+      this.findCategoryById(id) || {
+        id,
+        name: item.dataset.name,
+        path: item.dataset.path,
+        parentName: item.dataset.path,
+      };
+    this.applyCategorySelection(cat, { source: "user" });
+    this._categoryUserPicked = true;
+    this.closeCategoryDropdown();
+    const clearBtn =
+      document.getElementById("category-clear-btn") ||
+      document.getElementById("category-clear");
+    if (clearBtn) clearBtn.style.display = "block";
+  }
+
+  bindCategoryDropdownOutsideClose() {
+    if (this._categoryOutsideBound) return;
+    this._categoryOutsideBound = true;
+
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (this.isInsideCategorySearchUI(e.target)) return;
+        this.closeCategoryDropdown();
+      },
+      true,
+    );
+  }
+
+  /** Wire category search once — mobile-safe focus and always-open browse list. */
+  wireCategorySearchHandlers() {
+    if (this._categorySearchWired) return;
+    const search = document.getElementById("category-search");
+    const dropdown = document.getElementById("category-dropdown");
+    if (!search || !dropdown) return;
+
+    this._categorySearchWired = true;
+
+    const clearBtn =
+      document.getElementById("category-clear-btn") ||
+      document.getElementById("category-clear");
+    const select = document.getElementById("category-select");
+    const selectedDiv = document.getElementById("selected-category");
+
+    const showClear = (show) => {
+      if (clearBtn) clearBtn.style.display = show ? "block" : "none";
+    };
+
+    this.prepareSearchInput(search);
+
+    search.addEventListener(
+      "touchstart",
+      () => {
+        this._categoryUserEditing = true;
+        clearTimeout(this._categoryEditingTimer);
+      },
+      { passive: true },
+    );
+
+    const onSearchActivate = () => {
+      this._categoryUserEditing = true;
+      clearTimeout(this._categoryEditingTimer);
+      this.prepareSearchInput(search);
+      const committed = this._categorySearchCommittedValue;
+      if (committed && search.value === committed) {
+        requestAnimationFrame(() => {
+          try {
+            search.setSelectionRange(0, search.value.length);
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+      this.openCategoryDropdownForCurrentInput(search);
+    };
+
+    search.addEventListener("focus", () => {
+      onSearchActivate();
+      setTimeout(() => {
+        if (document.activeElement === search) {
+          search.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      }, 80);
+    });
+
+    search.addEventListener("click", onSearchActivate);
+
+    search.addEventListener("blur", () => {
+      clearTimeout(this._categoryEditingTimer);
+      this._categoryEditingTimer = setTimeout(() => {
+        if (document.activeElement === search) return;
+        if (this.isCategoryDropdownOpen()) return;
+        this._categoryUserEditing = false;
+      }, 250);
+    });
+
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.closeCategoryDropdown();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const raw = search.value.trim();
+        if (!raw) return;
+        const result = this.resolveCategoryFromSearchInput(raw, 12);
+        if (result.status === "resolved" && result.cat) {
+          this.applyCategorySelection(result.cat, { source: "user" });
+          this.closeCategoryDropdown();
+        } else if (result.status === "ambiguous" && result.hits?.[0]) {
+          this.applyCategorySelection(result.hits[0], { source: "user" });
+          this.closeCategoryDropdown();
+        } else {
+          OptimizerUtils.showNotification(
+            `No category found for "${raw}"`,
+            "error",
+          );
+        }
+        return;
+      }
+      const committed = this._categorySearchCommittedValue;
+      if (
+        committed &&
+        search.value === committed &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        search.value = e.key;
+        this._categorySearchCommittedValue = "";
+        e.preventDefault();
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+
+    search.addEventListener("input", () => {
+      this._categoryUserEditing = true;
+      const committed = this._categorySearchCommittedValue;
+      let val = search.value;
+      if (committed && val !== committed) {
+        if (val.startsWith(committed) && val.length > committed.length) {
+          val = val.slice(committed.length);
+          search.value = val;
+          this._categorySearchCommittedValue = "";
+        } else {
+          this._categorySearchCommittedValue = "";
+        }
+      }
+
+      const raw = val.trim();
+      showClear(!!raw);
+
+      if (!raw) {
+        this.showCategoryBrowseDropdown();
+        return;
+      }
+
+      this.openCategoryDropdown(raw);
+    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        search.value = "";
+        showClear(false);
+        this._categorySearchCommittedValue = "";
+        this._categoryUserEditing = true;
+        if (select) select.value = "";
+        if (selectedDiv) selectedDiv.style.display = "none";
+        const selDetail = document.getElementById("selected-category-detail");
+        if (selDetail) selDetail.textContent = "";
+        this._categoryUserPicked = false;
+        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
+        this.showCategoryBrowseDropdown();
+        this.refreshCategoryApiPreview();
+        if (!window.WEB_OPTIMIZER_MODE) {
+          this.applyPageCategoryIfAvailable();
+        }
+        this.focusSearchInput(search);
+      });
+    }
+
+    dropdown.addEventListener("mousedown", (e) => {
+      const item = e.target?.closest?.(".cat-item");
+      if (!item) return;
+      e.preventDefault();
+    });
+
+    dropdown.addEventListener("click", (e) => {
+      const item = e.target?.closest?.(".cat-item");
+      if (!item) return;
+      e.preventDefault();
+      this.handleCategoryItemPick(item);
+    });
+
+    this.bindCategoryDropdownOutsideClose();
+  }
+
   // Load categories into dropdown
   bindCategoryUI(categories) {
     const categorySearch = document.getElementById("category-search");
     const categoryDropdown = document.getElementById("category-dropdown");
-    const categorySelect = document.getElementById("category-select");
-    const categoryClear = document.getElementById("category-clear");
-    const selectedCategory = document.getElementById("selected-category");
     const refreshBtn = document.getElementById("refresh-categories");
     const categoryError = document.getElementById("category-error");
 
@@ -2575,110 +2860,13 @@ Please share payment details and license key.`;
     if (countHint) {
       countHint.textContent =
         categories.length >= 3000
-          ? `${categories.length} leaf categories loaded — type to search all`
-          : `${categories.length} categories loaded`;
+          ? `${categories.length} leaf categories loaded — tap to browse or type to search`
+          : `${categories.length} categories loaded — tap to browse`;
     }
     if (refreshBtn) refreshBtn.style.display = embedded ? "none" : "block";
     if (categoryError) categoryError.style.display = "none";
 
-    categorySearch.onfocus = () => {
-      this._categoryUserEditing = true;
-      clearTimeout(this._categoryEditingTimer);
-    };
-
-    categorySearch.onblur = () => {
-      clearTimeout(this._categoryEditingTimer);
-      this._categoryEditingTimer = setTimeout(() => {
-        if (document.activeElement !== categorySearch) {
-          this._categoryUserEditing = false;
-        }
-      }, 200);
-    };
-
-    categorySearch.onkeydown = (e) => {
-      if (e.key === "Escape") {
-        categoryDropdown.style.display = "none";
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const raw = categorySearch.value.trim();
-        if (!raw) return;
-        const result = this.resolveCategoryFromSearchInput(raw, 12);
-        if (result.status === "resolved" && result.cat) {
-          this.applyCategorySelection(result.cat, { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else if (result.status === "ambiguous" && result.hits?.[0]) {
-          this.applyCategorySelection(result.hits[0], { source: "user" });
-          categoryDropdown.style.display = "none";
-        } else {
-          OptimizerUtils.showNotification(
-            `No category found for "${raw}"`,
-            "error",
-          );
-        }
-        return;
-      }
-      if (
-        this._categorySearchCommittedValue &&
-        categorySearch.value === this._categorySearchCommittedValue &&
-        e.key.length === 1 &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey
-      ) {
-        categorySearch.value = e.key;
-        this._categorySearchCommittedValue = "";
-        e.preventDefault();
-        categorySearch.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    };
-
-    categorySearch.oninput = () => {
-      this._categoryUserEditing = true;
-      const raw = categorySearch.value.trim();
-      if (categoryClear) categoryClear.style.display = raw ? "block" : "none";
-
-      if (!raw) {
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
-      } else {
-        this.renderCategoryDropdown(this.filterCategoriesForSearch(raw, 150));
-      }
-      categoryDropdown.style.display = "block";
-    };
-
-    if (categoryClear) {
-      categoryClear.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        categorySearch.value = "";
-        categoryClear.style.display = "none";
-        this._categorySearchCommittedValue = "";
-        this._categoryUserEditing = true;
-        if (categorySelect) categorySelect.value = "";
-        if (selectedCategory) selectedCategory.style.display = "none";
-        const selectedCategoryDetail = document.getElementById("selected-category-detail");
-        if (selectedCategoryDetail) selectedCategoryDetail.textContent = "";
-        this._categoryUserPicked = false;
-        if (typeof MeeshoAPI !== "undefined") MeeshoAPI.setCategory(null);
-        this.renderCategoryDropdown(this.getDefaultCategorySlice(50));
-        this.refreshCategoryApiPreview();
-        this.applyPageCategoryIfAvailable();
-        categorySearch.focus();
-      };
-    }
-
-    if (!this._categoryClickBound) {
-      this._categoryClickBound = true;
-      document.addEventListener("click", (e) => {
-        if (
-          !e.target.closest("#category-search") &&
-          !e.target.closest("#category-dropdown")
-        ) {
-          categoryDropdown.style.display = "none";
-        }
-      });
-    }
+    this.wireCategorySearchHandlers();
 
     console.log("✅ Loaded", categories.length, "categories");
     if (!window.WEB_OPTIMIZER_MODE) {
@@ -2725,21 +2913,6 @@ Please share payment details and license key.`;
       };
       item.onmouseleave = () => {
         item.style.background = "transparent";
-      };
-      item.onclick = () => {
-        const id = parseInt(item.dataset.id, 10);
-        const cat =
-          this.allCategories?.find((c) => c.id === id) ||
-          this.findCategoryById(id) || {
-            id,
-            name: item.dataset.name,
-            path: item.dataset.path,
-            parentName: item.dataset.path,
-          };
-        this.applyCategorySelection(cat, { source: "user" });
-        this._categoryUserPicked = true;
-        const categoryDropdown = document.getElementById("category-dropdown");
-        if (categoryDropdown) categoryDropdown.style.display = "none";
       };
     });
   }
