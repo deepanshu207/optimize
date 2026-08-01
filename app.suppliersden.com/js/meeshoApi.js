@@ -1894,7 +1894,7 @@ const MeeshoAPI = {
           const w = img.width;
           const h = img.height;
           const quality = ultraLow
-            ? 0.48 + Math.random() * 0.1
+            ? 0.42 + Math.random() * 0.08
             : lowBias
             ? 0.6 + Math.random() * 0.12
             : 0.75 + Math.random() * 0.15;
@@ -1907,10 +1907,17 @@ const MeeshoAPI = {
           const productOnly = productCanvas.toDataURL("image/jpeg", quality);
 
           const border = (() => {
+            const minB =
+              opts.borderMin != null && Number(opts.borderMin) > 0
+                ? Number(opts.borderMin)
+                : null;
             const maxB =
               opts.borderMax != null && Number(opts.borderMax) > 0
                 ? Number(opts.borderMax)
                 : null;
+            if (minB != null && maxB != null && maxB >= minB) {
+              return minB + Math.floor(Math.random() * (maxB - minB + 1));
+            }
             if (maxB != null) {
               if (ultraLow) {
                 return 8 + Math.floor(Math.random() * Math.max(4, maxB - 8));
@@ -1981,11 +1988,14 @@ const MeeshoAPI = {
           this.addNoise(noStickersCtx, finalW, finalH, seed);
           const noStickers = noStickersCanvas.toDataURL("image/jpeg", quality);
 
-          const badgeCount = ultraLow
-            ? 0
-            : lowBias
-            ? 1 + Math.floor(Math.random() * 2)
-            : 2 + Math.floor(Math.random() * 2);
+          const badgeCount =
+            opts.badgeCount != null && Number.isFinite(Number(opts.badgeCount))
+              ? Math.max(0, Math.min(4, Number(opts.badgeCount)))
+              : ultraLow
+              ? 0
+              : lowBias
+              ? 1 + Math.floor(Math.random() * 2)
+              : 2 + Math.floor(Math.random() * 2);
           if (badgeCount > 0 && this.preloadBadges) {
             await this.preloadBadges();
           }
@@ -3008,19 +3018,27 @@ const MeeshoAPI = {
     }
 
     const results = [];
+    const maxKb =
+      options.maxKb != null && Number(options.maxKb) > 0
+        ? Number(options.maxKb)
+        : null;
+    const targetPool = count;
+    const maxAttempts = Math.max(targetPool * 5, targetPool);
+    let attempts = 0;
 
-    for (let i = 1; i <= count; i++) {
+    while (results.length < targetPool && attempts < maxAttempts) {
+      attempts++;
       if (shouldStopFn && shouldStopFn()) break;
-      if (onProgress) onProgress(i, count, null, 0);
+      if (onProgress) onProgress(results.length, targetPool, null, 0);
 
       try {
         const genOpts =
           typeof options.variantOptions === "function"
-            ? options.variantOptions(i)
-            : null;
+            ? options.variantOptions(attempts)
+            : options.variantOptions || null;
         const variation = await this.generateVariation(
           originalBlob,
-          i,
+          attempts,
           null,
           genOpts,
         );
@@ -3028,9 +3046,11 @@ const MeeshoAPI = {
         const kb = variation.blob?.size
           ? Math.max(1, Math.ceil(variation.blob.size / 1024))
           : 0;
+        if (maxKb && kb > maxKb) continue;
         const est = this.roughEstShippingFromBlob(variation.blob);
+        const rank = results.length + 1;
         results.push({
-          name: "Var-" + i,
+          name: "Var-" + rank,
           dataUrl: variation.dataUrl,
           layers: variation.layers,
           pricingImageUrl: variation.pricingImageUrl || variation.dataUrl,
@@ -3041,17 +3061,18 @@ const MeeshoAPI = {
             path: "standard",
             style: "standard",
             kb,
-            estInr: est,
-            rank: i,
-            attempt: i,
+            staticEst: est,
+            estInr: 0,
+            rank,
+            attempt: attempts,
           },
-          estShipping: est,
+          estShipping: 0,
           shippingCost: 0,
           isVerified: false,
           localOnly: true,
         });
       } catch (e) {
-        console.error("Variation", i, "failed:", e);
+        console.error("Variation", attempts, "failed:", e);
       }
     }
 

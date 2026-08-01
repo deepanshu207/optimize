@@ -66,6 +66,8 @@ function parseReportCsvInline(text) {
           kb: row[idx("kb")],
           width: row[idx("width")],
           height: row[idx("height")],
+          borderPx: row[idx("border_px")] || "",
+          badgeCount: row[idx("badge_count")] || "",
           recommended,
         },
       });
@@ -123,6 +125,13 @@ function pickLocalStrategy(prices) {
   };
 }
 
+/** Empirical KB/border from live Meesho tiers (CSV reports often omit KB). */
+const LIVE_TIER_KB_PROFILE = {
+  59: { anchorKb: 52, maxKb: 58, borderMin: 8, borderMax: 14, badgeCount: 0 },
+  60: { anchorKb: 54, maxKb: 62, borderMin: 8, borderMax: 16, badgeCount: 0 },
+  65: { anchorKb: 64, maxKb: 72, borderMin: 12, borderMax: 20, badgeCount: 1 },
+};
+
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
   REPORTS_KEY: "meesho_local_price_reports",
@@ -134,6 +143,36 @@ const LocalPriceDB = {
   PICK_COUNT_MIN: 2,
   PICK_COUNT_MAX: 10,
   PICK_COUNT_DEFAULT: 2,
+
+  getTierKbProfile(tierPrice) {
+    const t = Number(tierPrice);
+    if (!t) return null;
+    if (LIVE_TIER_KB_PROFILE[t]) return LIVE_TIER_KB_PROFILE[t];
+    if (t <= 60) return LIVE_TIER_KB_PROFILE[59];
+    if (t <= 65) return LIVE_TIER_KB_PROFILE[65];
+    return null;
+  },
+
+  enrichVariantFromLiveTier(v) {
+    if (!v) return v;
+    const ship = Number(v.shippingCost || 0);
+    const prof = ship > 0 ? this.getTierKbProfile(ship) : null;
+    const kb = this.variantKb(v);
+    if (prof) {
+      v.meta = { ...(v.meta || {}) };
+      if (!kb && prof.anchorKb) {
+        v.meta.kb = prof.anchorKb;
+        v.meta.kbFromTier = true;
+      }
+      if (!v.meta.borderPx && prof.borderMax) {
+        v.meta.borderPx = prof.borderMax;
+      }
+      if (v.meta.badgeCount == null && prof.badgeCount != null) {
+        v.meta.badgeCount = prof.badgeCount;
+      }
+    }
+    return v;
+  },
 
   _read() {
     try {
@@ -406,7 +445,9 @@ const LocalPriceDB = {
     const catId = String(context.categoryId || "");
     if (!catId || !variants?.length) return { learned: 0, lowest: 0, lowestCount: 0 };
 
-    const priced = variants.filter((v) => Number(v.shippingCost) > 0);
+    const priced = variants
+      .filter((v) => Number(v.shippingCost) > 0)
+      .map((v) => this.enrichVariantFromLiveTier(v));
     if (!priced.length) return { learned: 0, lowest: 0, lowestCount: 0 };
 
     this.saveRun(priced, context);
@@ -529,9 +570,11 @@ const LocalPriceDB = {
         Number(f.kb) > 0,
     );
     if (fps.length) {
-      const kbs = fps.map((f) => Number(f.kb)).sort((a, b) => a - b);
-      return kbs[0];
+      const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
+      if (kbs.length) return Math.min(...kbs);
     }
+    const tierProf = this.getTierKbProfile(tier);
+    if (tierProf?.anchorKb) return tierProf.anchorKb;
     return null;
   },
 
@@ -540,33 +583,30 @@ const LocalPriceDB = {
     const id = String(catId || "");
     const tier = this.resolveLearnedTier(id);
     if (!tier) return null;
+    const tierProf = this.getTierKbProfile(tier) || {};
     const stats = this.getTierLearnedStats(id, tier);
-    if (!stats) {
-      return {
-        tier,
-        ultraLow: tier <= 65,
-        lowBias: true,
-        borderMax: tier <= 65 ? 22 : null,
-      };
-    }
+    const anchorKb =
+      stats?.medianKb || tierProf.anchorKb || this.resolveLiveAnchorKb(id, null, tier);
+    const maxKb =
+      tierProf.maxKb ||
+      (anchorKb ? Math.min(anchorKb + 6, 62) : tier <= 65 ? 58 : 72);
     const borderMax =
-      stats.medianBorder != null
-        ? Math.min(80, stats.medianBorder + 8)
-        : tier <= 65
-          ? 22
-          : null;
+      stats?.medianBorder != null
+        ? Math.min(16, stats.medianBorder + 4)
+        : tierProf.borderMax || (tier <= 65 ? 14 : 22);
+    const borderMin = tierProf.borderMin || (tier <= 65 ? 8 : 12);
     return {
       tier,
-      medianKb: stats.medianKb,
-      medianBorder: stats.medianBorder,
-      dominantStyle: stats.dominantStyle,
-      ultraLow: tier <= 60 && stats.medianKb != null && stats.medianKb <= 45,
-      lowBias: true,
+      medianKb: anchorKb,
+      maxKb,
+      medianBorder: stats?.medianBorder ?? borderMax,
+      dominantStyle: stats?.dominantStyle || "standard",
+      ultraLow: tier <= 65,
+      lowBias: false,
+      borderMin,
       borderMax,
-      kbTolerance:
-        stats.medianKb != null
-          ? Math.max(5, Math.min(8, Math.ceil(stats.medianKb * 0.12)))
-          : 6,
+      badgeCount: tierProf.badgeCount ?? (tier <= 60 ? 0 : 1),
+      kbTolerance: 5,
     };
   },
 
@@ -609,8 +649,16 @@ const LocalPriceDB = {
     });
     if (band.length) return band;
 
-    // Widen once — still cap far above anchor (no 231KB when anchor ~50)
-    const wideTol = Math.min(tol + 4, 12);
+    const tierProf = this.getTierKbProfile(tier);
+    if (tierProf?.maxKb) {
+      return (variants || []).filter((v) => {
+        const kb = this.variantKb(v);
+        return kb > 0 && kb <= tierProf.maxKb;
+      });
+    }
+
+    // Widen once — still cap far above anchor (no 93–123KB when anchor ~52)
+    const wideTol = Math.min(tol + 4, 10);
     return (variants || []).filter((v) => {
       const kb = this.variantKb(v);
       return kb > 0 && kb >= anchor - wideTol && kb <= anchor + wideTol;
@@ -911,6 +959,7 @@ const LocalPriceDB = {
     const cat = String(context.categoryId || "");
     const entries = this._read();
     priced.forEach((v) => {
+      this.enrichVariantFromLiveTier(v);
       entries.push({
         ts,
         cat,
@@ -937,7 +986,9 @@ const LocalPriceDB = {
   importCsv(text) {
     const parsed = parseReportCsvInline(text);
     const catId = String(parsed.meta.category_id || "");
-    const priced = parsed.variants.filter((v) => Number(v.shippingCost) > 0);
+    const priced = parsed.variants
+      .filter((v) => Number(v.shippingCost) > 0)
+      .map((v) => this.enrichVariantFromLiveTier(v));
 
     if (!priced.length && !parsed.uniquePrices.length) {
       return { ok: false, error: "No variant or tier data found in CSV." };
@@ -952,11 +1003,13 @@ const LocalPriceDB = {
       parsed.uniquePrices?.[0] ||
       0;
     if (catId && parsed.variants.length && lowestTier) {
-      const atLowest = parsed.variants.filter(
-        (v) =>
-          Number(v.shippingCost) === Number(lowestTier) ||
-          v.meta?.recommended,
-      );
+      const atLowest = parsed.variants
+        .filter(
+          (v) =>
+            Number(v.shippingCost) === Number(lowestTier) ||
+            v.meta?.recommended,
+        )
+        .map((v) => this.enrichVariantFromLiveTier(v));
       if (atLowest.length) {
         this.saveFingerprints(atLowest, catId, "csv", lowestTier);
       }
@@ -1259,6 +1312,10 @@ const LocalPriceDB = {
       anchorKb,
     );
     let pool = liveBand.length ? liveBand : sortedAll;
+    const tierProf = learnedTier ? this.getTierKbProfile(learnedTier) : null;
+    if (tierProf?.maxKb) {
+      pool = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
+    }
     if (anchorKb > 0) {
       pool = [...pool].sort(
         (a, b) =>
@@ -5497,17 +5554,23 @@ Please share payment details and license key.`;
               () => this.shouldStop,
               {
                 livePatternOnly: true,
+                maxKb: liveHints?.maxKb ?? (targetTier <= 65 ? 58 : 72),
                 variantOptions: () => {
                   if (liveHints) {
                     return {
-                      ultraLow: liveHints.ultraLow || targetTier <= 65,
-                      lowBias: true,
-                      borderMax:
-                        liveHints.borderMax ??
-                        (targetTier <= 65 ? 20 : 40),
+                      ultraLow: true,
+                      lowBias: false,
+                      borderMin: liveHints.borderMin ?? 8,
+                      borderMax: liveHints.borderMax ?? 14,
+                      badgeCount: liveHints.badgeCount ?? 0,
                     };
                   }
-                  return { lowBias: true, borderMax: 20 };
+                  return {
+                    ultraLow: true,
+                    borderMin: 8,
+                    borderMax: 14,
+                    badgeCount: 0,
+                  };
                 },
               },
             ).catch((e) => {

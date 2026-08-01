@@ -1,5 +1,5 @@
 record_type,key,value,variant_id,name,shipping_inr,est_inr,verified,live_verified,duplicate_pid,no_pid,variant_style,path,kb,width,height,source,recommended,pick_rank,score,gap_to_next,tier_count,notes,savings_vs_baseline,border_px,badge_count,jpeg_quality,live_total_price,meesho_price_used
-META,generated_at,2026-08-01T20:06:43.024Z,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,generated_at,2026-08-01T23:25:49.022Z,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,baseline_shipping_inr,59,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,category_id,10004,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,category_name,Kurtis · ID 10004,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -15,20 +15,20 @@ META,unique_prices,59|65,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,lowest_price,59,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,highest_price,65,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,recommended_prices,59,,,,,,,,,,,,,,,,,,,,,,,,,,
-META,recommended_variant_ids,var-1-ueysr,,,,,,,,,,,,,,,,,,,,,,,,,,
+META,recommended_variant_ids,var-1-0zyzz,,,,,,,,,,,,,,,,,,,,,,,,,,
 META,all_rupee_pairs,,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,FLOW: Generate live variants → Meesho returns customer shipping ₹ per image → sort by price → apply pick rules.,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,"PICK RULE: If lowest unique prices include a ₹1 gap (e.g. 60 & 61), recommend BOTH. Otherwise recommend ONLY the lowest price (e.g. 46 from 46,50).",,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,RESULT: Single strategy — lowest tier is ₹59; larger gaps mean no adjacent floor pair.,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,Category: Kurtis · ID 10004 (sscat_id 10004) — shipping slabs vary by category.,,,,,,,,,,,,,,,,,,,,,,,,,,
 PATTERN,,Large tier jumps: ₹59→₹65 (+6) — images likely crossed a Meesho size/weight slab.,,,,,,,,,,,,,,,,,,,,,,,,,,
-PRICE_TIER,,,var-1-ueysr,Var-4,59,,,,,,,,,,,,,,,6,6,verified=6;no_pid=0;dup_pid=6,,,,,,
-PRICE_TIER,,,var-7-zdw3i,Var-1,65,,,,,,,,,,,,,,,,1,verified=1;no_pid=0;dup_pid=1,,,,,,
-VARIANT,,,var-1-ueysr,Var-4,59,0,true,true,1032730386,false,standard,standard,,,,primary,true,1,185,,,,0,,,,159,100
-VARIANT,,,var-2-wd8oz,Var-5,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-3-onvnr,Var-7,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-4-up339,Var-8,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-5-ao79u,Var-10,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-6-ire5g,Var-12,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
-VARIANT,,,var-7-zdw3i,Var-1,65,0,true,true,424960631,false,standard,standard,,,,primary,false,,185,,,,-6,,,,165,100
-RECOMMENDATION,,,var-1-ueysr,Var-4,59,,true,true,1032730386,false,standard,standard,,,,,true,,185,,,"No consecutive ₹1 gap in unique prices (59, 65). Recommend only the lowest tier ₹59.",0,,,,159,100
+PRICE_TIER,,,var-1-0zyzz,Var-5,59,,,,,,,,,,,,,,,6,5,verified=5;no_pid=0;dup_pid=5,,,,,,
+PRICE_TIER,,,var-6-ggs79,Var-13,65,,,,,,,,,,,,,,,,2,verified=2;no_pid=0;dup_pid=2,,,,,,
+VARIANT,,,var-1-0zyzz,Var-5,59,0,true,true,1032730386,false,standard,standard,,,,primary,true,1,185,,,,0,,,,159,100
+VARIANT,,,var-2-vchz4,Var-7,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-3-e4u7q,Var-8,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-4-rf3rr,Var-9,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-5-ea6kc,Var-10,59,0,true,true,1032730386,false,standard,standard,,,,primary,false,,185,,,,0,,,,159,100
+VARIANT,,,var-6-ggs79,Var-13,65,0,true,true,950473992,false,standard,standard,,,,primary,false,,185,,,,-6,,,,165,100
+VARIANT,,,var-7-akfcr,Var-15,65,0,true,true,424960631,false,standard,standard,,,,primary,false,,185,,,,-6,,,,165,100
+RECOMMENDATION,,,var-1-0zyzz,Var-5,59,,true,true,1032730386,false,standard,standard,,,,,true,,185,,,"No consecutive ₹1 gap in unique prices (59, 65). Recommend only the lowest tier ₹59.",0,,,,159,100
