@@ -503,6 +503,38 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
+  variantKb(v) {
+    return (
+      Number(v?.meta?.kb || 0) ||
+      (v?.blob?.size ? Math.ceil(v.blob.size / 1024) : 0)
+    );
+  },
+
+  /** Best KB anchor from live Meesho winners at target tier (min = safest for ₹59). */
+  resolveLiveAnchorKb(catId, liveRefs, tierPrice = null) {
+    const tier = Number(tierPrice) || this.resolveLearnedTier(catId);
+    const refKbs = (liveRefs || [])
+      .map((r) => this.variantKb(r))
+      .filter((k) => k > 0);
+    if (refKbs.length) return Math.min(...refKbs);
+    const stats = tier
+      ? this.getTierLearnedStats(catId, tier)
+      : this.getLowestTierLearnedStats(catId);
+    if (stats?.medianKb) return stats.medianKb;
+    const fps = this._readFingerprints().filter(
+      (f) =>
+        f.cat === String(catId) &&
+        tier > 0 &&
+        Number(f.shipping) === tier &&
+        Number(f.kb) > 0,
+    );
+    if (fps.length) {
+      const kbs = fps.map((f) => Number(f.kb)).sort((a, b) => a - b);
+      return kbs[0];
+    }
+    return null;
+  },
+
   /** Live-learned generation hints (KB / border from Meesho-verified runs). */
   getLiveGenerationHints(catId) {
     const id = String(catId || "");
@@ -531,39 +563,80 @@ const LocalPriceDB = {
       ultraLow: tier <= 60 && stats.medianKb != null && stats.medianKb <= 45,
       lowBias: true,
       borderMax,
-      kbTolerance: stats.medianKb != null ? Math.max(8, Math.ceil(stats.medianKb * 0.15)) : 12,
+      kbTolerance:
+        stats.medianKb != null
+          ? Math.max(5, Math.min(8, Math.ceil(stats.medianKb * 0.12)))
+          : 6,
     };
   },
 
-  /** Keep pool variants near live-verified file weight (not static est). */
-  filterLiveKbBand(variants, catId, tierPrice = null) {
+  /**
+   * Keep pool near live-verified KB (tight band — avoids 2nd pick at 231KB → high ₹).
+   */
+  filterLiveKbBand(
+    variants,
+    catId,
+    tierPrice = null,
+    liveRefs = null,
+    anchorKb = null,
+    tolerance = null,
+  ) {
     const tier = Number(tierPrice) || this.resolveLearnedTier(catId);
+    const anchor =
+      anchorKb != null && anchorKb > 0
+        ? anchorKb
+        : this.resolveLiveAnchorKb(catId, liveRefs, tier);
+    if (!anchor) return variants || [];
+
     const stats = tier
       ? this.getTierLearnedStats(catId, tier)
       : this.getLowestTierLearnedStats(catId);
-    if (!stats?.medianKb) return variants || [];
-    const tol = Math.max(8, Math.ceil(stats.medianKb * 0.2));
-    const minKb = Math.max(1, stats.medianKb - tol);
-    const maxKb = stats.medianKb + tol;
-    return (variants || []).filter((v) => {
-      const kb =
-        Number(v.meta?.kb || 0) ||
-        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    let tol =
+      tolerance != null
+        ? tolerance
+        : tier > 0 && tier <= 65
+          ? 6
+          : Math.max(8, Math.ceil(anchor * 0.15));
+    if (stats?.medianKb && Math.abs(anchor - stats.medianKb) <= 4) {
+      tol = Math.min(tol, 6);
+    }
+
+    const minKb = Math.max(1, anchor - tol);
+    const maxKb = anchor + tol;
+    const band = (variants || []).filter((v) => {
+      const kb = this.variantKb(v);
       return kb > 0 && kb >= minKb && kb <= maxKb;
+    });
+    if (band.length) return band;
+
+    // Widen once — still cap far above anchor (no 231KB when anchor ~50)
+    const wideTol = Math.min(tol + 4, 12);
+    return (variants || []).filter((v) => {
+      const kb = this.variantKb(v);
+      return kb > 0 && kb >= anchor - wideTol && kb <= anchor + wideTol;
     });
   },
 
-  scoreLiveReferenceAlignment(v, liveRefs, tierStats) {
+  scoreLiveReferenceAlignment(v, liveRefs, tierStats, anchorKb = null) {
     let score = 0;
-    const kb =
-      Number(v.meta?.kb || 0) ||
-      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+    const kb = this.variantKb(v);
     const border = Number(v.meta?.borderPx ?? 0);
     const style = String(
       v.variantStyle || v.meta?.style || v.meta?.path || "",
     ).toLowerCase();
+    const anchor =
+      anchorKb != null && anchorKb > 0
+        ? anchorKb
+        : tierStats?.medianKb || null;
 
-    if (tierStats?.medianKb && kb > 0) {
+    if (anchor && kb > 0) {
+      const d = Math.abs(kb - anchor);
+      score += Math.max(0, 150 - d * 12);
+      if (d <= 3) score += 80;
+      else if (d <= 5) score += 45;
+      if (kb > anchor + 8) score -= 250;
+      if (kb > anchor + 15) score -= 400;
+    } else if (tierStats?.medianKb && kb > 0) {
       score += Math.max(0, 120 - Math.abs(kb - tierStats.medianKb) * 4);
     }
     if (tierStats?.medianBorder && border > 0) {
@@ -596,10 +669,15 @@ const LocalPriceDB = {
     return score;
   },
 
-  scoreVariantForLocalPick(v, catId, profile, tierPrice = null, liveRefs = null) {
-    const kb =
-      Number(v.meta?.kb || 0) ||
-      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
+  scoreVariantForLocalPick(
+    v,
+    catId,
+    profile,
+    tierPrice = null,
+    liveRefs = null,
+    anchorKb = null,
+  ) {
+    const kb = this.variantKb(v);
     const style = String(
       v.variantStyle || v.meta?.style || v.meta?.path || "",
     ).toLowerCase();
@@ -609,7 +687,12 @@ const LocalPriceDB = {
       ? this.getTierLearnedStats(catId, tier)
       : this.getLowestTierLearnedStats(catId);
 
-    let score = this.scoreLiveReferenceAlignment(v, liveRefs, stats);
+    let score = this.scoreLiveReferenceAlignment(
+      v,
+      liveRefs,
+      stats,
+      anchorKb,
+    );
 
     if (stats) {
       if (stats.medianKb && kb > 0) {
@@ -647,7 +730,14 @@ const LocalPriceDB = {
     return kbOk && styleOk;
   },
 
-  pickVariantForTier(variants, catId, tierPrice, excludeIds = new Set(), liveRefs = null) {
+  pickVariantForTier(
+    variants,
+    catId,
+    tierPrice,
+    excludeIds = new Set(),
+    liveRefs = null,
+    anchorKb = null,
+  ) {
     const profile = this.getCategoryProfile(catId);
     const candidates = (variants || []).filter(
       (v) => !excludeIds.has(String(v.variantId || "")),
@@ -663,6 +753,7 @@ const LocalPriceDB = {
         profile,
         tierPrice,
         liveRefs,
+        anchorKb,
       );
       if (score > bestScore) {
         bestScore = score;
@@ -699,31 +790,51 @@ const LocalPriceDB = {
   /**
    * Pick N variants that best match your saved lowest-shipping patterns.
    */
-  pickLearnedVariants(variants, catId, count = 2, liveRefs = null) {
+  pickLearnedVariants(
+    variants,
+    catId,
+    count = 2,
+    liveRefs = null,
+    anchorKb = null,
+  ) {
     const profile = this.getCategoryProfile(catId);
     const tier = this.resolveLearnedTier(catId, profile);
+    const anchor =
+      anchorKb != null && anchorKb > 0
+        ? anchorKb
+        : this.resolveLiveAnchorKb(catId, liveRefs, tier);
     const sorted = this.sortVariantsStable(variants);
     if (!sorted.length) return [];
 
-    const liveBand = this.filterLiveKbBand(sorted, catId, tier);
+    const liveBand = this.filterLiveKbBand(
+      sorted,
+      catId,
+      tier,
+      liveRefs,
+      anchor,
+    );
     const candidates = liveBand.length ? liveBand : sorted;
 
     const scored = candidates.map((v) => ({
       v,
-      kb:
-        Number(v.meta?.kb || 0) ||
-        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0),
+      kb: this.variantKb(v),
       score: this.scoreVariantForLocalPick(
         v,
         catId,
         profile,
         tier || null,
         liveRefs,
+        anchor,
       ),
     }));
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
+      if (anchor > 0) {
+        const da = Math.abs(a.kb - anchor);
+        const db = Math.abs(b.kb - anchor);
+        if (da !== db) return da - db;
+      }
       if (a.kb !== b.kb) return a.kb - b.kb;
       const rankA = Number(a.v.meta?.rank ?? a.v.meta?.attempt ?? 0);
       const rankB = Number(b.v.meta?.rank ?? b.v.meta?.attempt ?? 0);
@@ -756,7 +867,7 @@ const LocalPriceDB = {
 
   poolSizeForPickCount(pickCount) {
     const n = this.clampPickCount(pickCount);
-    return Math.min(24, Math.max(16, n * 4));
+    return Math.min(28, Math.max(20, n * 6));
   },
 
   /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
@@ -1137,80 +1248,127 @@ const LocalPriceDB = {
   buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, liveRefs = null) {
     const profile = this.getCategoryProfile(catId);
     const count = this.clampPickCount(pickCount);
-    const sortedAll = this.sortVariantsStable(variants);
     const learnedTier = this.resolveLearnedTier(catId, profile);
-    const liveBand = this.filterLiveKbBand(sortedAll, catId, learnedTier);
-    const sorted = liveBand.length ? liveBand : sortedAll;
+    const anchorKb = this.resolveLiveAnchorKb(catId, liveRefs, learnedTier);
+    const sortedAll = this.sortVariantsStable(variants);
+    const liveBand = this.filterLiveKbBand(
+      sortedAll,
+      catId,
+      learnedTier,
+      liveRefs,
+      anchorKb,
+    );
+    let pool = liveBand.length ? liveBand : sortedAll;
+    if (anchorKb > 0) {
+      pool = [...pool].sort(
+        (a, b) =>
+          Math.abs(this.variantKb(a) - anchorKb) -
+          Math.abs(this.variantKb(b) - anchorKb),
+      );
+    }
 
-    if (!sorted.length) return [];
-    const tierTargets = this.buildTierTargets(profile, count);
+    if (!pool.length) return [];
+
+    const singleTierOnly =
+      profile.strategy === "single_lowest" ||
+      (profile.recommendedPrices?.length === 1 &&
+        profile.strategy !== "rupee_pair");
+    const tierTargets = singleTierOnly
+      ? Array.from({ length: count }, () => learnedTier)
+      : this.buildTierTargets(profile, count);
     const recommendedSet = new Set(
       (profile.recommendedPrices || []).map((p) => Number(p)),
     );
-    const picked = [];
-    const seen = new Set();
-
-    if (tierTargets.length && profile.hasData) {
-      for (const tier of tierTargets) {
-        if (picked.length >= count) break;
-        let v = this.pickVariantForTier(
-          sorted,
-          catId,
-          tier,
-          seen,
-          liveRefs,
-        );
-        if (!v) {
-          const pool = sorted.filter((x) => !seen.has(String(x.variantId || "")));
-          const fallback = this.pickLearnedVariants(pool, catId, 1, liveRefs);
-          v = fallback[0];
-        }
-        if (!v) continue;
-        const id = String(v.variantId || "");
-        if (id && seen.has(id)) continue;
-        const recommended = recommendedSet.has(Number(tier));
-        picked.push(this._tagLocalVariant(v, tier, recommended));
-        if (id) seen.add(id);
-      }
-    }
-
-    if (picked.length < count) {
-      const remaining = sorted.filter((x) => !seen.has(String(x.variantId || "")));
-      const learned = this.pickLearnedVariants(
-        remaining,
-        catId,
-        count - picked.length,
-        liveRefs,
-      );
-      for (const v of learned) {
-        if (picked.length >= count) break;
-        const id = String(v.variantId || "");
-        if (id && seen.has(id)) continue;
-        picked.push(
-          this._tagLocalVariant(
-            v,
-            learnedTier,
-            true,
-          ),
-        );
-        if (id) seen.add(id);
-      }
-    }
-
-    if (!picked.length) {
-      const learned = this.pickLearnedVariants(sorted, catId, count, liveRefs);
-      return learned.map((v) => this._tagLocalVariant(v, learnedTier, true));
-    }
-
     const tierStats = learnedTier
       ? this.getTierLearnedStats(catId, learnedTier)
       : this.getLowestTierLearnedStats(catId);
+
+    const picked = [];
+    const seen = new Set();
+    let clusterKb = anchorKb > 0 ? anchorKb : null;
+
+    for (let i = 0; i < count; i++) {
+      const tier = tierTargets[i] || learnedTier;
+      let candidates = pool.filter(
+        (x) => !seen.has(String(x.variantId || "")),
+      );
+      if (clusterKb > 0 && i > 0) {
+        const tight = candidates.filter(
+          (v) => Math.abs(this.variantKb(v) - clusterKb) <= 5,
+        );
+        if (tight.length) candidates = tight;
+      }
+      if (clusterKb > 0) {
+        const band = candidates.filter(
+          (v) => Math.abs(this.variantKb(v) - clusterKb) <= 8,
+        );
+        if (band.length) candidates = band;
+      }
+
+      let v = this.pickVariantForTier(
+        candidates.length ? candidates : pool.filter(
+          (x) => !seen.has(String(x.variantId || "")),
+        ),
+        catId,
+        tier,
+        seen,
+        liveRefs,
+        clusterKb || anchorKb,
+      );
+      if (!v) {
+        const rest = pool.filter((x) => !seen.has(String(x.variantId || "")));
+        const fallback = this.pickLearnedVariants(
+          rest,
+          catId,
+          1,
+          liveRefs,
+          clusterKb || anchorKb,
+        );
+        v = fallback[0];
+      }
+      if (!v) continue;
+      const id = String(v.variantId || "");
+      if (id && seen.has(id)) continue;
+      const recommended =
+        recommendedSet.has(Number(tier)) || singleTierOnly;
+      picked.push(this._tagLocalVariant(v, tier, recommended));
+      if (id) seen.add(id);
+      if (!clusterKb) clusterKb = this.variantKb(v);
+    }
+
+    if (!picked.length) {
+      const learned = this.pickLearnedVariants(
+        pool,
+        catId,
+        count,
+        liveRefs,
+        anchorKb,
+      );
+      return learned.map((v) =>
+        this._tagLocalVariant(v, learnedTier, true),
+      );
+    }
+
     const ranked = picked
       .map((v) => ({
         v,
-        score: this.scoreLiveReferenceAlignment(v, liveRefs, tierStats),
+        kb: this.variantKb(v),
+        score: this.scoreLiveReferenceAlignment(
+          v,
+          liveRefs,
+          tierStats,
+          anchorKb,
+        ),
       }))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (anchorKb > 0) {
+          return (
+            Math.abs(a.kb - anchorKb) - Math.abs(b.kb - anchorKb)
+          );
+        }
+        return a.kb - b.kb;
+      })
       .map((r) => r.v);
 
     return ranked.slice(0, count);
@@ -5339,18 +5497,17 @@ Please share payment details and license key.`;
               () => this.shouldStop,
               {
                 livePatternOnly: true,
-                variantOptions: (i) => {
+                variantOptions: () => {
                   if (liveHints) {
-                    const opts = {
-                      lowBias: liveHints.lowBias,
-                      borderMax: liveHints.borderMax,
+                    return {
+                      ultraLow: liveHints.ultraLow || targetTier <= 65,
+                      lowBias: true,
+                      borderMax:
+                        liveHints.borderMax ??
+                        (targetTier <= 65 ? 20 : 40),
                     };
-                    if (liveHints.ultraLow && i % 2 === 0) {
-                      opts.ultraLow = true;
-                    }
-                    return opts;
                   }
-                  return i % 2 === 0 ? { lowBias: true } : null;
+                  return { lowBias: true, borderMax: 20 };
                 },
               },
             ).catch((e) => {
@@ -5398,10 +5555,17 @@ Please share payment details and license key.`;
         (display[0]?.blob?.size
           ? Math.ceil(display[0].blob.size / 1024)
           : "—");
+      const pickKbs = display
+        .map((d) => LocalPriceDB.variantKb(d))
+        .filter((k) => k > 0);
+      const kbSpread =
+        pickKbs.length >= 2
+          ? Math.max(...pickKbs) - Math.min(...pickKbs)
+          : 0;
       const tierLabel = targetTier ? `₹${targetTier}` : "live";
       OptimizerUtils.showNotification(
         profile.hasData || liveRefs.length
-          ? `📍 ${display.length} picks matched to live ${tierLabel} pattern (~${bestKb}KB) — verify on Live`
+          ? `📍 ${display.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
           : `📍 ${display.length} local picks — run Live once on this category`,
         "success",
         8000,
