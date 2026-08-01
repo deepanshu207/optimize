@@ -125,11 +125,12 @@ const OptimizerUI = {
                     <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
                         <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
                         <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Import CSV reports or run live → save to build local tiers</p>
-                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate Local Price (2–3 lowest)</button>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate 2 Local Variants</button>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
                             <button type="button" id="local-price-save-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save</button>
                             <button type="button" id="local-price-view-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#065f46;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View</button>
-                            <button type="button" id="local-price-import-btn" style="flex:1;min-width:72px;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📥 CSV</button>
+                            <button type="button" id="local-price-download-btn" style="flex:1;min-width:72px;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📥 CSV</button>
+                            <button type="button" id="local-price-import-btn" style="flex:1;min-width:72px;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📤 Import</button>
                             <button type="button" id="local-price-clear-btn" style="flex:0 0 auto;padding:8px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;min-height:40px;">🗑️</button>
                         </div>
                         <input type="file" id="local-price-import-input" accept=".csv,text/csv" style="display:none;">
@@ -1274,12 +1275,17 @@ const OptimizerUI = {
     const livePricedCount = hasLive
       ? results.filter((r) => r.shippingCost > 0).length
       : 0;
+    const localCsvBtn =
+      localPriceMode && results.length > 0
+        ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
+        : "";
     const reportBtn =
-      hasLive && livePricedCount > 0
+      hasLive && livePricedCount > 0 && !localPriceMode
         ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report</button>`
         : "";
 
     html += `
+            ${localCsvBtn}
             ${reportBtn}
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
