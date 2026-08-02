@@ -536,9 +536,37 @@ const LocalPriceDB = {
     return user;
   },
 
+  /**
+   * Profile from current live session prices — overrides merged category seed when
+   * this image has floor winners (pink ₹59 single_lowest). Returns null when session
+   * is high-slab only (lavender ₹68) so category floor band applies.
+   */
+  buildSessionProfile(catId, sessionPrices) {
+    const prices = [...new Set((sessionPrices || []).filter((p) => p > 0))].sort(
+      (a, b) => a - b,
+    );
+    if (!prices.length) return null;
+    const sessionPick = pickLocalStrategy(prices);
+    const categoryProfile = this.getCategoryProfile(catId);
+    const learnedFloor = this.resolveLearnedTier(catId, categoryProfile);
+    if (learnedFloor > 0 && prices[0] > learnedFloor) return null;
+    return {
+      categoryId: String(catId || ""),
+      tiers: prices,
+      tierCounts: {},
+      strategy: sessionPick.strategy,
+      strategyReason: sessionPick.reason,
+      recommendedPrices: sessionPick.recommendedPrices,
+      runCount: 0,
+      hasData: true,
+      latestReportTs: 0,
+      fromSession: true,
+    };
+  },
+
   /** Max live ₹ to show/recommend for this category (e.g. 60 when pair is 59+60). */
-  getShippingCap(catId) {
-    const profile = this.getCategoryProfile(catId);
+  getShippingCap(catId, profileOverride = null) {
+    const profile = profileOverride || this.getCategoryProfile(catId);
     if (!profile.hasData) return null;
     if (profile.recommendedPrices?.length >= 2) {
       return Math.max(...profile.recommendedPrices.map((p) => Number(p)));
@@ -1685,8 +1713,14 @@ const LocalPriceDB = {
   /**
    * Pick 2–10 variants: one per recommended live tier (e.g. ₹59 + ₹60), learned from history.
    */
-  buildLocalPicks(variants, catId, pickCount = this.PICK_COUNT_DEFAULT, liveRefs = null) {
-    const profile = this.getCategoryProfile(catId);
+  buildLocalPicks(
+    variants,
+    catId,
+    pickCount = this.PICK_COUNT_DEFAULT,
+    liveRefs = null,
+    profileOverride = null,
+  ) {
+    const profile = profileOverride || this.getCategoryProfile(catId);
     const count = this.clampPickCount(pickCount);
     const learnedTier = this.resolveLearnedTier(catId, profile);
     const anchorKb = this.resolveLiveAnchorKb(catId, liveRefs, learnedTier);
@@ -2218,12 +2252,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=127";
+      return "/js/staticFrameCompose.mjs?v=128";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=127");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=128");
     }
-    return "/js/staticFrameCompose.mjs?v=127";
+    return "/js/staticFrameCompose.mjs?v=128";
   }
 
   async importOptimizerModule(getUrl, isReady, cacheKey) {
@@ -5829,6 +5863,7 @@ Please share payment details and license key.`;
     if (processingArea) processingArea.style.display = "none";
 
     if (this.currentResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0 || this.gownStaticResults.length > 0))) {
+      await this.prepareEditableResultPreviews(this.currentResults);
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -5899,19 +5934,36 @@ Please share payment details and license key.`;
     const effectiveCatId = catId || "10004";
 
     await LocalPriceDB.ensureCategorySeed(effectiveCatId);
-    const profile = LocalPriceDB.getCategoryProfile(effectiveCatId);
+    const categoryProfile = LocalPriceDB.getCategoryProfile(effectiveCatId);
+    const sessionPriced = (this.lastLivePricedResults || []).filter(
+      (r) =>
+        Number(r.shippingCost) > 0 &&
+        !r.localOnly &&
+        !r.meta?.localPrice,
+    );
+    const sessionPrices = sessionPriced.map((r) => Number(r.shippingCost));
+    const sessionLocalProfile = LocalPriceDB.buildSessionProfile(
+      effectiveCatId,
+      sessionPrices,
+    );
+    const pickProfile = sessionLocalProfile || categoryProfile;
 
-    this.localPriceProfile = profile;
+    this.localPriceProfile = pickProfile;
 
-    if (!profile.hasData) {
+    if (!pickProfile.hasData) {
       OptimizerUtils.showNotification(
         "Loading public seed reports… if this persists, run live once on this category.",
         "info",
         6000,
       );
     } else {
+      const tierLabel = (pickProfile.recommendedPrices || pickProfile.tiers || [])
+        .slice(0, 3)
+        .map((p) => `₹${p}`)
+        .join(", ");
+      const scope = sessionLocalProfile ? "this image" : "category";
       OptimizerUtils.showNotification(
-        `📍 Local mode · tiers ₹${profile.tiers.join(", ")} · ${profile.strategyReason}`,
+        `📍 Local mode (${scope}) · ${tierLabel} · ${pickProfile.strategyReason}`,
         "info",
         6000,
       );
@@ -5949,15 +6001,20 @@ Please share payment details and license key.`;
         effectiveCatId,
         sessionFloorRefs.length ? sessionFloorRefs : null,
       );
-      const cap = LocalPriceDB.getShippingCap(effectiveCatId);
+      const cap = LocalPriceDB.getShippingCap(effectiveCatId, pickProfile);
       const sessionRefs = liveRefs.filter((r) => {
         const ship = Number(r.shippingCost);
         if (ship <= 0) return false;
         if (cap != null && ship > cap) return false;
-        return LocalPriceDB.variantKb(r) > 0 || r.categoryLearned;
+        return (
+          r.liveVerified ||
+          r.isVerified ||
+          LocalPriceDB.variantKb(r) > 0 ||
+          r.categoryLearned
+        );
       });
       let targetTier =
-        liveHints?.tier || profile.recommendedPrices?.[0] || null;
+        liveHints?.tier || pickProfile.recommendedPrices?.[0] || null;
       if (!targetTier && sessionRefs.length) {
         const ships = sessionRefs
           .map((r) => Number(r.shippingCost))
@@ -6100,6 +6157,7 @@ Please share payment details and license key.`;
         effectiveCatId,
         pickCount,
         liveRefs,
+        pickProfile,
       );
       const finalDisplay =
         display.length > 0
@@ -6108,14 +6166,14 @@ Please share payment details and license key.`;
               .slice(0, pickCount)
               .map((v, i) => {
                 const tiers =
-                  profile.recommendedPrices?.length
-                    ? profile.recommendedPrices
-                    : [targetTier || profile.tiers?.[0] || 0];
+                  pickProfile.recommendedPrices?.length
+                    ? pickProfile.recommendedPrices
+                    : [targetTier || pickProfile.tiers?.[0] || 0];
                 const tier = tiers[i % tiers.length] || tiers[0];
                 return LocalPriceDB._tagLocalVariant(
                   v,
                   tier,
-                  profile.recommendedPrices?.includes(Number(tier)),
+                  pickProfile.recommendedPrices?.includes(Number(tier)),
                 );
               });
       finalDisplay.forEach((row) =>
@@ -6144,7 +6202,7 @@ Please share payment details and license key.`;
           : 0;
       const tierLabel = targetTier ? `₹${targetTier}` : "live";
       OptimizerUtils.showNotification(
-        profile.hasData || liveRefs.length
+        pickProfile.hasData || liveRefs.length
           ? `📍 ${finalDisplay.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
           : `📍 ${finalDisplay.length} local picks — run Live once on this category`,
         "success",
@@ -6161,6 +6219,7 @@ Please share payment details and license key.`;
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
+        await this.prepareEditableResultPreviews(this.currentResults);
         resultsArea.innerHTML = OptimizerUI.getResultsHTML(
           this.currentResults,
           this.getResultsViewOptions(),
@@ -6537,13 +6596,24 @@ Please share payment details and license key.`;
   }
 
   getSessionFloorRefs(catId) {
-    const profile = LocalPriceDB.getCategoryProfile(catId);
-    const cap = LocalPriceDB.getShippingCap(catId);
-    const floor = LocalPriceDB.resolveLearnedTier(catId, profile);
     const pools = [
       ...(this.lastLivePricedResults || []),
       ...(this._liveLearnResults || []),
     ];
+    const priced = pools.filter(
+      (r) =>
+        Number(r.shippingCost) > 0 &&
+        !r.localOnly &&
+        !r.meta?.localPrice,
+    );
+    const sessionPrices = priced.map((r) => Number(r.shippingCost));
+    const sessionProfile = LocalPriceDB.buildSessionProfile(catId, sessionPrices);
+    if (!sessionProfile) return [];
+
+    const cap = LocalPriceDB.getShippingCap(catId, sessionProfile);
+    const recommendedSet = new Set(
+      (sessionProfile.recommendedPrices || []).map((p) => Number(p)),
+    );
     const seen = new Set();
     const refs = [];
     for (const r of pools) {
@@ -6551,7 +6621,7 @@ Please share payment details and license key.`;
       const ship = Number(r.shippingCost);
       if (ship <= 0) continue;
       if (cap != null && ship > cap) continue;
-      if (floor > 0 && cap == null && ship !== floor) continue;
+      if (recommendedSet.size && !recommendedSet.has(ship)) continue;
       const id = String(r.variantId || "");
       if (id && seen.has(id)) continue;
       if (id) seen.add(id);
@@ -7565,10 +7635,58 @@ Please share payment details and license key.`;
   }
 
   hasAdvancedEditor(row) {
+    if (!row?.layers) return false;
+    if (row.layers._staticFrame || (row.layers._badgePlacements || []).length) {
+      return true;
+    }
     if (window.StaticFrameCompose?.isEditableVariant) {
       return window.StaticFrameCompose.isEditableVariant(row);
     }
-    return this.isStaticPromoRow(row) || !!(row?.layers?._badgePlacements || []).length;
+    return this.isStaticPromoRow(row);
+  }
+
+  canEditResultRow(row) {
+    if (!row?.layers) return false;
+    if (typeof OptimizerUI !== "undefined" && OptimizerUI.isStaticPromoEditorRow) {
+      return OptimizerUI.isStaticPromoEditorRow(row);
+    }
+    return !!(
+      row.layers.full ||
+      row.layers.productOnly ||
+      row.layers._staticFrame ||
+      (row.layers._badgePlacements || []).length
+    );
+  }
+
+  /** Compose static previews on cards after generate (colors/badges editor needs imageUrl). */
+  async prepareEditableResultPreviews(rows) {
+    const editable = (rows || []).filter((r) => this.canEditResultRow(r));
+    if (!editable.length) return;
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded) {
+      console.warn(
+        "Static compose module unavailable — tap-to-edit preview may not update",
+      );
+      return;
+    }
+    for (const row of editable) {
+      try {
+        if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+          await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+        }
+      } catch (e) {
+        console.warn("Placement meta bootstrap failed:", e);
+      }
+    }
+    const limit = Math.min(editable.length, 16);
+    for (let i = 0; i < limit; i++) {
+      const row = editable[i];
+      try {
+        await this.applyRowStaticPreview(row.variantId, row);
+      } catch (e) {
+        console.warn("Card preview compose failed:", row.variantId, e);
+      }
+    }
   }
 
   variantBadgesOnlyCompose(row) {
@@ -7799,8 +7917,26 @@ Please share payment details and license key.`;
 
   async applyRowStaticPreview(variantId, row = null) {
     const target = row || this.findResultRow(variantId);
-    if (!target?.layers?._staticFrame) return "";
+    if (!target?.layers) return "";
     await this.preloadStaticComposeModule();
+    if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+      try {
+        await window.StaticFrameCompose.ensureVariantPlacementMeta(target);
+      } catch (e) {
+        console.warn("ensureVariantPlacementMeta failed:", e);
+      }
+    }
+    if (!target.layers._staticFrame) {
+      const fallback =
+        (typeof OptimizerUI !== "undefined" &&
+          OptimizerUI.pickResultImageSrc?.(target)) ||
+        target.imageUrl ||
+        target.pricingImageUrl ||
+        target.dataUrl ||
+        "";
+      if (fallback) this.applyStaticPreviewToRow(target, fallback, variantId);
+      return fallback;
+    }
     try {
       const url = await this.composePreviewForRow(target);
       if (url) this.applyStaticPreviewToRow(target, url, variantId);
@@ -9735,10 +9871,14 @@ Please share payment details and license key.`;
           this._staticControlsVariantId === row.variantId && !staticControlsStale;
         if (!sameVariant) {
           this._staticControlsVariantId = row.variantId;
-          void this.preloadStaticComposeModule().then(() => {
-            if (this._editingVariantId === row.variantId) {
-              this.renderStaticBadgePlacementControls(row, staticSection);
+          void this.preloadStaticComposeModule().then((loaded) => {
+            if (this._editingVariantId !== row.variantId) return;
+            if (!loaded || !window.StaticFrameCompose) {
+              staticSection.innerHTML =
+                '<p style="font-size:11px;color:#b45309;margin:0;">Editor controls failed to load — reload the extension and try again.</p>';
+              return;
             }
+            this.renderStaticBadgePlacementControls(row, staticSection);
           });
         } else {
           const slider = staticSection.querySelector("#static-border-thickness");
@@ -10045,7 +10185,11 @@ Please share payment details and license key.`;
 
   async openVariantEditor(variantId) {
     const row = this.findResultRow(variantId);
-    if (!row?.layers) {
+    if (!this.canEditResultRow(row)) {
+      if (row) {
+        this.openVariantFullPreview(row);
+        return;
+      }
       OptimizerUtils.showNotification(
         "Layer edit not available for this variant",
         "info"
@@ -10196,7 +10340,12 @@ Please share payment details and license key.`;
       img.onclick = () => {
         const variantId = img.dataset.variantId;
         if (!variantId) return;
-        this.openVariantEditor(variantId);
+        const row = this.findResultRow(variantId);
+        if (this.canEditResultRow(row)) {
+          void this.openVariantEditor(variantId);
+        } else if (row) {
+          this.openVariantFullPreview(row);
+        }
       };
     });
 

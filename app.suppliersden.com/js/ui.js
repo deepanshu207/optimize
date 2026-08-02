@@ -560,7 +560,7 @@ const OptimizerUI = {
     const staticPromoEditor = OptimizerUI.isStaticPromoEditorRow(r);
     const canEdit =
       !testLabMode &&
-      !!(r.layers && (r.layers.full || staticPromoEditor));
+      !!(r.layers && (r.layers.full || r.layers.productOnly || staticPromoEditor));
     const edited =
       r._badgesRepositioned ||
       r._staticAppearanceEdited ||
