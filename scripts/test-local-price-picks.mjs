@@ -120,6 +120,49 @@ assert(lavenderHigh === null, "lavender high-slab only → null (category floor)
 const lavenderFloor = buildSessionProfile("10004", [59, 60, 68], [59, 60, 68]);
 assert(lavenderFloor?.strategy === "rupee_pair", "lavender with floor → rupee_pair");
 
+function shouldUseCategoryFloorBandLocal(catId, sessionPrices, pricedRows, categoryTiers) {
+  const sessionProfile = buildSessionProfile(catId, sessionPrices, categoryTiers);
+  if (sessionProfile?.strategy === "single_lowest") return false;
+  const cap = getShippingCap({ hasData: true, recommendedPrices: [59, 60] });
+  if (!cap) return false;
+  let floorCount = 0;
+  let highCount = 0;
+  if (pricedRows?.length) {
+    for (const row of pricedRows) {
+      const ship = Number(row.shipping);
+      if (ship <= 0) continue;
+      if (ship <= cap) floorCount++;
+      else highCount++;
+    }
+  } else {
+    const prices = [...new Set(sessionPrices.filter((p) => p > 0))];
+    for (const p of prices) {
+      if (p <= cap) floorCount++;
+      else highCount++;
+    }
+  }
+  if (highCount === 0) return false;
+  if (floorCount === 0) return true;
+  return highCount > floorCount;
+}
+
+const lavenderRows = [
+  { shipping: 59 },
+  { shipping: 60 },
+  ...Array.from({ length: 30 }, () => ({ shipping: 68 })),
+];
+assert(
+  shouldUseCategoryFloorBandLocal("10004", [59, 60, 68], lavenderRows, [59, 60, 68]),
+  "lavender 30×68 + 2 floor → category floor band",
+);
+assert(
+  !shouldUseCategoryFloorBandLocal("10004", [59, 65, 67, 69, 79], [{ shipping: 59 }], [59, 60, 68]),
+  "pink single_lowest session → not floor band override",
+);
+
+const targets5 = buildTierTargets(profile, 5);
+assert(targets5.join(",") === "59,60,59,60,59", "5 picks cycle 59+60 pair");
+
 const withGap = globalThis.pickLocalStrategy([59, 64, 65, 79]);
 assert(withGap.strategy === "single_lowest", "59,64,65 → floor single (not 64+65 pair)");
 assert(withGap.recommendedPrices[0] === 59, "floor single is 59");
