@@ -124,10 +124,14 @@ function pickLocalStrategy(prices) {
   };
 }
 
-/** Empirical KB when CSV/live rows lack file-size (Kurtis floor band). */
+/** Empirical KB when CSV/seed rows lack file-size (not injected onto live-verified variants). */
 const LOCAL_TIER_KB_FALLBACK = {
   "10004": { 59: 52, 60: 53 },
 };
+
+/** Standard live generate border spread — pink kurti path when session has no border metadata. */
+const LIVE_STANDARD_BORDER_MIN = 20;
+const LIVE_STANDARD_BORDER_MAX = 55;
 
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
@@ -307,8 +311,40 @@ const LocalPriceDB = {
   },
 
   /** Rotating border/KB profiles for local pool — spreads options in floor band. */
-  getFloorBandGenerationProfiles(catId) {
+  getFloorBandGenerationProfiles(catId, sessionRefs = null) {
     const id = String(catId || "");
+    const session = (sessionRefs || []).filter(
+      (r) =>
+        !r.categoryLearned &&
+        Number(r.shippingCost) > 0 &&
+        (r.liveVerified || r.isVerified || this.variantKb(r) > 0),
+    );
+    if (session.length) {
+      const profiles = [];
+      const seen = new Set();
+      session.forEach((r) => {
+        const border = Number(r.meta?.borderPx || 0);
+        const minB =
+          border > 0
+            ? Math.max(8, border - 4)
+            : LIVE_STANDARD_BORDER_MIN;
+        const maxB =
+          border > 0 ? border + 4 : LIVE_STANDARD_BORDER_MAX;
+        const key = `${minB}-${maxB}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        profiles.push({
+          tier: Number(r.shippingCost),
+          borderMin: minB,
+          borderMax: maxB,
+          anchorKb: this.variantKb(r),
+          badgeCount: Number(r.meta?.badgeCount ?? 0),
+          fromSession: true,
+        });
+      });
+      if (profiles.length) return profiles;
+    }
+
     const profile = this.getCategoryProfile(id);
     const floor = this.resolveLearnedTier(id, profile);
     const cap = this.getShippingCap(id) || floor;
@@ -335,7 +371,10 @@ const LocalPriceDB = {
         null;
       const borderMax = stats?.medianBorder ?? tierProf?.borderMax ?? 24;
       const borderMin =
-        tierProf?.borderMin ?? Math.max(8, borderMax - 6);
+        tierProf?.borderMin ??
+        (borderMax ? Math.max(8, borderMax - 6) : LIVE_STANDARD_BORDER_MIN);
+      const borderMaxResolved =
+        borderMax || LIVE_STANDARD_BORDER_MAX;
 
       const addProfile = (minB, maxB) => {
         const key = `${tier}:${minB}-${maxB}`;
@@ -350,27 +389,22 @@ const LocalPriceDB = {
         });
       };
 
-      addProfile(borderMin, borderMax);
-      if (borderMax - borderMin >= 4) {
-        const mid = Math.round((borderMin + borderMax) / 2);
-        addProfile(Math.max(8, mid - 2), Math.min(mid + 2, borderMax + 2));
+      addProfile(borderMin, borderMaxResolved);
+      if (borderMaxResolved - borderMin >= 4) {
+        const mid = Math.round((borderMin + borderMaxResolved) / 2);
+        addProfile(
+          Math.max(8, mid - 2),
+          Math.min(mid + 2, borderMaxResolved + 2),
+        );
       }
     });
 
     if (!profiles.length && floor > 0) {
-      const fb = this.tierKbFallback(id, floor);
       profiles.push({
         tier: floor,
-        borderMin: 18,
-        borderMax: 24,
-        anchorKb: fb,
-        badgeCount: 0,
-      });
-      profiles.push({
-        tier: floor,
-        borderMin: 20,
-        borderMax: 26,
-        anchorKb: fb,
+        borderMin: LIVE_STANDARD_BORDER_MIN,
+        borderMax: LIVE_STANDARD_BORDER_MAX,
+        anchorKb: this.tierKbFallback(id, floor),
         badgeCount: 0,
       });
     }
@@ -380,6 +414,10 @@ const LocalPriceDB = {
 
   enrichVariantFromLiveTier(v, catId = "") {
     if (!v) return v;
+    // Never fabricate KB/border on Meesho-verified live rows — avoids steering pink kurti wrong.
+    if (v.liveVerified || v.isVerified) {
+      return v;
+    }
     const ship = Number(v.shippingCost || 0);
     const prof =
       ship > 0 && catId
@@ -457,7 +495,10 @@ const LocalPriceDB = {
       Number(v.meta?.kb || v.meta?.actualKb || 0) ||
       (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
     if (!kb && ship > 0) {
-      kb = this.tierKbFallback(catId, ship) || 0;
+      const src = String(source || "");
+      if (src === "fallback" || src.startsWith("csv")) {
+        kb = this.tierKbFallback(catId, ship) || 0;
+      }
     }
     return {
       cat: String(catId || ""),
@@ -676,7 +717,8 @@ const LocalPriceDB = {
     const fps = this._readFingerprints().filter(
       (f) =>
         f.cat === String(catId) &&
-        Number(f.shipping) === tier,
+        Number(f.shipping) === tier &&
+        String(f.source || "") !== "fallback",
     );
     const entries = this._read().filter(
       (e) => e.cat === String(catId) && Number(e.price) === tier,
@@ -859,7 +901,8 @@ const LocalPriceDB = {
         f.cat === String(catId) &&
         tier > 0 &&
         Number(f.shipping) === tier &&
-        Number(f.kb) > 0,
+        Number(f.kb) > 0 &&
+        String(f.source || "") !== "fallback",
     );
     if (fps.length) {
       const kbs = fps.map((f) => Number(f.kb)).filter((k) => k > 0);
@@ -5714,17 +5757,22 @@ Please share payment details and license key.`;
             ).length
           : 0;
         if (highSlabCount > 0 && floorCap) {
-          const recLabel =
-            policy.recommendation?.picks?.length
-              ? policy.recommendation.picks
-                  .map((p) => `₹${p.shippingCost}`)
-                  .join("+")
-              : `≤₹${floorCap}`;
-          OptimizerUtils.showNotification(
-            `⚠️ ${highSlabCount} at high slab (e.g. ₹68) on this image — use 📍 Generate Local for ${recLabel} band picks to upload`,
-            "info",
-            9000,
-          );
+          const floorInRun = policy.allPriced.filter(
+            (p) => Number(p.shippingCost) <= Number(floorCap),
+          ).length;
+          if (floorInRun === 0) {
+            const recLabel =
+              policy.recommendation?.picks?.length
+                ? policy.recommendation.picks
+                    .map((p) => `₹${p.shippingCost}`)
+                    .join("+")
+                : `≤₹${floorCap}`;
+            OptimizerUtils.showNotification(
+              `⚠️ ${highSlabCount} at high slab (e.g. ₹68) on this image — use 📍 Generate Local for ${recLabel} band picks to upload`,
+              "info",
+              9000,
+            );
+          }
         }
 
         if (result.localOnly) {
@@ -5893,10 +5941,14 @@ Please share payment details and license key.`;
       await this.ensureOriginalImageUrl(file);
       this.gatherSettings();
 
+      const sessionFloorRefs = this.getSessionFloorRefs(effectiveCatId);
+      const highSlabSession = this.isSessionHighSlabDominant(effectiveCatId);
       const liveRefs = this.getLiveRefsForLocal(effectiveCatId);
       const liveHints = LocalPriceDB.getLiveGenerationHints(effectiveCatId);
-      const floorProfiles =
-        LocalPriceDB.getFloorBandGenerationProfiles(effectiveCatId);
+      const floorProfiles = LocalPriceDB.getFloorBandGenerationProfiles(
+        effectiveCatId,
+        sessionFloorRefs.length ? sessionFloorRefs : null,
+      );
       const cap = LocalPriceDB.getShippingCap(effectiveCatId);
       const sessionRefs = liveRefs.filter((r) => {
         const ship = Number(r.shippingCost);
@@ -5962,8 +6014,10 @@ Please share payment details and license key.`;
           : categoryLearned
             ? {
                 maxKb: null,
-                borderMin: floorProfiles[0]?.borderMin ?? null,
-                borderMax: floorProfiles[0]?.borderMax ?? null,
+                borderMin:
+                  floorProfiles[0]?.borderMin ?? LIVE_STANDARD_BORDER_MIN,
+                borderMax:
+                  floorProfiles[0]?.borderMax ?? LIVE_STANDARD_BORDER_MAX,
                 badgeCount: 0,
               }
             : null;
@@ -5985,7 +6039,9 @@ Please share payment details and license key.`;
                     elapsed,
                     {
                       testLab: true,
-                      phaseLabel: `Match live-tested ₹${targetTier} (KB/border from Meesho run)`,
+                      phaseLabel: highSlabSession
+                        ? `Category floor ₹${targetTier} band (high-slab image)`
+                        : `Match this image's live ₹${targetTier} winners`,
                     },
                   );
                 }
@@ -5999,13 +6055,17 @@ Please share payment details and license key.`;
                     floorProfiles.length
                       ? floorProfiles[(attempt - 1) % floorProfiles.length]
                       : null;
-                  const opts = { lowBias: true };
+                  const opts = { lowBias: highSlabSession };
                   opts.badgeCount =
                     prof?.badgeCount ?? genHints?.badgeCount ?? 0;
                   const borderMin =
-                    prof?.borderMin ?? genHints?.borderMin ?? null;
+                    prof?.borderMin ??
+                    genHints?.borderMin ??
+                    (highSlabSession ? null : LIVE_STANDARD_BORDER_MIN);
                   const borderMax =
-                    prof?.borderMax ?? genHints?.borderMax ?? null;
+                    prof?.borderMax ??
+                    genHints?.borderMax ??
+                    (highSlabSession ? null : LIVE_STANDARD_BORDER_MAX);
                   if (borderMin != null && borderMax != null) {
                     opts.borderMin = borderMin;
                     opts.borderMax = borderMax;
@@ -6476,48 +6536,62 @@ Please share payment details and license key.`;
     return 0;
   }
 
-  getLiveRefsForLocal(catId) {
+  getSessionFloorRefs(catId) {
     const profile = LocalPriceDB.getCategoryProfile(catId);
+    const cap = LocalPriceDB.getShippingCap(catId);
     const floor = LocalPriceDB.resolveLearnedTier(catId, profile);
-    const cap = LocalPriceDB.getShippingCap(catId) || floor;
-    const floorTiers = new Set(
-      (profile.recommendedPrices || [])
-        .map((p) => Number(p))
-        .filter((p) => p > 0 && (cap == null || p <= cap)),
-    );
-    if (floor > 0) floorTiers.add(floor);
-
-    const inFloorBand = (r) => {
-      const ship = Number(r.shippingCost);
-      if (ship <= 0) return false;
-      if (cap != null && ship > cap) return false;
-      if (floorTiers.size) return floorTiers.has(ship);
-      return floor > 0 ? ship === floor : ship > 0;
-    };
-
     const pools = [
       ...(this.lastLivePricedResults || []),
       ...(this._liveLearnResults || []),
     ];
     const seen = new Set();
-    const sessionRefs = [];
+    const refs = [];
     for (const r of pools) {
-      if (!inFloorBand(r) || r.localOnly || r.meta?.localPrice) continue;
+      if (r.localOnly || r.meta?.localPrice) continue;
+      const ship = Number(r.shippingCost);
+      if (ship <= 0) continue;
+      if (cap != null && ship > cap) continue;
+      if (floor > 0 && cap == null && ship !== floor) continue;
       const id = String(r.variantId || "");
       if (id && seen.has(id)) continue;
       if (id) seen.add(id);
-      sessionRefs.push(r);
+      refs.push(r);
     }
+    return refs.sort(
+      (a, b) => Number(a.shippingCost) - Number(b.shippingCost),
+    );
+  },
 
-    const categoryRefs = LocalPriceDB.getCategoryFloorRefs(catId);
-    const merged = [...sessionRefs];
-    for (const ref of categoryRefs) {
-      const id = String(ref.variantId || "");
-      if (id && seen.has(id)) continue;
-      if (id) seen.add(id);
-      merged.push(ref);
+  /** Current session priced only above recommend cap (lavender ₹68 path). */
+  isSessionHighSlabDominant(catId) {
+    const cap = LocalPriceDB.getShippingCap(catId);
+    if (cap == null) return false;
+    const pools = [
+      ...(this.lastLivePricedResults || []),
+      ...(this._liveLearnResults || []),
+    ];
+    const priced = pools.filter(
+      (r) =>
+        Number(r.shippingCost) > 0 &&
+        !r.localOnly &&
+        !r.meta?.localPrice,
+    );
+    if (!priced.length) return false;
+    const floorCount = priced.filter(
+      (r) => Number(r.shippingCost) <= Number(cap),
+    ).length;
+    const highCount = priced.filter(
+      (r) => Number(r.shippingCost) > Number(cap),
+    ).length;
+    return floorCount === 0 && highCount > 0;
+  },
+
+  getLiveRefsForLocal(catId) {
+    const sessionFloor = this.getSessionFloorRefs(catId);
+    if (sessionFloor.length) {
+      return sessionFloor;
     }
-    return merged;
+    return LocalPriceDB.getCategoryFloorRefs(catId);
   }
 
   buildLiveReportContext() {
