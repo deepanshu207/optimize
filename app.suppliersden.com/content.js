@@ -6277,7 +6277,7 @@ Please share payment details and license key.`;
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "none";
     });
-  },
+  }
 
   restoreOptimizerChromeAfterResults() {
     document.querySelectorAll(".opt-section").forEach((s) => {
@@ -6300,7 +6300,7 @@ Please share payment details and license key.`;
     this.ensureGenerateChromeVisible();
     this.bindStaticPromoButtons();
     this.refreshLocalPriceUI();
-  },
+  }
 
   ensureGenerateChromeVisible() {
     const generateSticky = document.getElementById("generate-sticky");
