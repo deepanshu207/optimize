@@ -6560,7 +6560,7 @@ Please share payment details and license key.`;
     return refs.sort(
       (a, b) => Number(a.shippingCost) - Number(b.shippingCost),
     );
-  },
+  }
 
   /** Current session priced only above recommend cap (lavender ₹68 path). */
   isSessionHighSlabDominant(catId) {
@@ -6584,7 +6584,7 @@ Please share payment details and license key.`;
       (r) => Number(r.shippingCost) > Number(cap),
     ).length;
     return floorCount === 0 && highCount > 0;
-  },
+  }
 
   getLiveRefsForLocal(catId) {
     const sessionFloor = this.getSessionFloorRefs(catId);
