@@ -1,12 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "description": "Public live shipping seed reports — fetched automatically for local price (no CSV import needed).",
   "reports": [
     {
       "categoryId": "10004",
       "file": "kurti-10004.csv",
       "name": "Kurtis",
-      "note": "Sample live tiers for Women Fashion Kurtis (sscat 10004)"
+      "note": "Live tiers 59|60|68 — floor pair 59+60 from pink kurti run"
     }
   ]
 }
