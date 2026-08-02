@@ -2719,17 +2719,15 @@ class MeeshoShippingOptimizer {
     }
     const localPriceGenBtn = document.getElementById("local-price-generate-btn");
     if (localPriceGenBtn) {
-      const hasFile =
-        this._pendingFile ||
-        window.__webPendingFile ||
-        document.getElementById("image-input")?.files?.[0];
-      localPriceGenBtn.disabled = !hasFile;
+      /* enabled via enableAllGenerateButtons after setupMainEvents */
     }
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "block";
     });
 
     this.setupMainEvents();
+    this.setupNavigationGuards();
+    this.enableAllGenerateButtons();
     this.bindStaticPromoButtons();
 
     void this.preloadLiveAnalysisModule();
@@ -3173,7 +3171,10 @@ Please share payment details and license key.`;
           OptimizerUtils.showNotification("Choose an image first", "error");
           return;
         }
-        if (this.isProcessing) return;
+        if (this.isProcessing) {
+      OptimizerUtils.showNotification("Already generating — wait or tap Stop", "info");
+      return;
+    }
         // Route by tab: Live uses existing processImage — do not modify that path for Test Lab.
         if (this.getActiveOptimizerTab() === "test") {
           void this.processImageTestLab(file);
@@ -3277,21 +3278,22 @@ Please share payment details and license key.`;
 
     this.wireClearUploadButton();
     this.wireLocalPriceButtons();
+    this.setupNavigationGuards();
   }
 
   wireLocalPriceButtons() {
     const genBtn = document.getElementById("local-price-generate-btn");
     if (genBtn) {
       genBtn.onclick = () => {
-        const file =
-          this._pendingFile ||
-          window.__webPendingFile ||
-          document.getElementById("image-input")?.files?.[0];
+        const file = this.getImageFileForGenerate();
         if (!file) {
           OptimizerUtils.showNotification("Choose an image first", "error");
           return;
         }
-        if (this.isProcessing) return;
+        if (this.isProcessing) {
+          OptimizerUtils.showNotification("Still running — wait or tap Stop", "info");
+          return;
+        }
         void this.processImageLocalPrice(file);
       };
     }
@@ -4965,7 +4967,10 @@ Please share payment details and license key.`;
       OptimizerUtils.showNotification("Choose an image first", "error");
       return;
     }
-    if (this.isProcessing) return;
+    if (this.isProcessing) {
+      OptimizerUtils.showNotification("Already generating — wait or tap Stop", "info");
+      return;
+    }
 
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
       MeeshoAPI.syncFromSession?.();
@@ -5009,14 +5014,7 @@ Please share payment details and license key.`;
     const testGenBtn = document.getElementById("test-generate-btn");
 
     if (uploadArea) uploadArea.style.display = "none";
-    if (generateBtn) {
-      generateBtn.style.display = "none";
-      generateBtn.disabled = true;
-    }
-    if (testGenBtn) {
-      testGenBtn.style.display = "none";
-      testGenBtn.disabled = true;
-    }
+    if (testGenBtn) testGenBtn.style.display = "none";
     sections.forEach((s) => (s.style.display = "none"));
     if (resultsArea) {
       resultsArea.style.display = "none";
@@ -5182,7 +5180,7 @@ Please share payment details and license key.`;
       this.restoreTestLabFormUi();
     }
 
-    this.isProcessing = false;
+    this.finishOptimizerRun();
   }
 
   // LIVE MODE ONLY — production generate path. Test Lab uses processImageTestLab().
@@ -5195,7 +5193,10 @@ Please share payment details and license key.`;
       return;
     }
 
-    if (this.isProcessing) return;
+    if (this.isProcessing) {
+      OptimizerUtils.showNotification("Already generating — wait or tap Stop", "info");
+      return;
+    }
 
     // Sync session + category before generation
     if (window.WEB_OPTIMIZER_MODE && typeof MeeshoAPI !== "undefined") {
@@ -5253,7 +5254,6 @@ Please share payment details and license key.`;
     const generateBtn = document.getElementById("generate-btn");
 
     if (uploadArea) uploadArea.style.display = "none";
-    if (generateBtn) generateBtn.disabled = true;
     this.prepareOptimizerSectionsForRun();
 
     // ALWAYS use Smart Mode
@@ -5523,13 +5523,7 @@ Please share payment details and license key.`;
       if (resultsArea) resultsArea.style.display = "none";
       if (uploadArea) uploadArea.style.display = "block";
       sections.forEach((s) => (s.style.display = "block"));
-      if (generateBtn) {
-        generateBtn.style.display = "block";
-        generateBtn.disabled =
-          !this._pendingFile &&
-          !window.__webPendingFile &&
-          !document.getElementById("image-input")?.files?.[0];
-      }
+      this.restoreOptimizerChromeAfterResults();
       if (window.WEB_OPTIMIZER_MODE) {
         OptimizerUtils.showNotification(
           "No variants generated — try another image",
@@ -5538,7 +5532,7 @@ Please share payment details and license key.`;
       }
     }
 
-    this.isProcessing = false;
+    this.finishOptimizerRun();
   }
 
   /**
@@ -5551,7 +5545,10 @@ Please share payment details and license key.`;
     );
     const LOCAL_POOL_SIZE = LocalPriceDB.poolSizeForPickCount(pickCount);
 
-    if (this.isProcessing) return;
+    if (this.isProcessing) {
+      OptimizerUtils.showNotification("Already generating — wait or tap Stop", "info");
+      return;
+    }
     this.isProcessing = true;
     this.shouldStop = false;
     this.localPriceMode = true;
@@ -5575,8 +5572,6 @@ Please share payment details and license key.`;
     // Keep lastLivePricedResults / _liveLearnResults from prior live run for report + picks
 
     if (uploadArea) uploadArea.style.display = "none";
-    if (generateBtn) generateBtn.disabled = true;
-    if (localGenBtn) localGenBtn.disabled = true;
     this.prepareOptimizerSectionsForRun();
 
     const categorySelect = document.getElementById("category-select");
@@ -5654,8 +5649,7 @@ Please share payment details and license key.`;
         if (processingArea) processingArea.style.display = "none";
         if (uploadArea) uploadArea.style.display = "block";
         sections.forEach((s) => (s.style.display = "block"));
-        if (localGenBtn) localGenBtn.disabled = false;
-        this.isProcessing = false;
+        this.finishOptimizerRun();
         return;
       }
 
@@ -5816,9 +5810,7 @@ Please share payment details and license key.`;
       this.restoreOptimizerChromeAfterResults();
     }
 
-    if (localGenBtn) localGenBtn.disabled = false;
-    this.isProcessing = false;
-    this.refreshLocalPriceUI();
+    this.finishOptimizerRun();
   }
 
   // Smart Mode HTML - Enhanced
@@ -6324,13 +6316,93 @@ Please share payment details and license key.`;
   }
 
   prepareOptimizerSectionsForRun() {
-    const localGenBtn = document.getElementById("local-price-generate-btn");
-    const testGenBtn = document.getElementById("test-generate-btn");
-    if (localGenBtn) localGenBtn.disabled = true;
-    if (testGenBtn) testGenBtn.disabled = true;
     document.querySelectorAll(".opt-section").forEach((s) => {
       s.style.display = "none";
     });
+  }
+
+  hasOptimizerSession() {
+    return (
+      !!this.getImageFileForGenerate() ||
+      (this.currentResults || []).length > 0 ||
+      (this.testLabCurrentResults || []).length > 0 ||
+      (this.localPricePoolResults || []).length > 0
+    );
+  }
+
+  shouldConfirmLeavePage() {
+    return this.isProcessing || this.hasOptimizerSession();
+  }
+
+  setupNavigationGuards() {
+    if (this._navigationGuardWired || typeof window === "undefined") return;
+    this._navigationGuardWired = true;
+
+    window.addEventListener("beforeunload", (e) => {
+      if (!this.shouldConfirmLeavePage()) return;
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    });
+
+    try {
+      if (!history.state?.optimizerGuard) {
+        history.pushState({ optimizerGuard: true }, "");
+      }
+    } catch {
+      /* ignore */
+    }
+
+    window.addEventListener("popstate", () => {
+      if (!this.shouldConfirmLeavePage()) return;
+      const ok = confirm(
+        "You have an image or generated variants. Leave this page and lose progress?",
+      );
+      if (!ok) {
+        try {
+          history.pushState({ optimizerGuard: true }, "");
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  }
+
+  enableAllGenerateButtons() {
+    const hasFile = !!this.getImageFileForGenerate();
+    const sticky = document.getElementById("generate-sticky");
+    if (sticky) sticky.style.display = "";
+
+    const setBtn = (id, display) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      if (display != null) btn.style.display = display;
+      btn.disabled = !hasFile;
+    };
+
+    setBtn("generate-btn", "block");
+    setBtn("local-price-generate-btn", "");
+    if (this.isTabbedOptimizerUI()) {
+      setBtn(
+        "test-generate-btn",
+        this.getActiveOptimizerTab() === "test" ? "block" : "none",
+      );
+    }
+    [
+      "generate-showcase-btn",
+      "generate-promo-lifestyle-btn",
+      "generate-tall-static-btn",
+      "generate-gown-static-btn",
+      "local-price-import-btn",
+    ].forEach((id) => setBtn(id, null));
+    this.bindStaticPromoButtons();
+  }
+
+  finishOptimizerRun() {
+    this.isProcessing = false;
+    this.enableAllGenerateButtons();
+    this.wireLocalPriceButtons();
+    this.refreshLocalPriceUI();
   }
 
   restoreOptimizerChromeAfterResults() {
@@ -6351,35 +6423,13 @@ Please share payment details and license key.`;
     if (uploadArea) {
       uploadArea.style.display = hasFile ? "none" : "block";
     }
-    this.ensureGenerateChromeVisible();
-    this.bindStaticPromoButtons();
+    this.enableAllGenerateButtons();
+    this.wireLocalPriceButtons();
     this.refreshLocalPriceUI();
   }
 
   ensureGenerateChromeVisible() {
-    const generateSticky = document.getElementById("generate-sticky");
-    const generateBtn = document.getElementById("generate-btn");
-    const hasFile =
-      this._pendingFile ||
-      window.__webPendingFile ||
-      this.lastProcessedFile ||
-      document.getElementById("image-input")?.files?.[0];
-    if (generateSticky) generateSticky.style.display = "";
-    if (generateBtn) {
-      generateBtn.style.display = "block";
-      generateBtn.disabled = !hasFile || this.isProcessing;
-    }
-    const localGenBtn = document.getElementById("local-price-generate-btn");
-    if (localGenBtn) {
-      localGenBtn.style.display = "";
-      localGenBtn.disabled = !hasFile || this.isProcessing;
-    }
-    const testGenBtn = document.getElementById("test-generate-btn");
-    if (testGenBtn && this.isTabbedOptimizerUI()) {
-      testGenBtn.style.display =
-        this.getActiveOptimizerTab() === "test" ? "block" : "none";
-      testGenBtn.disabled = !hasFile || this.isProcessing;
-    }
+    this.enableAllGenerateButtons();
   }
 
   getImageFileForGenerate() {
