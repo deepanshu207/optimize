@@ -7372,7 +7372,25 @@ Please share payment details and license key.`;
   }
 
   resolveResultImageSrc(result) {
+    const fromPreview = this.resolveVariantPreviewSrc(result);
+    if (fromPreview) return fromPreview;
     return this.resolveDownloadUrl(result);
+  }
+
+  /** Parent for editor/fullscreen overlays — must sit above #opt-modal (z-index 2147483646). */
+  getOptimizerOverlayParent() {
+    const modal = this.modal || document.getElementById("opt-modal");
+    return modal || document.documentElement;
+  }
+
+  mountOptimizerOverlay(el) {
+    if (!el) return;
+    const parent = this.getOptimizerOverlayParent();
+    if (el.parentElement !== parent) {
+      parent.appendChild(el);
+    }
+    const inModal = parent.id === "opt-modal";
+    el.style.zIndex = inModal ? "2147483647" : "2147483647";
   }
 
   async ensureOriginalImageUrl(file) {
@@ -7399,9 +7417,7 @@ Please share payment details and license key.`;
 
   openVariantFullPreview(row) {
     if (!row) return;
-    const src =
-      document.getElementById("variant-edit-preview")?.src ||
-      this.resolveResultImageSrc(row);
+    const src = this.resolveVariantPreviewSrc(row);
     if (!src) {
       OptimizerUtils.showNotification("No preview for this variant", "error");
       return;
@@ -7412,12 +7428,12 @@ Please share payment details and license key.`;
       overlay = document.createElement("div");
       overlay.id = "variant-full-preview-overlay";
       overlay.style.cssText =
-        "position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;";
+        "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;";
       overlay.innerHTML = `
         <button type="button" id="variant-full-preview-close" style="position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;z-index:1;">Close</button>
         <img id="variant-full-preview-img" alt="Full preview" style="max-width:100%;max-height:92vh;object-fit:contain;border-radius:8px;background:#fff;touch-action:pan-x pan-y pinch-zoom;">
         <div id="variant-full-preview-title" style="color:#fff;font-size:13px;margin-top:10px;text-align:center;max-width:90vw;"></div>`;
-      document.body.appendChild(overlay);
+      this.mountOptimizerOverlay(overlay);
       overlay.querySelector("#variant-full-preview-close").onclick = () => {
         overlay.style.display = "none";
       };
@@ -7430,6 +7446,7 @@ Please share payment details and license key.`;
     const title = overlay.querySelector("#variant-full-preview-title");
     if (img) img.src = src;
     if (title) title.textContent = row.name || "Variant preview";
+    this.mountOptimizerOverlay(overlay);
     overlay.style.display = "flex";
   }
 
@@ -7446,12 +7463,12 @@ Please share payment details and license key.`;
       overlay = document.createElement("div");
       overlay.id = "test-lab-preview-overlay";
       overlay.style.cssText =
-        "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;";
+        "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;";
       overlay.innerHTML = `
         <button type="button" id="test-lab-preview-close" style="position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">Close</button>
         <img id="test-lab-preview-img" alt="Preview" style="max-width:100%;max-height:70vh;object-fit:contain;border-radius:8px;background:#fff;">
         <div id="test-lab-preview-title" style="color:#fff;font-size:13px;margin-top:10px;text-align:center;"></div>`;
-      document.body.appendChild(overlay);
+      this.mountOptimizerOverlay(overlay);
       overlay.querySelector("#test-lab-preview-close").onclick = () => {
         overlay.style.display = "none";
       };
@@ -7464,6 +7481,7 @@ Please share payment details and license key.`;
     const title = overlay.querySelector("#test-lab-preview-title");
     if (img) img.src = src;
     if (title) title.textContent = row.name || "Test Lab variant";
+    this.mountOptimizerOverlay(overlay);
     overlay.style.display = "flex";
   }
 
@@ -8845,7 +8863,7 @@ Please share payment details and license key.`;
     overlay = document.createElement("div");
     overlay.id = "static-color-picker-overlay";
     overlay.style.cssText =
-      "display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;";
+      "display:none;position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;";
     overlay.innerHTML = `
       <div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,.25);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -8874,7 +8892,7 @@ Please share payment details and license key.`;
           <button type="button" id="static-color-picker-set" style="padding:8px 14px;border:none;border-radius:8px;background:#10b981;color:#fff;font-weight:600;cursor:pointer;">Set</button>
         </div>
       </div>`;
-    document.body.appendChild(overlay);
+    this.mountOptimizerOverlay(overlay);
     overlay.onclick = (e) => {
       if (e.target === overlay) overlay.style.display = "none";
     };
@@ -10011,13 +10029,16 @@ Please share payment details and license key.`;
       panel.remove();
       panel = null;
     }
-    if (panel) return panel;
+    if (panel) {
+      this.mountOptimizerOverlay(panel);
+      return panel;
+    }
 
     panel = document.createElement("div");
     panel.id = "variant-edit-panel";
     panel.dataset.staticEditorV = "19";
     panel.style.cssText =
-      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;align-items:center;justify-content:center;padding:12px;";
+      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2147483647;align-items:center;justify-content:center;padding:12px;";
     panel.innerHTML = `
       <style>
         #variant-edit-panel .variant-edit-sheet {
@@ -10114,7 +10135,7 @@ Please share payment details and license key.`;
         </div>
       </div>
     `;
-    document.body.appendChild(panel);
+    this.mountOptimizerOverlay(panel);
 
     panel.querySelector("#variant-edit-close").onclick = () =>
       this.closeVariantEditor();
@@ -10260,41 +10281,56 @@ Please share payment details and license key.`;
       );
       return;
     }
-    const composeLoaded = await this.preloadStaticComposeModule();
-    if (!composeLoaded) {
-      OptimizerUtils.showNotification(
-        "Editor controls loading… if sliders missing, reload the extension",
-        "info",
-        5000,
-      );
-    }
-    if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
-      if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
-        await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
-      } else if (
-        window.StaticFrameCompose?.ensureStaticPlacementMeta &&
-        row.layers._staticFrame
-      ) {
-        window.StaticFrameCompose.ensureStaticPlacementMeta(
-          row.layers,
-          row.layers._staticFrame.style,
-        );
-      }
-    }
+
     this._editingVariantId = variantId;
     this.ensureFrozenPricing(row);
     const previewSrc = this.resolveVariantPreviewSrc(row);
-    if (previewSrc && !row.imageUrl) row.imageUrl = previewSrc;
+    if (previewSrc) row.imageUrl = previewSrc;
+
     this.ensureVariantEditorPanel();
-    if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
-      try {
-        await this.applyRowStaticPreview(variantId, row);
-      } catch (e) {
-        console.warn("Editor open preview compose:", e);
-      }
-    }
     this.renderVariantEditorPanel(row);
-    document.getElementById("variant-edit-panel").style.display = "flex";
+    const panel = document.getElementById("variant-edit-panel");
+    if (panel) {
+      this.mountOptimizerOverlay(panel);
+      panel.style.display = "flex";
+    }
+
+    void (async () => {
+      const composeLoaded = await this.preloadStaticComposeModule();
+      if (!composeLoaded && this._editingVariantId === variantId) {
+        OptimizerUtils.showNotification(
+          "Editor controls loading… sliders may be limited until reload",
+          "info",
+          5000,
+        );
+      }
+      if (this._editingVariantId !== variantId) return;
+      if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
+        if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+          try {
+            await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+          } catch (e) {
+            console.warn("ensureVariantPlacementMeta:", e);
+          }
+        } else if (
+          window.StaticFrameCompose?.ensureStaticPlacementMeta &&
+          row.layers._staticFrame
+        ) {
+          window.StaticFrameCompose.ensureStaticPlacementMeta(
+            row.layers,
+            row.layers._staticFrame.style,
+          );
+        }
+        try {
+          await this.applyRowStaticPreview(variantId, row);
+        } catch (e) {
+          console.warn("Editor open preview compose:", e);
+        }
+      }
+      if (this._editingVariantId === variantId) {
+        this.renderVariantEditorPanel(row);
+      }
+    })();
   }
 
   refreshResultsView() {
@@ -10410,7 +10446,10 @@ Please share payment details and license key.`;
     });
 
     document.querySelectorAll(".result-img").forEach((img) => {
-      img.onclick = () => {
+      img.style.cursor = "pointer";
+      img.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const variantId = img.dataset.variantId;
         if (!variantId) return;
         const row = this.findResultRow(variantId);
@@ -10421,6 +10460,25 @@ Please share payment details and license key.`;
         }
       };
     });
+
+    const resultsArea = document.getElementById("results-area");
+    if (resultsArea && !resultsArea.dataset.previewTapBound) {
+      resultsArea.dataset.previewTapBound = "1";
+      resultsArea.addEventListener("click", (e) => {
+        const img = e.target.closest?.(".result-img[data-variant-id]");
+        if (!img || !resultsArea.contains(img)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const variantId = img.dataset.variantId;
+        if (!variantId) return;
+        const row = this.findResultRow(variantId);
+        if (this.canEditResultRow(row)) {
+          void this.openVariantEditor(variantId);
+        } else if (row) {
+          this.openVariantFullPreview(row);
+        }
+      });
+    }
 
     document.querySelectorAll(".dl-btn").forEach((btn) => {
       btn.onclick = () => {
