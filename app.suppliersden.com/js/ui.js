@@ -218,6 +218,7 @@ const OptimizerUI = {
                                     <option value="10">10</option>
                                     <option value="20">20</option>
                                     <option value="50" selected>50</option>
+                                    <option value="80">80</option>
                                     <option value="100">100</option>
                                 </select>
                             </div>
@@ -423,11 +424,13 @@ const OptimizerUI = {
                                 </select>
                             </div>
                             <div>
-                                <label class="opt-label">Max Tries</label>
+                                <label class="opt-label">Max Variants</label>
                                 <select id="max-attempts" class="opt-select">
-                                    <option value="50" style="color:black">50</option>
-                                    <option value="100" selected style="color:black">100</option>
-                                    <option value="200" style="color:black">200</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="80" selected>80</option>
+                                    <option value="100">100</option>
+                                    <option value="200">200</option>
                                 </select>
                             </div>
                         </div>
@@ -522,6 +525,7 @@ const OptimizerUI = {
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
     const isLocalPick = !!r.localRecommended;
+    const isRecommended = !!r.recommended || !!r.meta?.recommended;
     const isBest = isLocalPick || !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
     const staticEst =
@@ -599,6 +603,8 @@ const OptimizerUI = {
                         ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#047857;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">★ LOCAL PICK</div>'
                         : isBest
                         ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">🏆 BEST</div>'
+                        : isRecommended
+                        ? '<div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);background:#2563eb;color:white;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">★ RECOMMEND</div>'
                         : ""
                     }
                     <span class="result-edit-badge" data-variant-id="${vid}" style="display:${

@@ -358,30 +358,43 @@ const LocalPriceDB = {
   },
 
   /**
-   * Filter live results to category cap; mark recommended picks (₹1 pair or lowest).
+   * Mark recommended picks (within category cap) but keep every generated variant visible.
    */
   applyLiveResultPolicy(variants, catId) {
     const cap = this.getShippingCap(catId);
-    const priced = (variants || []).filter((v) => Number(v.shippingCost) > 0);
+    const all = variants || [];
+    const priced = all.filter((v) => Number(v.shippingCost) > 0);
     const withinCap = cap
       ? priced.filter((v) => Number(v.shippingCost) <= cap)
       : priced;
-    const pool = withinCap.length ? withinCap : priced;
-    const { picks, strategy, prices } = this.pickRecommendedFromPool(pool);
+    const recommendationPool = withinCap.length ? withinCap : priced;
+    const { picks, strategy, prices } = this.pickRecommendedFromPool(
+      recommendationPool,
+    );
     const pickIds = new Set(picks.map((p) => String(p.variantId || "")));
 
-    const display = [...pool]
+    const display = [...all]
       .sort((a, b) => {
-        const aRec = pickIds.has(String(a.variantId)) ? 0 : 1;
-        const bRec = pickIds.has(String(b.variantId)) ? 0 : 1;
+        const aPrice =
+          Number(a.shippingCost) > 0 ? Number(a.shippingCost) : 9999;
+        const bPrice =
+          Number(b.shippingCost) > 0 ? Number(b.shippingCost) : 9999;
+        if (aPrice !== bPrice) return aPrice - bPrice;
+        const aRec =
+          pickIds.has(String(a.variantId)) && aPrice < 9999 ? 0 : 1;
+        const bRec =
+          pickIds.has(String(b.variantId)) && bPrice < 9999 ? 0 : 1;
         if (aRec !== bRec) return aRec - bRec;
         const aVer = a.isVerified ? 0 : 1;
         const bVer = b.isVerified ? 0 : 1;
         if (aVer !== bVer) return aVer - bVer;
-        return Number(a.shippingCost) - Number(b.shippingCost);
+        return Number(a.meta?.rank ?? a.meta?.attempt ?? 0) -
+          Number(b.meta?.rank ?? b.meta?.attempt ?? 0);
       })
       .map((v) => {
-        const recommended = pickIds.has(String(v.variantId));
+        const recommended =
+          Number(v.shippingCost) > 0 &&
+          pickIds.has(String(v.variantId || ""));
         return {
           ...v,
           recommended,
@@ -394,7 +407,9 @@ const LocalPriceDB = {
       withinCap,
       allPriced: priced,
       recommendation: { picks, strategy, prices, cap },
-      hiddenHighCount: priced.length - withinCap.length,
+      hiddenHighCount: cap
+        ? priced.filter((v) => Number(v.shippingCost) > cap).length
+        : 0,
     };
   },
 
@@ -5171,6 +5186,7 @@ Please share payment details and license key.`;
 
     this.isProcessing = true;
     this.shouldStop = false;
+    this.localPriceMode = false;
     this.lastProcessedFile = file;
     this._liveLearnResults = [];
     this.currentResults = [];
@@ -5199,11 +5215,8 @@ Please share payment details and license key.`;
     const generateBtn = document.getElementById("generate-btn");
 
     if (uploadArea) uploadArea.style.display = "none";
-    if (generateBtn) {
-      generateBtn.style.display = "none";
-      generateBtn.disabled = true;
-    }
-    sections.forEach((s) => (s.style.display = "none"));
+    if (generateBtn) generateBtn.disabled = true;
+    this.prepareOptimizerSectionsForRun();
 
     // ALWAYS use Smart Mode
     const categorySelectEl = document.getElementById("category-select");
@@ -5216,7 +5229,7 @@ Please share payment details and license key.`;
     );
     const shippingCap = LocalPriceDB.getShippingCap(liveCatId);
     const maxAttempts =
-      parseInt(document.getElementById("max-attempts")?.value, 10) || 20;
+      parseInt(document.getElementById("max-attempts")?.value, 10) || 80;
 
     console.log(
       `🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${shippingCap ? `, cap ≤₹${shippingCap}` : ""}`,
@@ -5372,7 +5385,7 @@ Please share payment details and license key.`;
 
         if (policy.hiddenHighCount > 0 && shippingCap) {
           OptimizerUtils.showNotification(
-            `Hidden ${policy.hiddenHighCount} variant(s) above ₹${shippingCap} cap for this category`,
+            `Showing all variants — ${policy.hiddenHighCount} above ₹${shippingCap} cap (not in ★ recommend set)`,
             "info",
             5000,
           );
@@ -5451,6 +5464,7 @@ Please share payment details and license key.`;
         );
         this.setupResultsEvents();
       }
+      this.restoreOptimizerChromeAfterResults();
     } else {
       if (resultsArea) resultsArea.style.display = "none";
       if (uploadArea) uploadArea.style.display = "block";
@@ -5509,6 +5523,7 @@ Please share payment details and license key.`;
     if (uploadArea) uploadArea.style.display = "none";
     if (generateBtn) generateBtn.disabled = true;
     if (localGenBtn) localGenBtn.disabled = true;
+    this.prepareOptimizerSectionsForRun();
 
     const categorySelect = document.getElementById("category-select");
     const catId = String(categorySelect?.value || "").trim();
@@ -5740,12 +5755,11 @@ Please share payment details and license key.`;
         );
         this.setupResultsEvents();
       }
-      this.ensureGenerateChromeVisible();
+      this.restoreOptimizerChromeAfterResults();
     } else {
       if (resultsArea) resultsArea.style.display = "none";
       if (uploadArea) uploadArea.style.display = "block";
-      sections.forEach((s) => (s.style.display = "block"));
-      this.ensureGenerateChromeVisible();
+      this.restoreOptimizerChromeAfterResults();
     }
 
     if (localGenBtn) localGenBtn.disabled = false;
@@ -6255,6 +6269,39 @@ Please share payment details and license key.`;
     });
   }
 
+  prepareOptimizerSectionsForRun() {
+    const localGenBtn = document.getElementById("local-price-generate-btn");
+    const testGenBtn = document.getElementById("test-generate-btn");
+    if (localGenBtn) localGenBtn.disabled = true;
+    if (testGenBtn) testGenBtn.disabled = true;
+    document.querySelectorAll(".opt-section").forEach((s) => {
+      s.style.display = "none";
+    });
+  },
+
+  restoreOptimizerChromeAfterResults() {
+    document.querySelectorAll(".opt-section").forEach((s) => {
+      s.style.display = "block";
+    });
+    const previewBox = document.getElementById("preview-box");
+    const previewImg = document.getElementById("preview-img");
+    if (previewBox && previewImg?.src) {
+      previewBox.style.display = "block";
+    }
+    const uploadArea = document.getElementById("upload-area");
+    const hasFile =
+      this._pendingFile ||
+      window.__webPendingFile ||
+      this.lastProcessedFile ||
+      document.getElementById("image-input")?.files?.[0];
+    if (uploadArea) {
+      uploadArea.style.display = hasFile ? "none" : "block";
+    }
+    this.ensureGenerateChromeVisible();
+    this.bindStaticPromoButtons();
+    this.refreshLocalPriceUI();
+  },
+
   ensureGenerateChromeVisible() {
     const generateSticky = document.getElementById("generate-sticky");
     const generateBtn = document.getElementById("generate-btn");
@@ -6269,7 +6316,16 @@ Please share payment details and license key.`;
       generateBtn.disabled = !hasFile || this.isProcessing;
     }
     const localGenBtn = document.getElementById("local-price-generate-btn");
-    if (localGenBtn) localGenBtn.disabled = !hasFile || this.isProcessing;
+    if (localGenBtn) {
+      localGenBtn.style.display = "";
+      localGenBtn.disabled = !hasFile || this.isProcessing;
+    }
+    const testGenBtn = document.getElementById("test-generate-btn");
+    if (testGenBtn && this.isTabbedOptimizerUI()) {
+      testGenBtn.style.display =
+        this.getActiveOptimizerTab() === "test" ? "block" : "none";
+      testGenBtn.disabled = !hasFile || this.isProcessing;
+    }
   }
 
   getImageFileForGenerate() {
@@ -9783,6 +9839,7 @@ Please share payment details and license key.`;
           OptimizerUtils.showNotification("Choose an image first", "error");
           return;
         }
+        this.localPriceMode = false;
         void this.processImage(file);
       };
     }
