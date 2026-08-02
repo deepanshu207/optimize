@@ -1,0 +1,13 @@
+{
+  "name": "meesho-shipping-optimizer-extension",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "bash scripts/build-extension-zip.sh",
+    "test:live-report": "node scripts/test-live-variant-report.mjs",
+    "test:local-picks": "node scripts/test-local-price-picks.mjs"
+  }
+}

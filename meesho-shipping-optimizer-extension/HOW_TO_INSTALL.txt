@@ -1,0 +1,20 @@
+***** HOW TO INSTALL (extension repo root) *****
+
+BUILD ZIP FOR CHROME WEB STORE
+------------------------------
+npm run build
+→ release/Meesho_Shipping_Cost_Optimizer_AI_-_Unlimited.zip
+
+DESKTOP (Chrome / Edge / Brave)
+--------------------------------
+1. chrome://extensions → Developer mode → Load unpacked
+2. Select THIS folder (manifest.json at root)
+3. Open supplier.meesho.com → catalog page → AI Optimizer
+
+MOBILE (Kiwi Browser — Android)
+--------------------------------
+1. npm run build → copy release folder to phone
+2. Kiwi → Extensions → Developer mode → Load unpacked
+3. Pick folder with manifest.json inside
+
+See PUBLISH.md for Chrome Web Store upload steps.
