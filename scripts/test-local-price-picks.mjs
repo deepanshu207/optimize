@@ -97,18 +97,6 @@ assert(
   "floor pair is 59+60 not 64+65",
 );
 
-function poolSizeForPickCount(pickCount) {
-  const parsed = parseInt(pickCount, 10);
-  const n = Number.isFinite(parsed)
-    ? Math.min(10, Math.max(2, parsed))
-    : 2;
-  return Math.min(20, Math.max(n + 4, n * 3));
-}
-
-assert(poolSizeForPickCount(2) === 6, "pool size for 2 picks is 6");
-assert(poolSizeForPickCount(4) === 12, "pool size for 4 picks is 12");
-assert(poolSizeForPickCount(10) === 20, "pool size caps at 20");
-
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

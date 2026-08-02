@@ -124,18 +124,11 @@ function pickLocalStrategy(prices) {
   };
 }
 
-/** Empirical KB anchors when CSV/live rows lack file-size metadata. */
-const LOCAL_TIER_KB_FALLBACK = {
-  "10004": { 59: 52, 60: 53 },
-};
-
 const LocalPriceDB = {
   KEY: "meesho_local_price_db",
   REPORTS_KEY: "meesho_local_price_reports",
   FINGERPRINTS_KEY: "meesho_local_price_fingerprints",
   SEEDED_KEY: "meesho_local_price_seeded",
-  SEED_VERSION: 2,
-  SEED_VERSION_KEY: "meesho_local_price_seed_version",
   MAX_ENTRIES: 200,
   MAX_REPORTS: 50,
   MAX_FINGERPRINTS: 500,
@@ -197,199 +190,6 @@ const LocalPriceDB = {
 
   hasLiveTierLearned(catId, tierPrice) {
     return this.getTierLearnedStats(catId, tierPrice) != null;
-  },
-
-  tierKbFallback(catId, tierPrice) {
-    const id = String(catId || "");
-    const tier = Number(tierPrice);
-    if (!id || !tier) return null;
-    const map = LOCAL_TIER_KB_FALLBACK[id];
-    if (map && map[tier] > 0) return map[tier];
-    const floor = this.resolveLearnedTier(id);
-    if (floor && tier === floor + 1 && map?.[floor]) {
-      return map[floor] + 1;
-    }
-    return null;
-  },
-
-  /** Synthetic refs from learned floor tiers — used when session live run is high slab (e.g. ₹68). */
-  getCategoryFloorRefs(catId) {
-    const id = String(catId || "");
-    if (!id) return [];
-    const profile = this.getCategoryProfile(id);
-    const floor = this.resolveLearnedTier(id, profile);
-    const cap = this.getShippingCap(id) || floor;
-    const tierSet = new Set(
-      (profile.recommendedPrices || [])
-        .map((p) => Number(p))
-        .filter((p) => p > 0 && p <= cap),
-    );
-    if (floor > 0) tierSet.add(floor);
-    if (!tierSet.size) return [];
-
-    const fps = this._readFingerprints().filter(
-      (f) => f.cat === id && tierSet.has(Number(f.shipping)),
-    );
-    const entries = this._read().filter(
-      (e) => e.cat === id && tierSet.has(Number(e.price)),
-    );
-
-    const refs = [];
-    const seen = new Set();
-    const pushRef = (ship, kb, borderPx, variantId, name, source) => {
-      const key = `${ship}:${kb}:${borderPx}:${variantId || name}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const kbNum = Number(kb) || this.tierKbFallback(id, ship) || 0;
-      const borderNum = Number(borderPx) || 0;
-      refs.push({
-        variantId: variantId || `learned-${ship}-${refs.length}`,
-        name: name || `Learned ₹${ship}`,
-        shippingCost: Number(ship),
-        variantStyle: "standard",
-        liveVerified: false,
-        isVerified: false,
-        recommended: (profile.recommendedPrices || []).includes(Number(ship)),
-        categoryLearned: true,
-        meta: {
-          path: "standard",
-          style: "standard",
-          kb: kbNum,
-          borderPx: borderNum || undefined,
-          categoryLearned: true,
-          source,
-        },
-      });
-    };
-
-    fps.forEach((f) => {
-      pushRef(
-        f.shipping,
-        f.kb,
-        f.borderPx,
-        f.variantId,
-        f.name,
-        f.source || "fingerprint",
-      );
-    });
-    entries.forEach((e) => {
-      pushRef(
-        e.price,
-        e.kb,
-        e.borderPx,
-        e.variantId,
-        e.name,
-        "history",
-      );
-    });
-
-    if (!refs.length && floor > 0) {
-      tierSet.forEach((tier) => {
-        const fb = this.tierKbFallback(id, tier);
-        if (fb) pushRef(tier, fb, 22, "", "", "fallback");
-      });
-    }
-
-    return refs.sort(
-      (a, b) => Number(a.shippingCost) - Number(b.shippingCost),
-    );
-  },
-
-  /**
-   * Rotating generation profiles for local pool — spreads border/KB near floor tiers.
-   */
-  getFloorBandGenerationProfiles(catId) {
-    const id = String(catId || "");
-    const profile = this.getCategoryProfile(id);
-    const floor = this.resolveLearnedTier(id, profile);
-    const cap = this.getShippingCap(id) || floor;
-    const tiers =
-      profile.recommendedPrices?.length
-        ? profile.recommendedPrices
-            .map((p) => Number(p))
-            .filter((p) => p > 0 && p <= cap)
-        : floor > 0
-          ? [floor]
-          : [];
-    if (!tiers.length) return [];
-
-    const profiles = [];
-    const seen = new Set();
-
-    tiers.forEach((tier) => {
-      const stats = this.getTierLearnedStats(id, tier);
-      const tierProf = this.getEmpiricalTierProfile(id, tier);
-      const anchorKb =
-        stats?.medianKb ||
-        tierProf?.anchorKb ||
-        this.tierKbFallback(id, tier) ||
-        null;
-      const borderMax =
-        stats?.medianBorder ?? tierProf?.borderMax ?? 24;
-      const borderMin =
-        tierProf?.borderMin ?? Math.max(8, borderMax - 6);
-      const maxKb =
-        tierProf?.maxKb ||
-        (anchorKb != null
-          ? Math.min(Math.ceil(anchorKb * 1.12), anchorKb + 6)
-          : null);
-
-      const base = {
-        tier,
-        badgeCount: tierProf?.badgeCount ?? 0,
-        maxKb,
-        anchorKb,
-      };
-
-      const addProfile = (minB, maxB, kbCap) => {
-        const key = `${tier}:${minB}-${maxB}:${kbCap}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        profiles.push({
-          ...base,
-          borderMin: minB,
-          borderMax: maxB,
-          maxKb: kbCap != null ? kbCap : maxKb,
-        });
-      };
-
-      if (borderMin != null && borderMax != null) {
-        addProfile(borderMin, borderMax, maxKb);
-        if (borderMax - borderMin >= 4) {
-          const mid = Math.round((borderMin + borderMax) / 2);
-          addProfile(
-            Math.max(8, mid - 2),
-            Math.min(mid + 2, borderMax + 2),
-            maxKb,
-          );
-        }
-      } else {
-        addProfile(18, 24, maxKb);
-        addProfile(22, 28, maxKb);
-      }
-    });
-
-    if (!profiles.length && floor > 0) {
-      const fb = this.tierKbFallback(id, floor);
-      profiles.push({
-        tier: floor,
-        borderMin: 18,
-        borderMax: 24,
-        maxKb: fb ? fb + 6 : null,
-        anchorKb: fb,
-        badgeCount: 0,
-      });
-      profiles.push({
-        tier: floor,
-        borderMin: 22,
-        borderMax: 28,
-        maxKb: fb ? fb + 5 : null,
-        anchorKb: fb,
-        badgeCount: 0,
-      });
-    }
-
-    return profiles;
   },
 
   enrichVariantFromLiveTier(v, catId = "") {
@@ -466,18 +266,12 @@ const LocalPriceDB = {
 
   _variantFingerprint(v, catId, source = "run", tierPrice = 0) {
     const est = this.estOf(v);
-    const ship = Number(tierPrice || v.shippingCost || 0);
-    let kb =
-      Number(v.meta?.kb || v.meta?.actualKb || 0) ||
-      (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0);
-    if (!kb && ship > 0) {
-      kb = this.tierKbFallback(catId, ship) || 0;
-    }
     return {
       cat: String(catId || ""),
-      shipping: ship,
+      shipping: Number(tierPrice || v.shippingCost || 0),
       est,
-      kb,
+      kb: Number(v.meta?.kb || v.meta?.actualKb || 0) ||
+        (v.blob?.size ? Math.ceil(v.blob.size / 1024) : 0),
       width: v.meta?.width || v.meta?.canvasW || "",
       height: v.meta?.height || v.meta?.canvasH || "",
       borderPx: v.meta?.borderPx ?? "",
@@ -969,26 +763,18 @@ const LocalPriceDB = {
 
     const tierProf = this.getEmpiricalTierProfile(catId, tier);
     if (tierProf?.maxKb) {
-      const capped = (variants || []).filter((v) => {
+      return (variants || []).filter((v) => {
         const kb = this.variantKb(v);
         return kb > 0 && kb <= tierProf.maxKb;
       });
-      if (capped.length) return capped;
     }
 
+    // Widen once — still cap far above anchor (no 93–123KB when anchor ~52)
     const wideTol = Math.min(tol + 4, 10);
-    const wide = (variants || []).filter((v) => {
+    return (variants || []).filter((v) => {
       const kb = this.variantKb(v);
       return kb > 0 && kb >= anchor - wideTol && kb <= anchor + wideTol;
     });
-    if (wide.length) return wide;
-
-    const withKb = (variants || []).filter((v) => this.variantKb(v) > 0);
-    if (!withKb.length) return variants || [];
-    return [...withKb].sort(
-      (a, b) =>
-        Math.abs(this.variantKb(a) - anchor) - Math.abs(this.variantKb(b) - anchor),
-    );
   },
 
   scoreLiveReferenceAlignment(v, liveRefs, tierStats, anchorKb = null) {
@@ -1050,7 +836,6 @@ const LocalPriceDB = {
     tierPrice = null,
     liveRefs = null,
     anchorKb = null,
-    diversityKbs = null,
   ) {
     const kb = this.variantKb(v);
     const style = String(
@@ -1068,12 +853,6 @@ const LocalPriceDB = {
       stats,
       anchorKb,
     );
-
-    for (const pk of diversityKbs || []) {
-      if (pk > 0 && kb > 0 && Math.abs(kb - pk) <= 3) {
-        score -= 220;
-      }
-    }
 
     if (stats) {
       if (stats.medianKb && kb > 0) {
@@ -1118,7 +897,6 @@ const LocalPriceDB = {
     excludeIds = new Set(),
     liveRefs = null,
     anchorKb = null,
-    diversityKbs = null,
   ) {
     const profile = this.getCategoryProfile(catId);
     const candidates = (variants || []).filter(
@@ -1136,7 +914,6 @@ const LocalPriceDB = {
         tierPrice,
         liveRefs,
         anchorKb,
-        diversityKbs,
       );
       if (score > bestScore) {
         bestScore = score;
@@ -1250,7 +1027,7 @@ const LocalPriceDB = {
 
   poolSizeForPickCount(pickCount) {
     const n = this.clampPickCount(pickCount);
-    return Math.min(20, Math.max(n + 4, n * 3));
+    return Math.min(10, Math.max(n + 2, n * 2));
   },
 
   /** Same canvas pattern as live Generate Variants — standard only, no ultra/analysis/framed. */
@@ -1337,20 +1114,6 @@ const LocalPriceDB = {
       parsed.recommendedPrices?.[0] ||
       parsed.uniquePrices?.[0] ||
       0;
-    const recTiers =
-      parsed.recommendedPrices?.length
-        ? parsed.recommendedPrices
-        : lowestTier
-          ? [lowestTier]
-          : [];
-    recTiers.forEach((tier) => {
-      const atTier = parsed.variants
-        .filter((v) => Number(v.shippingCost) === Number(tier))
-        .map((v) => this.enrichVariantFromLiveTier(v, catId));
-      if (atTier.length) {
-        this.saveFingerprints(atTier, catId, `csv_rec_${tier}`, tier);
-      }
-    });
     if (catId && parsed.variants.length && lowestTier) {
       const atLowest = parsed.variants
         .filter(
@@ -1665,8 +1428,7 @@ const LocalPriceDB = {
       ? this.getEmpiricalTierProfile(catId, learnedTier)
       : null;
     if (tierProf?.maxKb) {
-      const within = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
-      if (within.length >= count) pool = within;
+      pool = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
     }
     if (anchorKb > 0) {
       pool = [...pool].sort(
@@ -1694,7 +1456,6 @@ const LocalPriceDB = {
 
     const picked = [];
     const seen = new Set();
-    const pickedKbs = [];
     let clusterKb = anchorKb > 0 ? anchorKb : null;
 
     for (let i = 0; i < count; i++) {
@@ -1724,7 +1485,6 @@ const LocalPriceDB = {
         seen,
         liveRefs,
         clusterKb || anchorKb,
-        pickedKbs,
       );
       if (!v) {
         const rest = pool.filter((x) => !seen.has(String(x.variantId || "")));
@@ -1744,9 +1504,7 @@ const LocalPriceDB = {
         recommendedSet.has(Number(tier)) || singleTierOnly;
       picked.push(this._tagLocalVariant(v, tier, recommended));
       if (id) seen.add(id);
-      const vKb = this.variantKb(v);
-      if (vKb > 0) pickedKbs.push(vKb);
-      if (!clusterKb) clusterKb = vKb;
+      if (!clusterKb) clusterKb = this.variantKb(v);
     }
 
     if (!picked.length) {
@@ -1757,14 +1515,9 @@ const LocalPriceDB = {
         liveRefs,
         anchorKb,
       );
-      if (learned.length) {
-        return learned.map((v) =>
-          this._tagLocalVariant(v, learnedTier, true),
-        );
-      }
-      return sortedAll
-        .slice(0, count)
-        .map((v) => this._tagLocalVariant(v, learnedTier, true));
+      return learned.map((v) =>
+        this._tagLocalVariant(v, learnedTier, true),
+      );
     }
 
     const ranked = picked
@@ -2002,7 +1755,6 @@ const LocalPriceDB = {
         const result = this.importCsv(text);
         if (result.ok) {
           localStorage.setItem(this.SEEDED_KEY, "1");
-          localStorage.setItem(this.SEED_VERSION_KEY, String(this.SEED_VERSION));
           console.log("[LocalPriceDB] Loaded public seed report:", url, result);
           return result;
         }
@@ -2015,16 +1767,11 @@ const LocalPriceDB = {
 
   async ensureCategorySeed(catId) {
     const id = String(catId || "");
-    const storedVer = localStorage.getItem(this.SEED_VERSION_KEY);
-    if (storedVer !== String(this.SEED_VERSION)) {
-      localStorage.removeItem(this.SEEDED_KEY);
-    }
-    if (id && this.getCategoryProfile(id).hasData && storedVer === String(this.SEED_VERSION)) {
+    if (id && this.getCategoryProfile(id).hasData) {
       return this.getCategoryProfile(id);
     }
     const fetched = await this.fetchSeedReportsForCategory(id || "10004");
     if (fetched?.ok) {
-      localStorage.setItem(this.SEED_VERSION_KEY, String(this.SEED_VERSION));
       return this.getCategoryProfile(fetched.categoryId || id);
     }
     if (!this._readReports().length) {
@@ -3645,7 +3392,7 @@ Please share payment details and license key.`;
       const learnText = learned?.fingerprintCount
         ? ` · ${learned.fingerprintCount} learned refs (est/KB/style)`
         : "";
-      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}${cap ? ` · live cap ≤₹${cap}` : ""}${profile.strategy === "rupee_pair" ? " · local ignores high live slab" : ""}`;
+      hint.textContent = `📦 Tiers ₹${profile.tiers.join(", ")} · recommend ₹${profile.recommendedPrices.join(", ")}${learnText}${cap ? ` · live cap ≤₹${cap}` : ""}`;
       hint.style.color = "#047857";
     } else {
       hint.textContent =
@@ -5876,15 +5623,9 @@ Please share payment details and license key.`;
 
       const liveRefs = this.getLiveRefsForLocal(effectiveCatId);
       const liveHints = LocalPriceDB.getLiveGenerationHints(effectiveCatId);
-      const floorProfiles =
-        LocalPriceDB.getFloorBandGenerationProfiles(effectiveCatId);
-      const cap = LocalPriceDB.getShippingCap(effectiveCatId);
-      const sessionRefs = liveRefs.filter((r) => {
-        const ship = Number(r.shippingCost);
-        if (ship <= 0) return false;
-        if (cap != null && ship > cap) return false;
-        return LocalPriceDB.variantKb(r) > 0 || r.categoryLearned;
-      });
+      const sessionRefs = liveRefs.filter(
+        (r) => Number(r.shippingCost) > 0 && LocalPriceDB.variantKb(r) > 0,
+      );
       let targetTier =
         liveHints?.tier || profile.recommendedPrices?.[0] || null;
       if (!targetTier && sessionRefs.length) {
@@ -5942,15 +5683,12 @@ Please share payment details and license key.`;
             }
           : categoryLearned
             ? {
-                maxKb: floorProfiles[0]?.maxKb || null,
-                borderMin: floorProfiles[0]?.borderMin || null,
-                borderMax: floorProfiles[0]?.borderMax || null,
+                maxKb: null,
+                borderMin: null,
+                borderMax: null,
                 badgeCount: 0,
               }
             : null;
-
-      // Learned KB is for pick scoring — never hard-cap pool generation (was blocking all output).
-      const poolMaxKb = null;
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5977,24 +5715,13 @@ Please share payment details and license key.`;
               () => this.shouldStop,
               {
                 livePatternOnly: true,
-                maxKb: poolMaxKb,
-                variantOptions: (attempt) => {
-                  const prof =
-                    floorProfiles.length
-                      ? floorProfiles[(attempt - 1) % floorProfiles.length]
-                      : null;
-                  const opts = {
-                    badgeCount:
-                      prof?.badgeCount ?? genHints?.badgeCount ?? 0,
-                    lowBias: true,
-                  };
-                  const borderMin =
-                    prof?.borderMin ?? genHints?.borderMin ?? null;
-                  const borderMax =
-                    prof?.borderMax ?? genHints?.borderMax ?? null;
-                  if (borderMin != null && borderMax != null) {
-                    opts.borderMin = borderMin;
-                    opts.borderMax = borderMax;
+                maxKb: genHints?.maxKb ?? null,
+                variantOptions: () => {
+                  if (!genHints) return {};
+                  const opts = { badgeCount: genHints.badgeCount ?? 0 };
+                  if (genHints.borderMin != null && genHints.borderMax != null) {
+                    opts.borderMin = genHints.borderMin;
+                    opts.borderMax = genHints.borderMax;
                   }
                   return opts;
                 },
@@ -6027,19 +5754,7 @@ Please share payment details and license key.`;
         pickCount,
         liveRefs,
       );
-      const finalDisplay =
-        display.length > 0
-          ? display
-          : rawResults
-              .slice(0, pickCount)
-              .map((v, i) =>
-                LocalPriceDB._tagLocalVariant(
-                  v,
-                  targetTier || profile.recommendedPrices?.[0] || 0,
-                  i < 2,
-                ),
-              );
-      finalDisplay.forEach((row) =>
+      display.forEach((row) =>
         this.freezeRowPricing(row, {
           estShipping: row.meta?.staticEst ?? row.estShipping,
           shippingCost: 0,
@@ -6049,14 +5764,14 @@ Please share payment details and license key.`;
         }),
       );
 
-      this.currentResults = finalDisplay;
+      this.currentResults = display;
 
       const bestKb =
-        finalDisplay[0]?.meta?.kb ||
-        (finalDisplay[0]?.blob?.size
-          ? Math.ceil(finalDisplay[0].blob.size / 1024)
+        display[0]?.meta?.kb ||
+        (display[0]?.blob?.size
+          ? Math.ceil(display[0].blob.size / 1024)
           : "—");
-      const pickKbs = finalDisplay
+      const pickKbs = display
         .map((d) => LocalPriceDB.variantKb(d))
         .filter((k) => k > 0);
       const kbSpread =
@@ -6066,8 +5781,8 @@ Please share payment details and license key.`;
       const tierLabel = targetTier ? `₹${targetTier}` : "live";
       OptimizerUtils.showNotification(
         profile.hasData || liveRefs.length
-          ? `📍 ${finalDisplay.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
-          : `📍 ${finalDisplay.length} local picks — run Live once on this category`,
+          ? `📍 ${display.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
+          : `📍 ${display.length} local picks — run Live once on this category`,
         "success",
         8000,
       );
@@ -6458,47 +6173,23 @@ Please share payment details and license key.`;
   }
 
   getLiveRefsForLocal(catId) {
-    const profile = LocalPriceDB.getCategoryProfile(catId);
-    const floor = LocalPriceDB.resolveLearnedTier(catId, profile);
-    const cap = LocalPriceDB.getShippingCap(catId) || floor;
-    const floorTiers = new Set(
-      (profile.recommendedPrices || [])
-        .map((p) => Number(p))
-        .filter((p) => p > 0 && (cap == null || p <= cap)),
-    );
-    if (floor > 0) floorTiers.add(floor);
-
-    const inFloorBand = (r) => {
-      const ship = Number(r.shippingCost);
-      if (ship <= 0) return false;
-      if (cap != null && ship > cap) return false;
-      if (floorTiers.size) return floorTiers.has(ship);
-      return floor > 0 ? ship === floor : ship > 0;
-    };
-
+    const tier = LocalPriceDB.resolveLearnedTier(catId);
+    const matchTier = (r) =>
+      tier > 0 ? Number(r.shippingCost) === tier : Number(r.shippingCost) > 0;
     const pools = [
       ...(this.lastLivePricedResults || []),
       ...(this._liveLearnResults || []),
     ];
     const seen = new Set();
-    const sessionRefs = [];
+    const priced = [];
     for (const r of pools) {
-      if (!inFloorBand(r) || r.localOnly || r.meta?.localPrice) continue;
+      if (!matchTier(r) || r.localOnly || r.meta?.localPrice) continue;
       const id = String(r.variantId || "");
       if (id && seen.has(id)) continue;
       if (id) seen.add(id);
-      sessionRefs.push(r);
+      priced.push(r);
     }
-
-    const categoryRefs = LocalPriceDB.getCategoryFloorRefs(catId);
-    const merged = [...sessionRefs];
-    for (const ref of categoryRefs) {
-      const id = String(ref.variantId || "");
-      if (id && seen.has(id)) continue;
-      if (id) seen.add(id);
-      merged.push(ref);
-    }
-    return merged;
+  return priced;
   }
 
   buildLiveReportContext() {
