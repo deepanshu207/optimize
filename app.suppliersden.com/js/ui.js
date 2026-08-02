@@ -526,6 +526,8 @@ const OptimizerUI = {
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
     const applyLabel = isWeb ? "Save" : "Apply";
     const isLocalPick = !!r.localRecommended;
+    const localTargetTier =
+      Number(r.localEstShipping || r.meta?.localTier || 0) || 0;
     const isRecommended = !!r.recommended || !!r.meta?.recommended;
     const isBest = isLocalPick || !!options.isBest;
     const showPerCardApply = !isWeb && !isBest && !analysisMode;
@@ -542,7 +544,9 @@ const OptimizerUI = {
     const frozenShip = r._frozenPricing?.shippingCost ?? r.shippingCost ?? 0;
     const priceLabel = localPriceMode
       ? isLocalPick
-        ? "★ Local pick"
+        ? localTargetTier > 0
+          ? "★ target ₹" + localTargetTier
+          : "★ Local pick"
         : r.name || "Variant"
       : testLabMode || analysisMode
       ? frozenShip > 0
@@ -635,7 +639,9 @@ const OptimizerUI = {
                       analysisMode
                         ? '<div style="font-size:8px;color:#2563eb;font-weight:600;">static est</div>'
                         : localPriceMode
-                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">not live — verify on Meesho</div>'
+                        ? localTargetTier > 0
+                        ? '<div style="font-size:8px;color:#047857;font-weight:600;">floor band — verify on Meesho</div>'
+                        : '<div style="font-size:8px;color:#047857;font-weight:600;">not live — verify on Meesho</div>'
                         : testLabMode && r.shippingCost > 0
                         ? '<div style="font-size:8px;color:#047857;font-weight:600;">✓ live Meesho</div>'
                         : testLabMode && r.liveChecked

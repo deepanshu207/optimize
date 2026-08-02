@@ -564,6 +564,42 @@ const LocalPriceDB = {
     };
   },
 
+  /**
+   * Lavender path: live run is mostly high-slab (₹68) with only a few floor winners.
+   * Use category floor band (₹59+₹60) for local generate — not session rupee_pair built
+   * from mixed prices. Pink path: session single_lowest stays on session profile.
+   */
+  shouldUseCategoryFloorBandLocal(catId, sessionPrices, pricedRows = null) {
+    const categoryProfile = this.getCategoryProfile(catId);
+    const sessionProfile = this.buildSessionProfile(catId, sessionPrices);
+    if (sessionProfile?.strategy === "single_lowest") return false;
+
+    const cap = this.getShippingCap(catId, categoryProfile);
+    if (cap == null) return false;
+
+    let floorCount = 0;
+    let highCount = 0;
+    const rows = pricedRows?.length ? pricedRows : null;
+    if (rows) {
+      for (const r of rows) {
+        const ship = Number(r.shippingCost);
+        if (ship <= 0) continue;
+        if (ship <= cap) floorCount++;
+        else highCount++;
+      }
+    } else {
+      const prices = [...new Set((sessionPrices || []).filter((p) => p > 0))];
+      for (const p of prices) {
+        if (p <= cap) floorCount++;
+        else highCount++;
+      }
+    }
+
+    if (highCount === 0) return false;
+    if (floorCount === 0) return true;
+    return highCount > floorCount;
+  },
+
   /** Max live ₹ to show/recommend for this category (e.g. 60 when pair is 59+60). */
   getShippingCap(catId, profileOverride = null) {
     const profile = profileOverride || this.getCategoryProfile(catId);
@@ -5998,7 +6034,14 @@ Please share payment details and license key.`;
       effectiveCatId,
       sessionPrices,
     );
-    const pickProfile = sessionLocalProfile || categoryProfile;
+    const useFloorBand = LocalPriceDB.shouldUseCategoryFloorBandLocal(
+      effectiveCatId,
+      sessionPrices,
+      sessionPriced,
+    );
+    const pickProfile = useFloorBand
+      ? categoryProfile
+      : sessionLocalProfile || categoryProfile;
 
     this.localPriceProfile = pickProfile;
 
@@ -6013,7 +6056,11 @@ Please share payment details and license key.`;
         .slice(0, 3)
         .map((p) => `₹${p}`)
         .join(", ");
-      const scope = sessionLocalProfile ? "this image" : "category";
+      const scope = useFloorBand
+        ? "category floor"
+        : sessionLocalProfile
+          ? "this image"
+          : "category";
       OptimizerUtils.showNotification(
         `📍 Local mode (${scope}) · ${tierLabel} · ${pickProfile.strategyReason}`,
         "info",
@@ -6046,8 +6093,13 @@ Please share payment details and license key.`;
       this.gatherSettings();
 
       const sessionFloorRefs = this.getSessionFloorRefs(effectiveCatId);
-      const highSlabSession = this.isSessionHighSlabDominant(effectiveCatId);
-      const liveRefs = this.getLiveRefsForLocal(effectiveCatId);
+      const highSlabSession =
+        useFloorBand || this.isSessionHighSlabDominant(effectiveCatId);
+      const liveRefs = useFloorBand
+        ? sessionFloorRefs.length
+          ? sessionFloorRefs
+          : LocalPriceDB.getCategoryFloorRefs(effectiveCatId)
+        : this.getLiveRefsForLocal(effectiveCatId);
       const liveHints = LocalPriceDB.getLiveGenerationHints(effectiveCatId);
       const floorProfiles = LocalPriceDB.getFloorBandGenerationProfiles(
         effectiveCatId,
@@ -6066,7 +6118,9 @@ Please share payment details and license key.`;
         );
       });
       let targetTier =
-        liveHints?.tier || pickProfile.recommendedPrices?.[0] || null;
+        pickProfile.recommendedPrices?.[0] ||
+        liveHints?.tier ||
+        null;
       if (!targetTier && sessionRefs.length) {
         const ships = sessionRefs
           .map((r) => Number(r.shippingCost))
@@ -6252,10 +6306,14 @@ Please share payment details and license key.`;
         pickKbs.length >= 2
           ? Math.max(...pickKbs) - Math.min(...pickKbs)
           : 0;
-      const tierLabel = targetTier ? `₹${targetTier}` : "live";
+      const bandPrices = (pickProfile.recommendedPrices || [])
+        .slice(0, 3)
+        .map((p) => `₹${p}`)
+        .join("+");
+      const tierLabel = bandPrices || (targetTier ? `₹${targetTier}` : "live");
       OptimizerUtils.showNotification(
         pickProfile.hasData || liveRefs.length
-          ? `📍 ${finalDisplay.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
+          ? `📍 ${finalDisplay.length} picks · ${tierLabel} floor band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
           : `📍 ${finalDisplay.length} local picks — run Live once on this category`,
         "success",
         8000,
@@ -6684,9 +6742,10 @@ Please share payment details and license key.`;
     );
   }
 
-  /** Current session priced only above recommend cap (lavender ₹68 path). */
+  /** Session priced only above category recommend cap (no floor winners at all). */
   isSessionHighSlabDominant(catId) {
-    const cap = LocalPriceDB.getShippingCap(catId);
+    const categoryProfile = LocalPriceDB.getCategoryProfile(catId);
+    const cap = LocalPriceDB.getShippingCap(catId, categoryProfile);
     if (cap == null) return false;
     const pools = [
       ...(this.lastLivePricedResults || []),
