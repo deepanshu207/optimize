@@ -2252,12 +2252,12 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=127";
+      return "/js/staticFrameCompose.mjs?v=128";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=127");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=128");
     }
-    return "/js/staticFrameCompose.mjs?v=127";
+    return "/js/staticFrameCompose.mjs?v=128";
   }
 
   async importOptimizerModule(getUrl, isReady, cacheKey) {
@@ -5863,6 +5863,7 @@ Please share payment details and license key.`;
     if (processingArea) processingArea.style.display = "none";
 
     if (this.currentResults.length > 0 || (window.WEB_OPTIMIZER_MODE && (this.showcaseResults.length > 0 || this.promoLifestyleResults.length > 0 || this.tallStaticResults.length > 0 || this.gownStaticResults.length > 0))) {
+      await this.prepareEditableResultPreviews(this.currentResults);
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
@@ -6218,6 +6219,7 @@ Please share payment details and license key.`;
       if (resultsArea) {
         resultsArea.style.display = "block";
         delete resultsArea.dataset.view;
+        await this.prepareEditableResultPreviews(this.currentResults);
         resultsArea.innerHTML = OptimizerUI.getResultsHTML(
           this.currentResults,
           this.getResultsViewOptions(),
@@ -7633,10 +7635,58 @@ Please share payment details and license key.`;
   }
 
   hasAdvancedEditor(row) {
+    if (!row?.layers) return false;
+    if (row.layers._staticFrame || (row.layers._badgePlacements || []).length) {
+      return true;
+    }
     if (window.StaticFrameCompose?.isEditableVariant) {
       return window.StaticFrameCompose.isEditableVariant(row);
     }
-    return this.isStaticPromoRow(row) || !!(row?.layers?._badgePlacements || []).length;
+    return this.isStaticPromoRow(row);
+  }
+
+  canEditResultRow(row) {
+    if (!row?.layers) return false;
+    if (typeof OptimizerUI !== "undefined" && OptimizerUI.isStaticPromoEditorRow) {
+      return OptimizerUI.isStaticPromoEditorRow(row);
+    }
+    return !!(
+      row.layers.full ||
+      row.layers.productOnly ||
+      row.layers._staticFrame ||
+      (row.layers._badgePlacements || []).length
+    );
+  }
+
+  /** Compose static previews on cards after generate (colors/badges editor needs imageUrl). */
+  async prepareEditableResultPreviews(rows) {
+    const editable = (rows || []).filter((r) => this.canEditResultRow(r));
+    if (!editable.length) return;
+    const loaded = await this.preloadStaticComposeModule();
+    if (!loaded) {
+      console.warn(
+        "Static compose module unavailable — tap-to-edit preview may not update",
+      );
+      return;
+    }
+    for (const row of editable) {
+      try {
+        if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+          await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
+        }
+      } catch (e) {
+        console.warn("Placement meta bootstrap failed:", e);
+      }
+    }
+    const limit = Math.min(editable.length, 16);
+    for (let i = 0; i < limit; i++) {
+      const row = editable[i];
+      try {
+        await this.applyRowStaticPreview(row.variantId, row);
+      } catch (e) {
+        console.warn("Card preview compose failed:", row.variantId, e);
+      }
+    }
   }
 
   variantBadgesOnlyCompose(row) {
@@ -7867,8 +7917,26 @@ Please share payment details and license key.`;
 
   async applyRowStaticPreview(variantId, row = null) {
     const target = row || this.findResultRow(variantId);
-    if (!target?.layers?._staticFrame) return "";
+    if (!target?.layers) return "";
     await this.preloadStaticComposeModule();
+    if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
+      try {
+        await window.StaticFrameCompose.ensureVariantPlacementMeta(target);
+      } catch (e) {
+        console.warn("ensureVariantPlacementMeta failed:", e);
+      }
+    }
+    if (!target.layers._staticFrame) {
+      const fallback =
+        (typeof OptimizerUI !== "undefined" &&
+          OptimizerUI.pickResultImageSrc?.(target)) ||
+        target.imageUrl ||
+        target.pricingImageUrl ||
+        target.dataUrl ||
+        "";
+      if (fallback) this.applyStaticPreviewToRow(target, fallback, variantId);
+      return fallback;
+    }
     try {
       const url = await this.composePreviewForRow(target);
       if (url) this.applyStaticPreviewToRow(target, url, variantId);
@@ -9803,10 +9871,14 @@ Please share payment details and license key.`;
           this._staticControlsVariantId === row.variantId && !staticControlsStale;
         if (!sameVariant) {
           this._staticControlsVariantId = row.variantId;
-          void this.preloadStaticComposeModule().then(() => {
-            if (this._editingVariantId === row.variantId) {
-              this.renderStaticBadgePlacementControls(row, staticSection);
+          void this.preloadStaticComposeModule().then((loaded) => {
+            if (this._editingVariantId !== row.variantId) return;
+            if (!loaded || !window.StaticFrameCompose) {
+              staticSection.innerHTML =
+                '<p style="font-size:11px;color:#b45309;margin:0;">Editor controls failed to load — reload the extension and try again.</p>';
+              return;
             }
+            this.renderStaticBadgePlacementControls(row, staticSection);
           });
         } else {
           const slider = staticSection.querySelector("#static-border-thickness");
@@ -10113,7 +10185,11 @@ Please share payment details and license key.`;
 
   async openVariantEditor(variantId) {
     const row = this.findResultRow(variantId);
-    if (!row?.layers) {
+    if (!this.canEditResultRow(row)) {
+      if (row) {
+        this.openVariantFullPreview(row);
+        return;
+      }
       OptimizerUtils.showNotification(
         "Layer edit not available for this variant",
         "info"
@@ -10264,7 +10340,12 @@ Please share payment details and license key.`;
       img.onclick = () => {
         const variantId = img.dataset.variantId;
         if (!variantId) return;
-        this.openVariantEditor(variantId);
+        const row = this.findResultRow(variantId);
+        if (this.canEditResultRow(row)) {
+          void this.openVariantEditor(variantId);
+        } else if (row) {
+          this.openVariantFullPreview(row);
+        }
       };
     });
 
