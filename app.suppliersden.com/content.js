@@ -2252,12 +2252,30 @@ class MeeshoShippingOptimizer {
 
   getStaticComposeModuleUrl() {
     if (window.WEB_OPTIMIZER_MODE) {
-      return "/js/staticFrameCompose.mjs?v=128";
+      return "/js/staticFrameCompose.mjs?v=129";
     }
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=128");
+      return chrome.runtime.getURL("js/staticFrameCompose.mjs?v=129");
     }
-    return "/js/staticFrameCompose.mjs?v=128";
+    return "/js/staticFrameCompose.mjs?v=129";
+  }
+
+  waitForStaticComposeReady(timeoutMs = 10000) {
+    if (window.StaticFrameCompose?.composeStaticPreview) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const done = (ok) => {
+        clearTimeout(timer);
+        window.removeEventListener("static-compose-ready", onReady);
+        resolve(ok);
+      };
+      const onReady = () =>
+        done(!!window.StaticFrameCompose?.composeStaticPreview);
+      const timer = setTimeout(
+        () => done(!!window.StaticFrameCompose?.composeStaticPreview),
+        timeoutMs,
+      );
+      window.addEventListener("static-compose-ready", onReady, { once: true });
+    });
   }
 
   async importOptimizerModule(getUrl, isReady, cacheKey) {
@@ -2292,10 +2310,43 @@ class MeeshoShippingOptimizer {
   }
 
   async preloadStaticComposeModule() {
-    return this.importOptimizerModule(
+    if (window.StaticFrameCompose?.composeStaticPreview) return true;
+    const loaded = await this.importOptimizerModule(
       () => this.getStaticComposeModuleUrl(),
       () => !!window.StaticFrameCompose?.composeStaticPreview,
       "__staticComposePromise",
+    );
+    if (loaded) return true;
+    return await this.waitForStaticComposeReady();
+  }
+
+  /** Best URL for variant card / editor preview (layers, upload, or data URL). */
+  resolveVariantPreviewSrc(row) {
+    if (!row) return "";
+    if (typeof OptimizerUI !== "undefined" && OptimizerUI.pickResultImageSrc) {
+      const picked = OptimizerUI.pickResultImageSrc(row);
+      if (picked) return picked;
+    }
+    if (typeof MeeshoAPI !== "undefined" && MeeshoAPI.resolveDisplayUrl) {
+      const resolved = MeeshoAPI.resolveDisplayUrl(row);
+      if (resolved) return resolved;
+    }
+    const layers = row.layers;
+    if (layers) {
+      return (
+        layers.full ||
+        layers.noStickers ||
+        layers.productOnly ||
+        layers.noBorder ||
+        ""
+      );
+    }
+    return (
+      row.imageUrl ||
+      row.dataUrl ||
+      row.pricingImageUrl ||
+      row.uploadedUrl ||
+      ""
     );
   }
 
@@ -5499,6 +5550,7 @@ Please share payment details and license key.`;
       if (resultsArea) {
         resultsArea.style.display = "block";
         resultsArea.dataset.view = "test";
+        await this.prepareEditableResultPreviews(this.testLabCurrentResults);
         resultsArea.innerHTML = OptimizerUI.getResultsHTML(
           this.testLabCurrentResults,
           this.getTestLabResultsViewOptions()
@@ -7685,6 +7737,8 @@ Please share payment details and license key.`;
         await this.applyRowStaticPreview(row.variantId, row);
       } catch (e) {
         console.warn("Card preview compose failed:", row.variantId, e);
+        const fb = this.resolveVariantPreviewSrc(row);
+        if (fb) this.applyStaticPreviewToRow(row, fb, row.variantId);
       }
     }
   }
@@ -7927,24 +7981,25 @@ Please share payment details and license key.`;
       }
     }
     if (!target.layers._staticFrame) {
-      const fallback =
-        (typeof OptimizerUI !== "undefined" &&
-          OptimizerUI.pickResultImageSrc?.(target)) ||
-        target.imageUrl ||
-        target.pricingImageUrl ||
-        target.dataUrl ||
-        "";
+      const fallback = this.resolveVariantPreviewSrc(target);
       if (fallback) this.applyStaticPreviewToRow(target, fallback, variantId);
       return fallback;
     }
     try {
       const url = await this.composePreviewForRow(target);
-      if (url) this.applyStaticPreviewToRow(target, url, variantId);
-      return url;
+      if (url) {
+        this.applyStaticPreviewToRow(target, url, variantId);
+        return url;
+      }
     } catch (e) {
       console.warn("Static preview compose failed:", e);
-      return "";
     }
+    const fallback = this.resolveVariantPreviewSrc(target);
+    if (fallback) {
+      this.applyStaticPreviewToRow(target, fallback, variantId);
+      return fallback;
+    }
+    return "";
   }
 
   async refreshStaticPreview(variantId) {
@@ -9897,7 +9952,16 @@ Please share payment details and license key.`;
       }
     }
 
-    if (preview) preview.src = row.imageUrl;
+    if (preview) {
+      const previewSrc = this.resolveVariantPreviewSrc(row);
+      if (previewSrc) {
+        preview.src = previewSrc;
+        preview.style.display = "block";
+      } else {
+        preview.removeAttribute("src");
+        preview.style.display = "none";
+      }
+    }
     if (stickerCb) stickerCb.checked = !!flags.stickersRemoved;
     if (borderOnlyCb) borderOnlyCb.checked = !!flags.borderOnlyRemoved;
     if (cleanCb) cleanCb.checked = !!flags.cleanProduct;
@@ -10196,8 +10260,15 @@ Please share payment details and license key.`;
       );
       return;
     }
+    const composeLoaded = await this.preloadStaticComposeModule();
+    if (!composeLoaded) {
+      OptimizerUtils.showNotification(
+        "Editor controls loading… if sliders missing, reload the extension",
+        "info",
+        5000,
+      );
+    }
     if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
-      await this.preloadStaticComposeModule();
       if (window.StaticFrameCompose?.ensureVariantPlacementMeta) {
         await window.StaticFrameCompose.ensureVariantPlacementMeta(row);
       } else if (
@@ -10212,6 +10283,8 @@ Please share payment details and license key.`;
     }
     this._editingVariantId = variantId;
     this.ensureFrozenPricing(row);
+    const previewSrc = this.resolveVariantPreviewSrc(row);
+    if (previewSrc && !row.imageUrl) row.imageUrl = previewSrc;
     this.ensureVariantEditorPanel();
     if (this.hasAdvancedEditor(row) || this.isStaticPromoRow(row)) {
       try {

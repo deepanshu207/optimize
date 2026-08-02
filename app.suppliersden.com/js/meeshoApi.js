@@ -3,10 +3,10 @@
 function staticComposeModuleUrls() {
   const versioned =
     typeof window !== "undefined" && window.WEB_OPTIMIZER_MODE
-      ? "/js/staticFrameCompose.mjs?v=127"
+      ? "/js/staticFrameCompose.mjs?v=129"
       : typeof chrome !== "undefined" && chrome.runtime?.getURL
-      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=127")
-      : "/js/staticFrameCompose.mjs?v=127";
+      ? chrome.runtime.getURL("js/staticFrameCompose.mjs?v=129")
+      : "/js/staticFrameCompose.mjs?v=129";
   const plain = versioned.replace(/\?.*$/, "");
   return versioned === plain ? [versioned] : [versioned, plain];
 }
