@@ -969,18 +969,26 @@ const LocalPriceDB = {
 
     const tierProf = this.getEmpiricalTierProfile(catId, tier);
     if (tierProf?.maxKb) {
-      return (variants || []).filter((v) => {
+      const capped = (variants || []).filter((v) => {
         const kb = this.variantKb(v);
         return kb > 0 && kb <= tierProf.maxKb;
       });
+      if (capped.length) return capped;
     }
 
-    // Widen once — still cap far above anchor (no 93–123KB when anchor ~52)
     const wideTol = Math.min(tol + 4, 10);
-    return (variants || []).filter((v) => {
+    const wide = (variants || []).filter((v) => {
       const kb = this.variantKb(v);
       return kb > 0 && kb >= anchor - wideTol && kb <= anchor + wideTol;
     });
+    if (wide.length) return wide;
+
+    const withKb = (variants || []).filter((v) => this.variantKb(v) > 0);
+    if (!withKb.length) return variants || [];
+    return [...withKb].sort(
+      (a, b) =>
+        Math.abs(this.variantKb(a) - anchor) - Math.abs(this.variantKb(b) - anchor),
+    );
   },
 
   scoreLiveReferenceAlignment(v, liveRefs, tierStats, anchorKb = null) {
@@ -1657,7 +1665,8 @@ const LocalPriceDB = {
       ? this.getEmpiricalTierProfile(catId, learnedTier)
       : null;
     if (tierProf?.maxKb) {
-      pool = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
+      const within = pool.filter((v) => this.variantKb(v) <= tierProf.maxKb);
+      if (within.length >= count) pool = within;
     }
     if (anchorKb > 0) {
       pool = [...pool].sort(
@@ -1748,9 +1757,14 @@ const LocalPriceDB = {
         liveRefs,
         anchorKb,
       );
-      return learned.map((v) =>
-        this._tagLocalVariant(v, learnedTier, true),
-      );
+      if (learned.length) {
+        return learned.map((v) =>
+          this._tagLocalVariant(v, learnedTier, true),
+        );
+      }
+      return sortedAll
+        .slice(0, count)
+        .map((v) => this._tagLocalVariant(v, learnedTier, true));
     }
 
     const ranked = picked
@@ -5935,12 +5949,8 @@ Please share payment details and license key.`;
               }
             : null;
 
-      const profileMaxKb = floorProfiles
-        .map((p) => Number(p.maxKb))
-        .filter((k) => k > 0);
-      const poolMaxKb =
-        genHints?.maxKb ||
-        (profileMaxKb.length ? Math.max(...profileMaxKb) : null);
+      // Learned KB is for pick scoring — never hard-cap pool generation (was blocking all output).
+      const poolMaxKb = null;
 
       const variationPromise =
         typeof MeeshoAPI.generateLocalVariations === "function"
@@ -5976,6 +5986,7 @@ Please share payment details and license key.`;
                   const opts = {
                     badgeCount:
                       prof?.badgeCount ?? genHints?.badgeCount ?? 0,
+                    lowBias: true,
                   };
                   const borderMin =
                     prof?.borderMin ?? genHints?.borderMin ?? null;
@@ -6016,7 +6027,19 @@ Please share payment details and license key.`;
         pickCount,
         liveRefs,
       );
-      display.forEach((row) =>
+      const finalDisplay =
+        display.length > 0
+          ? display
+          : rawResults
+              .slice(0, pickCount)
+              .map((v, i) =>
+                LocalPriceDB._tagLocalVariant(
+                  v,
+                  targetTier || profile.recommendedPrices?.[0] || 0,
+                  i < 2,
+                ),
+              );
+      finalDisplay.forEach((row) =>
         this.freezeRowPricing(row, {
           estShipping: row.meta?.staticEst ?? row.estShipping,
           shippingCost: 0,
@@ -6026,14 +6049,14 @@ Please share payment details and license key.`;
         }),
       );
 
-      this.currentResults = display;
+      this.currentResults = finalDisplay;
 
       const bestKb =
-        display[0]?.meta?.kb ||
-        (display[0]?.blob?.size
-          ? Math.ceil(display[0].blob.size / 1024)
+        finalDisplay[0]?.meta?.kb ||
+        (finalDisplay[0]?.blob?.size
+          ? Math.ceil(finalDisplay[0].blob.size / 1024)
           : "—");
-      const pickKbs = display
+      const pickKbs = finalDisplay
         .map((d) => LocalPriceDB.variantKb(d))
         .filter((k) => k > 0);
       const kbSpread =
@@ -6043,8 +6066,8 @@ Please share payment details and license key.`;
       const tierLabel = targetTier ? `₹${targetTier}` : "live";
       OptimizerUtils.showNotification(
         profile.hasData || liveRefs.length
-          ? `📍 ${display.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
-          : `📍 ${display.length} local picks — run Live once on this category`,
+          ? `📍 ${finalDisplay.length} picks · live ${tierLabel} band ~${bestKb}KB (spread ${kbSpread}KB) — verify on Live`
+          : `📍 ${finalDisplay.length} local picks — run Live once on this category`,
         "success",
         8000,
       );
