@@ -414,19 +414,56 @@ const LocalPriceDB = {
   },
 
   syncTargetShippingSelect(catId) {
-    const cap = this.getShippingCap(catId);
-    const sel = document.getElementById("target-shipping");
-    const testSel = document.getElementById("test-target-shipping");
-    if (!cap) return cap;
-    const capStr = String(cap);
-    [sel, testSel].forEach((el) => {
-      if (!el) return;
-      const hasOpt = [...el.options].some((o) => o.value === capStr);
-      if (hasOpt && Number(el.value) > cap) {
-        el.value = capStr;
-      }
-    });
-    return cap;
+    return this.getShippingCap(catId);
+  },
+
+  /** Smart Mode dropdowns — used only by 🚀 Generate Variants (main live run). */
+  readMainSmartModeSettings() {
+    const targetShipping =
+      parseInt(document.getElementById("target-shipping")?.value, 10) || 80;
+    const maxAttempts = Math.min(
+      Math.max(
+        parseInt(document.getElementById("max-attempts")?.value, 10) || 80,
+        1,
+      ),
+      200,
+    );
+    return {
+      purpose: "main",
+      targetShipping,
+      maxAttempts,
+      maxShippingCap: targetShipping,
+    };
+  },
+
+  /** Focused live run after local picks — does not use Max Variants / target dropdown. */
+  readLearnForLocalSettings(catId) {
+    const id = String(catId || "");
+    const profile = id ? this.getCategoryProfile(id) : null;
+    const floorTier =
+      (id && this.resolveLearnedTier(id, profile)) ||
+      profile?.recommendedPrices?.[0] ||
+      null;
+    const cap = id ? this.getShippingCap(id) : null;
+    const pickCount = this.clampPickCount(
+      document.getElementById("local-price-pick-count")?.value,
+    );
+    const targetShipping =
+      floorTier != null && Number(floorTier) > 0
+        ? Number(floorTier)
+        : cap != null
+          ? Number(cap)
+          : 65;
+    const maxAttempts = Math.min(
+      30,
+      Math.max(pickCount * 5, 12),
+    );
+    return {
+      purpose: "learn",
+      targetShipping,
+      maxAttempts,
+      maxShippingCap: cap != null ? Number(cap) : targetShipping,
+    };
   },
 
   /** Stats from your saved lowest-tier variants — used to score new picks. */
@@ -5149,7 +5186,8 @@ Please share payment details and license key.`;
   }
 
   // LIVE MODE ONLY — production generate path. Test Lab uses processImageTestLab().
-  async processImage(file) {
+  async processImage(file, options = {}) {
+    const purpose = options.purpose === "learn" ? "learn" : "main";
     this.localPriceMode = false;
     this.localPriceProfile = null;
     if (!file) {
@@ -5221,18 +5259,34 @@ Please share payment details and license key.`;
     // ALWAYS use Smart Mode
     const categorySelectEl = document.getElementById("category-select");
     const liveCatId = categorySelectEl?.value || resolved?.id || "";
-    const userTargetShipping =
-      parseInt(document.getElementById("target-shipping")?.value) || 80;
-    const targetShipping = LocalPriceDB.getEffectiveTarget(
-      liveCatId,
-      userTargetShipping,
-    );
-    const shippingCap = LocalPriceDB.getShippingCap(liveCatId);
-    const maxAttempts =
-      parseInt(document.getElementById("max-attempts")?.value, 10) || 80;
+    const runSettings =
+      purpose === "learn"
+        ? LocalPriceDB.readLearnForLocalSettings(liveCatId)
+        : LocalPriceDB.readMainSmartModeSettings();
+    const targetShipping = runSettings.targetShipping;
+    const maxAttempts = runSettings.maxAttempts;
+    const shippingCap =
+      purpose === "learn"
+        ? runSettings.maxShippingCap
+        : LocalPriceDB.getShippingCap(liveCatId);
+    const smartSearchCap = runSettings.maxShippingCap;
+
+    if (purpose === "main") {
+      OptimizerUtils.showNotification(
+        `🚀 Generate Variants · up to ${maxAttempts} · target ≤ ₹${targetShipping}`,
+        "info",
+        4000,
+      );
+    } else {
+      OptimizerUtils.showNotification(
+        `📚 Learn live run · ${maxAttempts} tries · floor ≤ ₹${targetShipping} (Smart Mode dropdown ignored)`,
+        "info",
+        6000,
+      );
+    }
 
     console.log(
-      `🎯 Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${shippingCap ? `, cap ≤₹${shippingCap}` : ""}`,
+      `🎯 [${purpose}] Target ≤ ₹${targetShipping}, Max: ${maxAttempts}${smartSearchCap ? `, live cap ≤₹${smartSearchCap}` : ""}`,
     );
 
     if (processingArea) {
@@ -5321,7 +5375,7 @@ Please share payment details and license key.`;
             );
           },
           () => this.shouldStop,
-          { maxShippingCap: shippingCap },
+          { maxShippingCap: smartSearchCap },
         );
       }
 
@@ -9840,7 +9894,7 @@ Please share payment details and license key.`;
           return;
         }
         this.localPriceMode = false;
-        void this.processImage(file);
+        void this.processImage(file, { purpose: "learn" });
       };
     }
 

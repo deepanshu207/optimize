@@ -197,7 +197,7 @@ const OptimizerUI = {
                 </div>
                 <div class="opt-body">
                     <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, #FFD700, #C9A227),rgba(102,126,234,0.1));border:1px solid rgba(16,185,129,0.3);">
-                        <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode</div>
+                        <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode <span style="font-size:9px;font-weight:500;color:#9ca3af;">(🚀 Generate Variants)</span></div>
                         <div class="opt-row" style="margin-bottom:10px;">
                             <div>
                                 <label class="opt-label">Target Shipping</label>
@@ -223,6 +223,7 @@ const OptimizerUI = {
                                 </select>
                             </div>
                         </div>
+                        <div style="font-size:10px;color:#6b7280;margin-top:6px;">For 🚀 Generate Variants only · Local uses pick count below</div>
                     </div>
 
                     <div class="opt-section" style="padding:10px;">
@@ -408,7 +409,7 @@ const OptimizerUI = {
                     </div>
 
                     <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, #FFD700, #C9A227),rgba(102,126,234,0.1));border:1px solid rgba(16,185,129,0.3);">
-                        <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode</div>
+                        <div class="opt-section-title" style="color:#10b981;">🎯 Smart Mode <span style="font-size:9px;font-weight:500;color:#9ca3af;">(🚀 Generate Variants)</span></div>
                         <div class="opt-row" style="margin-bottom:10px;">
                             <div>
                                 <label class="opt-label">Target Shipping</label>
@@ -435,7 +436,7 @@ const OptimizerUI = {
                             </div>
                         </div>
                         <div style="font-size:10px;color:#9ca3af;padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;">
-                            ⚡ Fast API mode • logged-in Meesho session
+                            ⚡ Uses Target + Max Variants above · Local pick count is separate
                         </div>
                     </div>
 
