@@ -86,6 +86,40 @@ function getShippingCap(profile) {
 }
 assert(getShippingCap(profile) === 60, "cap is 60 for 59+60 pair");
 
+function buildSessionProfile(catId, sessionPrices, categoryTiers) {
+  const prices = [...new Set(sessionPrices.filter((p) => p > 0))].sort((a, b) => a - b);
+  if (!prices.length) return null;
+  const sessionPick = globalThis.pickLocalStrategy(prices);
+  const learnedFloor = categoryTiers?.length
+    ? Math.min(...categoryTiers.filter((n) => n > 0))
+    : 0;
+  if (learnedFloor > 0 && prices[0] > learnedFloor) return null;
+  return {
+    strategy: sessionPick.strategy,
+    recommendedPrices: sessionPick.recommendedPrices,
+    strategyReason: sessionPick.reason,
+    hasData: true,
+  };
+}
+
+const pinkSession = buildSessionProfile("10004", [59, 65, 67, 69, 79], [59, 60, 68]);
+assert(pinkSession?.strategy === "single_lowest", "pink session → single_lowest");
+assert(
+  pinkSession?.recommendedPrices?.[0] === 59 &&
+    pinkSession.recommendedPrices.length === 1,
+  "pink session recommends only ₹59",
+);
+assert(
+  getShippingCap({ hasData: true, recommendedPrices: pinkSession.recommendedPrices }) === 59,
+  "pink session cap is ₹59 not ₹60",
+);
+
+const lavenderHigh = buildSessionProfile("10004", [68], [59, 60, 68]);
+assert(lavenderHigh === null, "lavender high-slab only → null (category floor)");
+
+const lavenderFloor = buildSessionProfile("10004", [59, 60, 68], [59, 60, 68]);
+assert(lavenderFloor?.strategy === "rupee_pair", "lavender with floor → rupee_pair");
+
 const withGap = globalThis.pickLocalStrategy([59, 64, 65, 79]);
 assert(withGap.strategy === "single_lowest", "59,64,65 → floor single (not 64+65 pair)");
 assert(withGap.recommendedPrices[0] === 59, "floor single is 59");
