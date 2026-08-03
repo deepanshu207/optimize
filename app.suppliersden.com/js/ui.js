@@ -1084,7 +1084,6 @@ const OptimizerUI = {
     }
 
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
-    const bestBtnPrefix = isWeb ? "Download Best" : "Apply Best";
     const manualMode = !!options.manualMode;
     const localPriceMode = !!options.localPriceMode;
     const localProfile = options.localPriceProfile || null;
@@ -1389,14 +1388,14 @@ const OptimizerUI = {
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
                   localPriceMode
-                    ? bestBtnPrefix + " Local Pick"
+                    ? "Download Best Local Pick"
                     : bestLive
-                    ? bestBtnPrefix + " ₹" + bestLive
+                    ? "Download Best ₹" + bestLive
                     : bestEst
-                    ? bestBtnPrefix + " est ₹" + bestEst
+                    ? "Download Best est ₹" + bestEst
                     : bestStaticEst
-                    ? bestBtnPrefix + " est ₹" + bestStaticEst
-                    : bestBtnPrefix + " Variant"
+                    ? "Download Best est ₹" + bestStaticEst
+                    : "Download Best Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
             </div>
@@ -1455,7 +1454,6 @@ const OptimizerUI = {
 
     const best = results[0];
     const totalResults = results.length;
-    const bestBtnPrefix = window.WEB_OPTIMIZER_MODE ? "Download Best" : "Apply Best";
     const bestEst = best.meta?.estInr || best.estShipping || 0;
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
     const liveCount = results.filter((r) => r.shippingCost > 0).length;
@@ -1521,8 +1519,8 @@ const OptimizerUI = {
       <div style="display:flex;gap:8px;">
         <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
           bestLive
-            ? bestBtnPrefix + " ₹" + bestLive
-            : bestBtnPrefix + " est ₹" + bestEst
+            ? "Download Best ₹" + bestLive
+            : "Download Best est ₹" + bestEst
         }</button>
         <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
       </div>

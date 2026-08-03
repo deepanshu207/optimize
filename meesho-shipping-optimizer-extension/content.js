@@ -10651,25 +10651,12 @@ Please share payment details and license key.`;
     const applyBestBtn = document.getElementById("apply-best-btn");
     if (applyBestBtn) {
       const best = this.getBestActiveResult();
-      const price = best?.shippingCost || best?.estShipping || "";
       if (window.WEB_OPTIMIZER_MODE) {
+        const price = best?.shippingCost || best?.estShipping || "";
         applyBestBtn.textContent = price ? `Download Best ₹${price}` : "Download Best";
-        applyBestBtn.onclick = () => {
-          if (!best) {
-            OptimizerUtils.showNotification("No variant to download", "error");
-            return;
-          }
-          this.downloadImage(best);
-        };
+        applyBestBtn.onclick = () => this.downloadImage(best);
       } else {
-        applyBestBtn.textContent = price ? `Apply Best ₹${price}` : "Apply Best";
-        applyBestBtn.onclick = () => {
-          if (!best) {
-            OptimizerUtils.showNotification("No variant to apply", "error");
-            return;
-          }
-          this.applyImage(best);
-        };
+        applyBestBtn.onclick = () => this.applyImage(best);
       }
     }
 
@@ -10793,11 +10780,6 @@ Please share payment details and license key.`;
 
   async applyImage(result) {
     try {
-      if (!result) {
-        OptimizerUtils.showNotification("No variant to apply", "error");
-        return;
-      }
-
       OptimizerUtils.showNotification("Applying image...", "info");
 
       const imageInput = document.querySelector("#changeFrontImage");
@@ -10806,40 +10788,18 @@ Please share payment details and license key.`;
         return;
       }
 
-      // Use the SAME image that was tested (pricing / composed preview)
-      let url = "";
-      const edited = this.isVariantEdited(
-        result.editFlags,
-        result.layers,
-        result,
-      );
-      if (edited && result.layers?._staticFrame) {
-        try {
-          url = await this.composeSaveForRow(result);
-        } catch (e) {
-          console.warn("Apply compose failed, using pricing image:", e);
-        }
-      }
-      if (!url) {
-        url = this.resolveDownloadUrl(result);
-      }
-      if (!url) {
-        OptimizerUtils.showNotification("No image data to apply", "error");
-        return;
-      }
-
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error("Fetch failed");
+      // Use the SAME image that was tested (from dataUrl)
+      // This ensures consistency between test and apply
+      const resp = await fetch(result.imageUrl);
       const blob = await resp.blob();
       const file = new File([blob], "optimized-" + Date.now() + ".jpg", {
-        type: blob.type || "image/jpeg",
+        type: "image/jpeg",
       });
 
       const dt = new DataTransfer();
       dt.items.add(file);
       imageInput.files = dt.files;
       imageInput.dispatchEvent(new Event("change", { bubbles: true }));
-      imageInput.dispatchEvent(new Event("input", { bubbles: true }));
 
       this.closeModal();
 

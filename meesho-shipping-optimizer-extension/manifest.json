@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "version": "1.7.1",
+  "version": "1.6.37",
   "name": "Meesho Shipping Cost Optimizer AI - Unlimited",
   "short_name": "Meesho Optimizer",
-  "description": "Generate live Meesho catalog variants, find lowest customer shipping, preview and edit images.",
+  "description": "AI tool for Meesho sellers that cuts shipping costs up to 80% using smart image optimization.",
   "author": "Veer Hanuman",
   "icons": {
     "16": "icons/icon16.png",
@@ -45,7 +45,6 @@
         "js/meeshoCategories.js",
         "js/meeshoApi.js",
         "js/imageGenerator.js",
-        "js/liveResultPolicy.js",
         "js/ui.js",
         "content.js"
       ],
@@ -74,6 +73,7 @@
         "js/*.mjs",
         "js/lib/*.mjs",
         "data/*.json",
+        "data/seed-reports/*.csv",
         "Badge/*.png",
         "icons/*.png"
       ],
