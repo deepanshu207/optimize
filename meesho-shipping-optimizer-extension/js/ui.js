@@ -157,34 +157,12 @@ const OptimizerUI = {
     return styles + this.getMainHTML();
   },
 
-  /** Shared local price panel — used in extension modal and web fallback HTML. */
   getLocalPricePanelHTML: function () {
-    return `
-                    <div class="local-price-panel" style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;">
-                        <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">📦 Local Price History</div>
-                        <p id="local-price-hint" style="font-size:10px;color:#6b7280;margin:0 0 8px;line-height:1.4;">Floor band (e.g. ₹59+60) for new images even if live showed ₹68. Use 4 variants for two ₹59 + two ₹60 uploads.</p>
-                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                            <label style="font-size:10px;color:#047857;flex:1;">Variants to show</label>
-                            <select id="local-price-pick-count" class="opt-select" style="flex:1;font-size:12px;padding:6px 8px;">
-                                <option value="2" selected>2 lowest</option>
-                                <option value="3">3 lowest</option>
-                                <option value="4">4 lowest</option>
-                                <option value="5">5 lowest</option>
-                                <option value="6">6 lowest</option>
-                                <option value="8">8 lowest</option>
-                                <option value="10">10 lowest</option>
-                            </select>
-                        </div>
-                        <button type="button" id="local-price-generate-btn" disabled style="width:100%;padding:10px 8px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#047857;color:#fff;cursor:pointer;min-height:44px;touch-action:manipulation;margin-bottom:6px;">📍 Generate 2 Local Variants</button>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-                            <button type="button" id="local-price-save-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:linear-gradient(135deg,#FFD700,#C9A227);color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">💾 Save</button>
-                            <button type="button" id="local-price-view-btn" style="flex:1;min-width:72px;padding:8px 6px;font-size:12px;font-weight:600;border:none;border-radius:8px;background:#065f46;color:#fff;cursor:pointer;min-height:40px;touch-action:manipulation;">📊 View</button>
-                            <button type="button" id="local-price-download-btn" style="flex:1;min-width:72px;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📥 CSV</button>
-                            <button type="button" id="local-price-import-btn" style="flex:1;min-width:72px;padding:8px 4px;font-size:11px;font-weight:600;border:1px solid #a7f3d0;border-radius:8px;background:#fff;color:#047857;cursor:pointer;min-height:40px;touch-action:manipulation;">📤 Import</button>
-                            <button type="button" id="local-price-clear-btn" style="flex:0 0 auto;padding:8px;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;cursor:pointer;min-height:40px;">🗑️</button>
-                        </div>
-                        <input type="file" id="local-price-import-input" accept=".csv,text/csv" style="display:none;">
-                    </div>`;
+    return "";
+  },
+
+  getTestLabPanelHTML: function () {
+    return "";
   },
 
   // Simplified web UI — upload only, no session/category setup
@@ -223,7 +201,7 @@ const OptimizerUI = {
                                 </select>
                             </div>
                         </div>
-                        <div style="font-size:10px;color:#6b7280;margin-top:6px;">For 🚀 Generate Variants only · Local uses pick count below</div>
+                        <div style="font-size:10px;color:#6b7280;margin-top:6px;">Live Meesho shipping — tap image on results to preview &amp; edit</div>
                     </div>
 
                     <div class="opt-section" style="padding:10px;">
@@ -322,50 +300,7 @@ const OptimizerUI = {
         `;
   },
 
-  getTestLabPanelHTML: function (options = {}) {
-    const ext = !!options.extension;
-    const sessionNote = ext
-      ? `<div id="test-lab-session-hint" class="session-hint session-status ok" style="margin-top:8px;display:block;">✅ Same Live pipeline + adaptive lowest-₹ hunt (skips higher once best is known)</div>`
-      : `<div id="test-lab-session-hint" class="session-hint" style="margin-top:8px;display:none;"></div>`;
-    return `
-                    <div class="opt-section" style="padding:12px;background:linear-gradient(135deg, rgba(4,120,87,0.12), rgba(102,126,234,0.08));border:1px solid rgba(4,120,87,0.25);">
-                        <div class="opt-section-title" style="color:#047857;">🧪 Test Lab — Live logic + adaptive hunt</div>
-                        <p class="test-lab-note" style="margin-bottom:10px;">Mirrors Live tab (same generate, analysis, editor). Once a best ₹ is found, higher shipping variants are skipped and next tries bias smaller borders / lower KB.</p>
-                        ${sessionNote}
-                        <div class="opt-row" style="margin-bottom:10px;">
-                            <div>
-                                <label class="opt-label" for="test-target-shipping">Target Shipping</label>
-                                <select id="test-target-shipping" class="opt-select" style="font-size:13px;font-weight:600;">
-                                    <option value="30">≤ ₹30</option>
-                                    <option value="40">≤ ₹40</option>
-                                    <option value="50" selected>≤ ₹50</option>
-                                    <option value="60">≤ ₹60</option>
-                                    <option value="70">≤ ₹70</option>
-                                    <option value="80">≤ ₹80</option>
-                                    <option value="90">≤ ₹90</option>
-                                    <option value="100">≤ ₹100</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="opt-label" for="test-max-attempts">Max Tries</label>
-                                <select id="test-max-attempts" class="opt-select">
-                                    <option value="50">50</option>
-                                    <option value="100" selected>100</option>
-                                    <option value="200">200</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div style="font-size:10px;color:#047857;padding:6px;background:rgba(255,255,255,0.5);border-radius:4px;">
-                            ⏭️ Skips ₹ above current best · biases next tries lower
-                        </div>
-                    </div>
-                    <div class="opt-section" style="padding:10px;">
-                        <div class="opt-section-title">✏️ Text (Optional)</div>
-                        <input type="text" id="test-custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING" style="font-size:12px;">
-                    </div>`;
-  },
-
-  // Main optimizer HTML (after license) - Enhanced UI, Smart Mode Auto-Selected
+  // Main optimizer HTML — Live generate only
   getMainHTML: function () {
     return `
             <div class="opt-modal opt-modal-ext">
@@ -373,12 +308,7 @@ const OptimizerUI = {
                     <h2><span>🚀</span> Meesho Shipping Cost AI Optimizer</h2>
                     <button class="opt-close" id="close-modal">&times;</button>
                 </div>
-                <div class="opt-tabs" id="optimizer-tabs" role="tablist">
-                    <button type="button" class="opt-tab active" data-optimizer-tab="live" role="tab">Live</button>
-                    <button type="button" class="opt-tab" data-optimizer-tab="test" role="tab">Test Lab</button>
-                </div>
                 <div class="opt-body">
-                    <div id="live-tab-panel" class="opt-tab-panel active" data-optimizer-panel="live">
                     <div class="opt-shipping">
                         <div style="font-size:11px;color:#9ca3af;">Current Shipping</div>
                         <div class="opt-shipping-value" id="current-shipping">Detecting...</div>
@@ -436,18 +366,13 @@ const OptimizerUI = {
                             </div>
                         </div>
                         <div style="font-size:10px;color:#9ca3af;padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;">
-                            ⚡ Uses Target + Max Variants above · Local pick count is separate
+                            ⚡ Upload → Generate → Meesho prices each variant live
                         </div>
                     </div>
 
                     <div class="opt-section" style="padding:10px;">
                         <div class="opt-section-title">✏️ Text (Optional)</div>
                         <input type="text" id="custom-text" class="opt-input" placeholder="e.g. FREE SHIPPING" style="font-size:12px;">
-                    </div>
-                    </div>
-
-                    <div id="test-tab-panel" class="opt-tab-panel" data-optimizer-panel="test">
-                        ${this.getTestLabPanelHTML({ extension: true })}
                     </div>
 
                     <div class="opt-upload-box" id="upload-area">
@@ -465,10 +390,7 @@ const OptimizerUI = {
 
                     <div class="generate-sticky" id="generate-sticky">
                         <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
-                        <button type="button" id="test-generate-btn" class="generate-btn" disabled style="display:none;margin-top:8px;">🧪 Run Test Lab</button>
                     </div>
-
-                    ${this.getLocalPricePanelHTML()}
 
                     <div id="processing-area" style="display:none;"></div>
                     <div id="results-area" style="display:none;"></div>
@@ -1084,43 +1006,14 @@ const OptimizerUI = {
     }
 
     const isWeb = !!window.WEB_OPTIMIZER_MODE;
+    const bestBtnPrefix = isWeb ? "Download Best" : "Apply Best";
     const manualMode = !!options.manualMode;
     const localPriceMode = !!options.localPriceMode;
     const localProfile = options.localPriceProfile || null;
     const livePricedResults = options.livePricedResults || [];
     let html = "";
 
-    if (localPriceMode && results.length > 0) {
-      const best = results[0];
-      const bestKb =
-        best.meta?.kb ||
-        (best.blob?.size ? Math.ceil(best.blob.size / 1024) : "—");
-      const liveTier =
-        (localProfile?.tiers?.length
-          ? Math.min(...localProfile.tiers.map((p) => Number(p)).filter((n) => n > 0))
-          : null) ||
-        LocalPriceDB.resolveLearnedTier(
-          String(localProfile?.categoryId || ""),
-        ) ||
-        null;
-      const tierText = liveTier
-        ? `matched to live ₹${liveTier} pattern (KB/border)`
-        : "run Live first to learn ₹ pattern";
-      html += `
-            <div style="background:rgba(4,120,87,0.12);border:1px solid rgba(4,120,87,0.35);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <div style="font-size:11px;color:#047857;">📍 Local variants (from live learn — not a Meesho check)</div>
-                <div style="font-size:22px;font-weight:700;color:#047857;">${results.length} picks · ~${bestKb} KB</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;">${tierText}</div>
-                <div style="font-size:9px;color:#6b7280;margin-top:6px;line-height:1.35;">Same image + same live ₹ tier → we copy KB/border from your live winners. Confirm with Live generate.</div>
-                ${
-                  localProfile?.strategyReason
-                    ? `<div style="font-size:9px;color:#6b7280;margin-top:4px;line-height:1.3;">${localProfile.strategyReason}</div>`
-                    : ""
-                }
-            </div>`;
-    }
-
-    if (!hasLive && !hasAnalysis && hasShowcase && !hasPromoLifestyle && !hasTallStatic) {
+    if (hasLive) {
       const sortedShowcase = [...showcaseResults].sort(
         (a, b) =>
           (a.estShipping || a.meta?.estInr || 999) -
@@ -1168,7 +1061,7 @@ const OptimizerUI = {
             </div>`;
     }
 
-    if (hasLive && !localPriceMode) {
+    if (hasLive) {
       const pricedLive = results.filter((r) => Number(r.shippingCost) > 0);
       const lowestLivePrice = pricedLive.length
         ? Math.min(...pricedLive.map((r) => Number(r.shippingCost)))
@@ -1207,7 +1100,9 @@ const OptimizerUI = {
                     ? best.liveVerified
                       ? "✓ Live customer shipping"
                       : "✓ Meesho price"
-                    : "Tap Save to download"
+                    : isWeb
+                    ? "Tap Save to download"
+                    : "Tap Apply on a card to set on Meesho"
                 }</div>
                 ${
                   baseline > 0
@@ -1234,21 +1129,6 @@ const OptimizerUI = {
         });
       });
 
-      html += `</div>`;
-    }
-
-    if (hasLive && localPriceMode) {
-      html += `
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;max-height:480px;overflow-y:auto;">
-        `;
-      results.forEach((r, i) => {
-        html += this.renderResultCard(r, i, {
-          baselineShipping: baseline,
-          manualMode,
-          localPriceMode: true,
-          isBest: r.localRecommended,
-        });
-      });
       html += `</div>`;
     }
 
@@ -1290,7 +1170,7 @@ const OptimizerUI = {
         `;
     }
 
-    if (hasAnalysis && !localPriceMode) {
+    if (hasAnalysis) {
       html += this.renderAnalysisSection(options, { standalone: !hasLive });
     }
 
@@ -1369,33 +1249,16 @@ const OptimizerUI = {
     ).length;
     const canCreateReport =
       livePricedCount > 0 || cachedLivePricedCount > 0;
-    const localCsvBtn =
-      localPriceMode && results.length > 0
-        ? `<button id="local-price-download-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📥 Download Local CSV (full pool + picks)</button>`
-        : "";
-    const liveFromLocalBtn =
-      localPriceMode && results.length > 0
-        ? `<button id="generate-live-from-results-btn" class="opt-btn opt-btn-primary" style="width:100%;padding:12px;margin-bottom:8px;font-size:13px;font-weight:700;">🚀 Generate Live Variants (learn for local)</button>`
-        : "";
-    const reportBtn = canCreateReport
-        ? `<button id="create-report-btn" class="opt-btn opt-btn-secondary" style="width:100%;padding:10px;margin-bottom:8px;font-size:12px;">📊 Create Report (from live ₹)</button>`
-        : "";
-
     html += `
-            ${liveFromLocalBtn}
-            ${localCsvBtn}
-            ${reportBtn}
             <div style="display:flex;gap:8px;">
                 <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
-                  localPriceMode
-                    ? "Download Best Local Pick"
-                    : bestLive
-                    ? "Download Best ₹" + bestLive
+                  bestLive
+                    ? bestBtnPrefix + " ₹" + bestLive
                     : bestEst
-                    ? "Download Best est ₹" + bestEst
+                    ? bestBtnPrefix + " est ₹" + bestEst
                     : bestStaticEst
-                    ? "Download Best est ₹" + bestStaticEst
-                    : "Download Best Variant"
+                    ? bestBtnPrefix + " est ₹" + bestStaticEst
+                    : bestBtnPrefix + " Variant"
                 }</button>
                 <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
             </div>
@@ -1454,6 +1317,7 @@ const OptimizerUI = {
 
     const best = results[0];
     const totalResults = results.length;
+    const bestBtnPrefix = window.WEB_OPTIMIZER_MODE ? "Download Best" : "Apply Best";
     const bestEst = best.meta?.estInr || best.estShipping || 0;
     const bestLive = best.shippingCost > 0 ? best.shippingCost : null;
     const liveCount = results.filter((r) => r.shippingCost > 0).length;
@@ -1519,8 +1383,8 @@ const OptimizerUI = {
       <div style="display:flex;gap:8px;">
         <button id="apply-best-btn" class="opt-btn opt-btn-success" style="flex:1;padding:10px;">${
           bestLive
-            ? "Download Best ₹" + bestLive
-            : "Download Best est ₹" + bestEst
+            ? bestBtnPrefix + " ₹" + bestLive
+            : bestBtnPrefix + " est ₹" + bestEst
         }</button>
         <button id="restart-btn" class="opt-btn opt-btn-primary" style="flex:1;padding:10px;">New Search</button>
       </div>
