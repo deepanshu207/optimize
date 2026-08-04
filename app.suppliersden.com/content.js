@@ -89,6 +89,162 @@ class MeeshoShippingOptimizer {
     );
   }
 
+  findMeeshoFrontImageSection() {
+    const nodes = document.querySelectorAll("p, span, label, div");
+    for (const el of nodes) {
+      if (this.isExtensionUiNode(el)) continue;
+      const text = (el.textContent || "").trim();
+      if (text !== "Front Image") continue;
+      const container =
+        el.closest(".MuiBox-root")?.parentElement ||
+        el.closest(".MuiBox-root");
+      if (container) return container;
+    }
+    return null;
+  }
+
+  findMeeshoFrontUploadButton(section) {
+    const scope = section || this.findMeeshoFrontImageSection() || document;
+    for (const btn of scope.querySelectorAll("button")) {
+      if (this.isExtensionUiNode(btn)) continue;
+      const text = (btn.textContent || "").replace(/\s+/g, " ").trim();
+      if (text === "Upload" || /^upload$/i.test(text)) return btn;
+    }
+    return null;
+  }
+
+  hasMeeshoFrontImageUploaded(section) {
+    const scope = section || this.findMeeshoFrontImageSection() || document;
+    if (scope.querySelector("[data-testid='removeImage']")) return true;
+    for (const img of scope.querySelectorAll("img[src]")) {
+      if (this.isExtensionUiNode(img)) continue;
+      const src = (img.src || "").toLowerCase();
+      if (
+        src.includes("meeshosupplyassets.com") ||
+        src.includes("images.meesho") ||
+        src.includes("cdnmeesho")
+      ) {
+        const w = img.width || parseInt(img.getAttribute("width") || "0", 10);
+        const h = img.height || parseInt(img.getAttribute("height") || "0", 10);
+        if (w >= 40 || h >= 40) return true;
+      }
+    }
+    return false;
+  }
+
+  findFileInputNearUploadButton(uploadBtn) {
+    if (!uploadBtn) return null;
+    const scopes = [
+      uploadBtn.parentElement,
+      uploadBtn.closest(".MuiBox-root"),
+      uploadBtn.closest(".MuiBox-root")?.parentElement,
+      uploadBtn.closest("label"),
+    ].filter(Boolean);
+
+    for (const scope of scopes) {
+      const inp = scope.querySelector("input[type='file']");
+      if (inp && !this.isExtensionUiNode(inp)) return inp;
+    }
+
+    const label = uploadBtn.closest("label");
+    if (label?.querySelector("input[type='file']")) {
+      return label.querySelector("input[type='file']");
+    }
+    return null;
+  }
+
+  getMeeshoFrontPreviewSrc(section) {
+    const scope = section || this.findMeeshoFrontImageSection();
+    if (!scope) return "";
+    for (const img of scope.querySelectorAll("img[src]")) {
+      if (this.isExtensionUiNode(img)) continue;
+      const src = img.src || "";
+      if (
+        src.includes("meeshosupplyassets.com") ||
+        src.includes("images.meesho") ||
+        src.includes("cdnmeesho")
+      ) {
+        return src;
+      }
+    }
+    return "";
+  }
+
+  prepareMeeshoFrontImageInputSync(section) {
+    section = section || this.findMeeshoFrontImageSection();
+    const prevSrc = this.getMeeshoFrontPreviewSrc(section);
+    const hadImage = this.hasMeeshoFrontImageUploaded(section);
+
+    if (hadImage) {
+      const remove =
+        (section || document).querySelector("[data-testid='removeImage']");
+      if (remove) {
+        try {
+          remove.click();
+        } catch (e) {}
+      }
+    }
+
+    const uploadBtn = this.findMeeshoFrontUploadButton(section);
+    if (uploadBtn) {
+      try {
+        uploadBtn.click();
+      } catch (e) {}
+    }
+
+    let input = null;
+    if (uploadBtn) {
+      input = this.findFileInputNearUploadButton(uploadBtn);
+    }
+    if (!input && section) {
+      input = section.querySelector("input[type='file']");
+    }
+    if (!input) {
+      input = this.findCatalogImageInput();
+    }
+    if (input) this._catalogImageInput = input;
+
+    return { input, section, hadImage, uploadBtn, prevSrc };
+  }
+
+  async waitForMeeshoFrontImageReady(prevSrc, url, maxMs = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      const section = this.findMeeshoFrontImageSection();
+      if (!this.hasMeeshoFrontImageUploaded(section)) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      const currentSrc = this.getMeeshoFrontPreviewSrc(section);
+      if (url && this.verifyMeeshoFrontImageApplied(url)) return true;
+      if (currentSrc && currentSrc !== prevSrc) return true;
+      if (!prevSrc && currentSrc.includes("meeshosupplyassets")) return true;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return false;
+  }
+
+  verifyMeeshoFrontImageApplied(url) {
+    const needle = (url || "").split("/").pop()?.split("?")[0] || "";
+    const section = this.findMeeshoFrontImageSection();
+    if (!section) return this.verifyCatalogImageApplied(url);
+
+    if (!section.querySelector("[data-testid='removeImage']")) return false;
+
+    for (const img of section.querySelectorAll("img[src]")) {
+      if (this.isExtensionUiNode(img)) continue;
+      const src = img.src || "";
+      if (needle && src.includes(needle)) return true;
+      if (
+        src.includes("meeshosupplyassets.com") ||
+        src.includes("images.meesho")
+      ) {
+        if (!needle) return true;
+      }
+    }
+    return false;
+  }
+
   findCatalogImageInput() {
     if (
       this._catalogImageInput &&
@@ -125,6 +281,20 @@ class MeeshoShippingOptimizer {
   }
 
   async revealCatalogImageInput() {
+    const section = this.findMeeshoFrontImageSection();
+    const uploadBtn = this.findMeeshoFrontUploadButton(section);
+    if (uploadBtn) {
+      try {
+        uploadBtn.click();
+        await new Promise((r) => setTimeout(r, 400));
+        const near = this.findFileInputNearUploadButton(uploadBtn);
+        if (near) {
+          this._catalogImageInput = near;
+          return near;
+        }
+      } catch (e) {}
+    }
+
     const patterns = [
       /change.*image/i,
       /upload.*image/i,
@@ -214,6 +384,8 @@ class MeeshoShippingOptimizer {
   }
 
   getCatalogImageScope() {
+    const section = this.findMeeshoFrontImageSection();
+    if (section) return section;
     const front = this.findCatalogImageInput();
     return (
       front?.closest(
@@ -268,10 +440,11 @@ class MeeshoShippingOptimizer {
       if (assigned) touched++;
     }
 
-    return touched > 0 || this.verifyCatalogImageApplied(url);
+    return touched > 0 || this.verifyMeeshoFrontImageApplied(url);
   }
 
   verifyCatalogImageApplied(url) {
+    if (this.verifyMeeshoFrontImageApplied(url)) return true;
     const needle = url.split("/").pop()?.split("?")[0] || "";
     if (!needle) return false;
 
@@ -1516,8 +1689,8 @@ Please share payment details and license key.`;
         MeeshoAPI.detectAllValues?.();
       }
 
-      // User-gesture window: assign file synchronously before any await (mobile Kiwi)
-      const imageInput = this.findCatalogImageInput();
+      // Meesho MUI Front Image: Upload button + file input (sync, before await)
+      const prep = this.prepareMeeshoFrontImageInputSync();
       let file = null;
       if (result.blob instanceof Blob) {
         file = new File([result.blob], "optimized-" + Date.now() + ".jpg", {
@@ -1526,8 +1699,8 @@ Please share payment details and license key.`;
       }
 
       let fileAssigned = false;
-      if (imageInput && file) {
-        fileAssigned = this.assignFileToCatalogInput(imageInput, file);
+      if (prep.input && file) {
+        fileAssigned = this.assignFileToCatalogInput(prep.input, file);
       }
 
       const blob = file ? null : await this.resolveApplyBlob(result);
@@ -1541,6 +1714,10 @@ Please share payment details and license key.`;
         return;
       }
 
+      if (!fileAssigned && prep.input) {
+        fileAssigned = this.assignFileToCatalogInput(prep.input, file);
+      }
+
       let meeshoUrl = this.normalizeMeeshoImageUrl(result.uploadedUrl);
       if (!meeshoUrl && typeof MeeshoAPI !== "undefined") {
         meeshoUrl = this.normalizeMeeshoImageUrl(
@@ -1552,24 +1729,39 @@ Please share payment details and license key.`;
       await new Promise((r) => setTimeout(r, 200));
 
       const input =
-        imageInput || (await this.waitForCatalogImageInput(4000));
+        prep.input || (await this.waitForCatalogImageInput(4000));
 
-      let applied = fileAssigned;
-      if (meeshoUrl) {
-        applied =
-          (await this.syncUploadedImageToCatalogForm(meeshoUrl, file, input)) ||
-          applied;
+      let applied = false;
+      if (fileAssigned) {
+        applied = await this.waitForMeeshoFrontImageReady(
+          prep.prevSrc,
+          meeshoUrl,
+        );
+      }
+
+      if (!applied && meeshoUrl) {
+        applied = await this.syncUploadedImageToCatalogForm(
+          meeshoUrl,
+          file,
+          input,
+        );
       }
 
       if (!applied && input && !fileAssigned) {
         applied = this.assignFileToCatalogInput(input, file);
         if (applied) {
-          await new Promise((r) => setTimeout(r, 1500));
+          applied = await this.waitForMeeshoFrontImageReady(
+            prep.prevSrc,
+            meeshoUrl,
+          );
         }
       }
 
       if (meeshoUrl) {
-        applied = this.verifyCatalogImageApplied(meeshoUrl) || applied;
+        applied =
+          this.verifyMeeshoFrontImageApplied(meeshoUrl) ||
+          this.verifyCatalogImageApplied(meeshoUrl) ||
+          applied;
       }
 
       if (!applied) {
