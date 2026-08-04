@@ -170,17 +170,132 @@ class MeeshoShippingOptimizer {
     return null;
   }
 
-  async assignFileToCatalogInput(imageInput, file) {
+  assignFileToCatalogInput(imageInput, file) {
+    if (!imageInput || !file) return false;
+    try {
+      imageInput.focus?.();
+    } catch (e) {}
+
     const dt = new DataTransfer();
     dt.items.add(file);
     imageInput.files = dt.files;
-    imageInput.dispatchEvent(new Event("change", { bubbles: true }));
-    imageInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const events = [
+      new Event("input", { bubbles: true, cancelable: true }),
+      new Event("change", { bubbles: true, cancelable: true }),
+    ];
     try {
-      imageInput.dispatchEvent(
-        new Event("change", { bubbles: true, cancelable: true }),
+      events.push(
+        new InputEvent("input", { bubbles: true, composed: true }),
       );
     } catch (e) {}
+
+    for (const ev of events) {
+      imageInput.dispatchEvent(ev);
+    }
+
+    const form = imageInput.form || imageInput.closest?.("form");
+    if (form) {
+      form.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    return imageInput.files?.length > 0;
+  }
+
+  normalizeMeeshoImageUrl(url) {
+    if (!url || typeof url !== "string") return "";
+    try {
+      const u = new URL(url, location.origin);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+      return u.href;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  getCatalogImageScope() {
+    const front = this.findCatalogImageInput();
+    return (
+      front?.closest(
+        "form, section, [class*='catalog'], [class*='upload'], [class*='image'], [class*='product']",
+      ) || document
+    );
+  }
+
+  async syncUploadedImageToCatalogForm(meeshoUrl, file, imageInput) {
+    const url = this.normalizeMeeshoImageUrl(meeshoUrl);
+    if (!url) return false;
+
+    if (typeof MeeshoAPI !== "undefined") {
+      MeeshoAPI.cache.catalogImageUrl = url;
+    }
+
+    const scope = this.getCatalogImageScope();
+    let touched = 0;
+
+    for (const img of scope.querySelectorAll("img[src], img[srcset]")) {
+      if (this.isExtensionUiNode(img)) continue;
+      const low = (img.src || "").toLowerCase();
+      if (low.includes("icon") || low.includes("logo") || low.includes("badge")) {
+        continue;
+      }
+      img.src = url;
+      img.removeAttribute("srcset");
+      img.dispatchEvent(new Event("load", { bubbles: true }));
+      touched++;
+    }
+
+    for (const inp of document.querySelectorAll("input, textarea")) {
+      if (this.isExtensionUiNode(inp)) continue;
+      const name = (inp.name || inp.id || "").toLowerCase();
+      const val = String(inp.value || "");
+      const looksLikeImageField =
+        name.includes("image") ||
+        name.includes("photo") ||
+        name.includes("catalog") ||
+        name.includes("front") ||
+        val.includes("images.meesho") ||
+        val.includes("cdnmeesho");
+      if (!looksLikeImageField) continue;
+      inp.value = url;
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      inp.dispatchEvent(new Event("change", { bubbles: true }));
+      touched++;
+    }
+
+    if (imageInput && file) {
+      const assigned = this.assignFileToCatalogInput(imageInput, file);
+      if (assigned) touched++;
+    }
+
+    return touched > 0 || this.verifyCatalogImageApplied(url);
+  }
+
+  verifyCatalogImageApplied(url) {
+    const needle = url.split("/").pop()?.split("?")[0] || "";
+    if (!needle) return false;
+
+    const scope = this.getCatalogImageScope();
+    for (const img of scope.querySelectorAll("img[src]")) {
+      if (this.isExtensionUiNode(img)) continue;
+      if ((img.src || "").includes(needle)) return true;
+    }
+
+    for (const inp of document.querySelectorAll("input")) {
+      if (this.isExtensionUiNode(inp)) continue;
+      if (String(inp.value || "").includes(needle)) return true;
+    }
+
+    return false;
+  }
+
+  async resolveApplyBlob(result) {
+    if (result?.blob instanceof Blob) return result.blob;
+    const url = result?.imageUrl || result?.dataUrl || "";
+    if (!url) return null;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return await resp.blob();
   }
 
   // Wait for element to appear
@@ -969,6 +1084,8 @@ Please share payment details and license key.`;
         this.currentResults = result.results.map((r) => ({
           name: r.name,
           imageUrl: r.dataUrl,
+          uploadedUrl: r.uploadedUrl || "",
+          blob: r.blob || null,
           shippingCost: r.shippingCost,
           isVerified: true,
           duplicatePid: r.duplicatePid,
@@ -1227,7 +1344,7 @@ Please share payment details and license key.`;
 
       const oldShipping = this.detectShipping();
 
-      await this.assignFileToCatalogInput(imageInput, file);
+      this.assignFileToCatalogInput(imageInput, file);
 
       await new Promise((r) => setTimeout(r, 2000));
 
@@ -1389,41 +1506,81 @@ Please share payment details and license key.`;
 
   async applyImage(result) {
     try {
-      if (!result?.imageUrl) {
+      if (!result?.imageUrl && !result?.uploadedUrl) {
         OptimizerUtils.showNotification("No image to apply", "error");
         return;
       }
 
       OptimizerUtils.showNotification("Applying image...", "info");
+      if (typeof MeeshoAPI !== "undefined") {
+        MeeshoAPI.detectAllValues?.();
+      }
 
-      // Close optimizer overlay so Meesho catalog form (file input) is reachable on mobile
+      // User-gesture window: assign file synchronously before any await (mobile Kiwi)
+      const imageInput = this.findCatalogImageInput();
+      let file = null;
+      if (result.blob instanceof Blob) {
+        file = new File([result.blob], "optimized-" + Date.now() + ".jpg", {
+          type: result.blob.type || "image/jpeg",
+        });
+      }
+
+      let fileAssigned = false;
+      if (imageInput && file) {
+        fileAssigned = this.assignFileToCatalogInput(imageInput, file);
+      }
+
+      const blob = file ? null : await this.resolveApplyBlob(result);
+      if (!file && blob) {
+        file = new File([blob], "optimized-" + Date.now() + ".jpg", {
+          type: blob.type || "image/jpeg",
+        });
+      }
+      if (!file) {
+        OptimizerUtils.showNotification("Could not load variant image", "error");
+        return;
+      }
+
+      let meeshoUrl = this.normalizeMeeshoImageUrl(result.uploadedUrl);
+      if (!meeshoUrl && typeof MeeshoAPI !== "undefined") {
+        meeshoUrl = this.normalizeMeeshoImageUrl(
+          await MeeshoAPI.uploadImage(file, file.name),
+        );
+      }
+
       this.closeModal();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 200));
 
-      const imageInput = await this.waitForCatalogImageInput(8000);
-      if (!imageInput) {
+      const input =
+        imageInput || (await this.waitForCatalogImageInput(4000));
+
+      let applied = fileAssigned;
+      if (meeshoUrl) {
+        applied =
+          (await this.syncUploadedImageToCatalogForm(meeshoUrl, file, input)) ||
+          applied;
+      }
+
+      if (!applied && input && !fileAssigned) {
+        applied = this.assignFileToCatalogInput(input, file);
+        if (applied) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+
+      if (meeshoUrl) {
+        applied = this.verifyCatalogImageApplied(meeshoUrl) || applied;
+      }
+
+      if (!applied) {
         OptimizerUtils.showNotification(
-          "Image input not found — scroll to Meesho front image, tap Change/Upload image, then Apply again",
+          "Could not update Meesho image — use Save on the card, then upload manually on Meesho",
           "error",
         );
         return;
       }
 
-      try {
-        imageInput.scrollIntoView({ block: "center", behavior: "smooth" });
-      } catch (e) {}
-
-      const resp = await fetch(result.imageUrl);
-      if (!resp.ok) throw new Error("Could not load variant image");
-      const blob = await resp.blob();
-      const file = new File([blob], "optimized-" + Date.now() + ".jpg", {
-        type: blob.type || "image/jpeg",
-      });
-
-      await this.assignFileToCatalogInput(imageInput, file);
-
-      // Wait for Meesho to process the image
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 2500));
 
       // Trigger price refresh multiple times
       await this.triggerPriceRefresh();

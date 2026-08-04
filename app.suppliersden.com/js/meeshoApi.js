@@ -24,6 +24,7 @@ const MeeshoAPI = {
     browserId: null,
     price: 100,
     categories: null,
+    catalogImageUrl: null,
   },
 
   badgeCache: {},
@@ -164,30 +165,38 @@ const MeeshoAPI = {
     const formData = new FormData();
     formData.append("file", blob, filename || "img-" + Date.now() + ".jpg");
     formData.append("data", "undefined");
-    try {
-      const resp = await fetch(this.endpoints.uploadImage, {
-        method: "POST",
-        headers: {
-          accept: "application/json, text/plain, */*",
-          "browser-id": this.cache.browserId || "",
-          "client-type": "d-web",
-          "client-package-version": "1.0.1",
-          identifier: this.cache.supplierTag || "",
-          "supplier-id": this.cache.supplierId
-            ? String(this.cache.supplierId)
-            : "",
-        },
-        body: formData,
-        credentials: "include",
-      });
-      if (!resp.ok) return null;
-      const result = await resp.json();
-      console.log("📤 Image uploaded:", result.image);
-      return result.image;
-    } catch (e) {
-      console.error("Upload error:", e);
-      return null;
+    const headers = {
+      accept: "application/json, text/plain, */*",
+      "browser-id": this.cache.browserId || "",
+      "client-type": "d-web",
+      "client-package-version": "1.0.1",
+      identifier: this.cache.supplierTag || "",
+      "supplier-id": this.cache.supplierId ? String(this.cache.supplierId) : "",
+    };
+    const urls = [
+      this.endpoints.uploadImage,
+      this.endpoints.uploadImageFallback,
+    ];
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers,
+          body: formData,
+          credentials: "include",
+        });
+        if (!resp.ok) continue;
+        const result = await resp.json();
+        const image = result.image || result.data?.image || null;
+        if (image) {
+          console.log("📤 Image uploaded:", image);
+          return image;
+        }
+      } catch (e) {
+        console.warn("Upload failed:", url, e.message);
+      }
     }
+    return null;
   },
 
   fetchDuplicatePid: async function (imageUrl, categoryId) {
@@ -303,6 +312,8 @@ const MeeshoAPI = {
           const result = {
             name: `Var-${attempt}`,
             dataUrl: variation.dataUrl,
+            blob: variation.blob,
+            uploadedUrl: imageUrl,
             shippingCost: shipping,
             duplicatePid: pid,
             isVerified: true,
