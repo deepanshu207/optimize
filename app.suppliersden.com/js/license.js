@@ -177,10 +177,12 @@ const LicenseManager = {
       return { success: false, message: "Invalid license key format" };
     }
 
-    const trimmedKey = key.trim().toUpperCase();
+    const trimmedKey = CONFIG.normalizeLicenseKey
+      ? CONFIG.normalizeLicenseKey(key)
+      : key.trim().toUpperCase().replace(/\s+/g, "-");
     console.log("🔑 Verifying key:", trimmedKey);
 
-    // Fetch demo keys from server first
+    // Fetch demo keys from server first (built-ins always included)
     const demoKeys = await this.fetchDemoKeys();
     console.log("🔑 Available demo keys:", Object.keys(demoKeys));
 

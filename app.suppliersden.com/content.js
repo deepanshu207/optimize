@@ -12,6 +12,7 @@ class MeeshoShippingOptimizer {
     this.originalImageUrl = null;
     this.modal = null;
     this.autoPopupShown = false;
+    this._pendingFile = null;
     this.init();
   }
 
@@ -314,9 +315,11 @@ class MeeshoShippingOptimizer {
   }
 
   async openModal() {
-    // Always re-check license before opening modal
-    //await this.autoLicenseCheck();
-    chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
+    try {
+      await chrome.runtime.sendMessage({ type: "FORCE_LICENSE_CHECK" });
+    } catch (e) {
+      console.warn("License check message failed:", e);
+    }
     await this.checkLicense();
     console.log("Opening modal, license status:", this.isLicensed);
 
@@ -349,6 +352,7 @@ class MeeshoShippingOptimizer {
 
     if (this.isLicensed) {
       this.setupMainEvents();
+      this.updateGenerateButtonState();
     } else {
       this.setupLicenseEvents();
     }
@@ -476,6 +480,21 @@ Please share payment details and license key.`;
     }
   }
 
+  updateGenerateButtonState() {
+    const generateBtn = document.getElementById("generate-btn");
+    if (!generateBtn) return;
+
+    const categorySelect = document.getElementById("category-select");
+    const hasCategory = !!(categorySelect && categorySelect.value);
+    const hasFile =
+      this._pendingFile || document.getElementById("image-input")?.files?.[0];
+
+    const ready = hasCategory && hasFile;
+    generateBtn.disabled = !ready;
+    generateBtn.style.opacity = ready ? "1" : "0.45";
+    generateBtn.style.cursor = ready ? "pointer" : "not-allowed";
+  }
+
   setupMainEvents() {
     const closeBtn = document.getElementById("close-modal");
     if (closeBtn) closeBtn.onclick = () => this.closeModal();
@@ -497,9 +516,10 @@ Please share payment details and license key.`;
 
     // Badge positions - simplified (always random)
 
-    // File input
+    // File input — preview only; Generate button starts processing
     const fileInput = document.getElementById("image-input");
     const uploadArea = document.getElementById("upload-area");
+    const generateBtn = document.getElementById("generate-btn");
 
     if (fileInput) {
       fileInput.onchange = (e) => {
@@ -507,6 +527,7 @@ Please share payment details and license key.`;
         if (!file) return;
 
         console.log("File selected:", file.name);
+        this._pendingFile = file;
 
         const previewBox = document.getElementById("preview-box");
         const previewImg = document.getElementById("preview-img");
@@ -520,7 +541,24 @@ Please share payment details and license key.`;
           reader.readAsDataURL(file);
         }
 
-        setTimeout(() => this.processImage(file), 500);
+        this.updateGenerateButtonState();
+      };
+    }
+
+    if (generateBtn) {
+      generateBtn.onclick = () => {
+        const file =
+          this._pendingFile || document.getElementById("image-input")?.files?.[0];
+        if (!file) {
+          OptimizerUtils.showNotification("Choose an image first", "error");
+          return;
+        }
+        const categorySelect = document.getElementById("category-select");
+        if (!categorySelect?.value) {
+          OptimizerUtils.showNotification("Select category first!", "error");
+          return;
+        }
+        void this.processImage(file);
       };
     }
 
@@ -692,6 +730,7 @@ Please share payment details and license key.`;
         if (typeof MeeshoAPI !== "undefined") {
           MeeshoAPI.setCategory(parseInt(id));
         }
+        this.updateGenerateButtonState();
       };
     });
   }

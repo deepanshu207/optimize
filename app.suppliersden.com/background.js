@@ -140,20 +140,34 @@ class BackgroundService {
   }
 
   async verifyLicenseKey(licenseKey) {
-    const trimmedKey = licenseKey.trim().toUpperCase();
+    const trimmedKey = String(licenseKey || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-");
     const serverUrls = [
       "https://darkviolet-ostrich-615182.hostingersite.com/api",
     ];
 
-    let demoKeys = { "MEESHO-DEMO999": { days: 7 } };
+    const builtinDemoKeys = {
+      "MEESHO-DEMOFREE": { days: 30 },
+      "MEESHO-DEMOFREE-PROMO": { days: 30 },
+      "MEESHO-DEMO-PROMO": { days: 30 },
+      "MEESHO-DEMO999": { days: 7 },
+    };
+    let demoKeys = { ...builtinDemoKeys };
 
     for (const serverUrl of serverUrls) {
       try {
         const res = await fetch(`${serverUrl}/demo-keys`);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.demoKeys) {
-            demoKeys = data.demoKeys;
+          if (
+            data.success &&
+            data.demoKeys &&
+            typeof data.demoKeys === "object" &&
+            !Array.isArray(data.demoKeys)
+          ) {
+            demoKeys = { ...builtinDemoKeys, ...data.demoKeys };
             break;
           }
         }
