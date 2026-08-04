@@ -41,6 +41,8 @@ const OptimizerUI = {
                 .opt-divider { display: flex; align-items: center; margin: 15px 0; color: #0f0f10; font-size: 12px; }
                 .opt-divider::before, .opt-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1); }
                 .opt-divider span { padding: 0 10px; }
+                .generate-btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, #FFD700, #C9A227); color: #fff; min-height: 48px; margin-bottom: 10px; }
+                .generate-btn:disabled { opacity: 0.45; cursor: not-allowed; }
             </style>
         `;
 
@@ -191,7 +193,7 @@ const OptimizerUI = {
                     <div class="opt-upload-box" id="upload-area">
                         <div style="font-size:40px;margin-bottom:8px;">📸</div>
                         <div style="font-size:15px;font-weight:600;margin-bottom:5px;">Upload Product Image</div>
-                        <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">JPG, PNG, WebP</div>
+                        <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">JPG, PNG, WebP — then tap Generate</div>
                         <label class="opt-file-btn" for="image-input">Choose File</label>
                         <input type="file" id="image-input" accept="image/*" style="display:none;">
                         <div class="opt-preview" id="preview-box">
@@ -199,6 +201,8 @@ const OptimizerUI = {
                             <div style="color:#10b981;font-size:11px;margin-top:5px;">Ready</div>
                         </div>
                     </div>
+
+                    <button type="button" id="generate-btn" class="generate-btn" disabled>🚀 Generate Variants</button>
 
                     <div id="processing-area" style="display:none;"></div>
                     <div id="results-area" style="display:none;"></div>

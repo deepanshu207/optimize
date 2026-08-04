@@ -211,7 +211,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Verify license with server
   async function verifyLicenseWithServer(key) {
-    const trimmedKey = key.trim().toUpperCase();
+    const trimmedKey = CONFIG.normalizeLicenseKey
+      ? CONFIG.normalizeLicenseKey(key)
+      : key.trim().toUpperCase().replace(/\s+/g, "-");
     console.log("🔑 Verifying key:", trimmedKey);
 
     // Fetch demo keys from server
