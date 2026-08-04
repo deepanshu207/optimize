@@ -2,7 +2,8 @@
 // MEESHO SHIPPING OPTIMIZER - CONFIGURATION
 // ============================================
 
-const CONFIG = {
+if (!window.CONFIG) {
+window.CONFIG = {
   // Server URLs
   SERVER_URL: "https://darkviolet-ostrich-615182.hostingersite.com/api",
   SERVER_URL_FALLBACK:
@@ -15,7 +16,7 @@ const CONFIG = {
 
   // Extension Settings
   EXTENSION_NAME: "Meesho Shipping Cost Optimizer",
-  VERSION: "1.1.3",
+  VERSION: "1.1.8",
   LICENSE_CHECK_INTERVAL: 24 * 60 * 60 * 1000,
 
   // Built-in demo / promo keys (always honored; merged with server list)
@@ -95,6 +96,6 @@ const CONFIG = {
     };
   },
 };
-
-window.CONFIG = CONFIG;
+}
+var CONFIG = window.CONFIG;
 console.log("📋 Config loaded - Server:", CONFIG.SERVER_URL);

@@ -1,6 +1,7 @@
 // UI components for Meesho Shipping Optimizer v6.0.0
 
-const OptimizerUI = {
+if (!window.OptimizerUI) {
+window.OptimizerUI = {
   // Create modal HTML
   createModalHTML: function (isLicensed) {
     const styles = `
@@ -315,5 +316,5 @@ const OptimizerUI = {
     return html;
   },
 };
-
-window.OptimizerUI = OptimizerUI;
+}
+var OptimizerUI = window.OptimizerUI;

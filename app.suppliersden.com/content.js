@@ -1,6 +1,7 @@
 // Meesho Shipping Optimizer v6.0.0 - Main Entry Point
 
-class MeeshoShippingOptimizer {
+if (!window.MeeshoShippingOptimizer) {
+window.MeeshoShippingOptimizer = class MeeshoShippingOptimizer {
   constructor() {
     this.currentShippingCost = null;
     this.lastDetectedCost = null;
@@ -22,6 +23,10 @@ class MeeshoShippingOptimizer {
 
     // Listen for messages from popup
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === "ping") {
+        sendResponse({ alive: true });
+        return true;
+      }
       console.log("Message received:", message);
       if (message.action === "openOptimizer") {
         this.checkLicense().then(() => {
@@ -466,6 +471,8 @@ class MeeshoShippingOptimizer {
 
     for (const inp of document.querySelectorAll("input")) {
       if (this.isExtensionUiNode(inp)) continue;
+      const inputType = (inp.type || "").toLowerCase();
+      if (inputType === "file") continue;
       if (String(inp.value || "").includes(needle)) return true;
     }
 
@@ -1888,7 +1895,9 @@ Please share payment details and license key.`;
       setTimeout(() => this.openModal(), 200);
     }
   }
+};
 }
 
-// Initialize
-new MeeshoShippingOptimizer();
+if (!window.__meeshoOptimizerInstance) {
+  window.__meeshoOptimizerInstance = new window.MeeshoShippingOptimizer();
+}

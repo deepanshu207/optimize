@@ -1,6 +1,7 @@
 // Utility functions for Meesho Shipping Optimizer v5.2.1
 
-const OptimizerUtils = {
+if (!window.OptimizerUtils) {
+window.OptimizerUtils = {
     // Generate random color (no white/very light colors)
     getRandomColor: function() {
         const r = Math.floor(Math.random() * 200) + 20;
@@ -123,6 +124,5 @@ const OptimizerUtils = {
         return '₹' + amount.toLocaleString('en-IN');
     }
 };
-
-// Export for use in other files
-window.OptimizerUtils = OptimizerUtils;
+}
+var OptimizerUtils = window.OptimizerUtils;

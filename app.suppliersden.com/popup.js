@@ -417,30 +417,40 @@ document.addEventListener("DOMContentLoaded", async () => {
             chrome.tabs.update(catalogTab.id, { active: true });
             chrome.windows.update(catalogTab.windowId, { focused: true });
 
-            // Inject scripts only when the user clicks (avoids auto-injection on login/session pages)
+            let contentScriptReady = false;
             try {
-              await chrome.scripting.insertCSS({
-                target: { tabId: catalogTab.id },
-                files: ["styles.css"],
+              const ping = await chrome.tabs.sendMessage(catalogTab.id, {
+                action: "ping",
               });
-
-              await chrome.scripting.executeScript({
-                target: { tabId: catalogTab.id },
-                files: [
-                  "config.js",
-                  "js/utils.js",
-                  "js/license.js",
-                  "js/meeshoApi.js",
-                  "js/imageGenerator.js",
-                  "js/ui.js",
-                  "content.js",
-                ],
-              });
+              contentScriptReady = ping?.alive === true;
             } catch (e) {
-              console.log("Script injection failed:", e);
+              contentScriptReady = false;
             }
 
-            // Send message to content script to open the optimizer modal
+            if (!contentScriptReady) {
+              try {
+                await chrome.scripting.insertCSS({
+                  target: { tabId: catalogTab.id },
+                  files: ["styles.css"],
+                });
+
+                await chrome.scripting.executeScript({
+                  target: { tabId: catalogTab.id },
+                  files: [
+                    "config.js",
+                    "js/utils.js",
+                    "js/license.js",
+                    "js/meeshoApi.js",
+                    "js/imageGenerator.js",
+                    "js/ui.js",
+                    "content.js",
+                  ],
+                });
+              } catch (e) {
+                console.log("Script injection failed:", e);
+              }
+            }
+
             try {
               await chrome.tabs.sendMessage(catalogTab.id, {
                 action: "openOptimizer",

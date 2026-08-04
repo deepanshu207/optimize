@@ -1,6 +1,7 @@
 // License management for Meesho Shipping Optimizer v6.0.0
 
-const LicenseManager = {
+if (!window.LicenseManager) {
+window.LicenseManager = {
   isLicensed: false,
   licenseKey: null,
   licenseInfo: null,
@@ -397,5 +398,5 @@ const LicenseManager = {
     }
   },
 };
-
-window.LicenseManager = LicenseManager;
+}
+var LicenseManager = window.LicenseManager;

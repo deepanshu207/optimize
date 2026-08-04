@@ -1,6 +1,7 @@
 // Meesho API Integration v7.0.0 - Enhanced Variation & Shipping Logic
 
-const MeeshoAPI = {
+if (!window.MeeshoAPI) {
+window.MeeshoAPI = {
   _initialized: false,
   endpoints: {
     // Meesho routes are in flux: prefer /api/cataloging/* and fallback to older /catalogingapi/api/*
@@ -504,5 +505,5 @@ const MeeshoAPI = {
     );
   },
 };
-
-window.MeeshoAPI = MeeshoAPI;
+}
+var MeeshoAPI = window.MeeshoAPI;

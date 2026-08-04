@@ -1,6 +1,7 @@
 // Image generation for Meesho Shipping Optimizer v7.0.0 - All Random
 
-const ImageGenerator = {
+if (!window.ImageGenerator) {
+window.ImageGenerator = {
     settings: {
         // All settings now randomized - no manual controls
         customText: '',
@@ -319,5 +320,5 @@ const ImageGenerator = {
         ctx.putImageData(imageData, 0, 0);
     }
 };
-
-window.ImageGenerator = ImageGenerator;
+}
+var ImageGenerator = window.ImageGenerator;
