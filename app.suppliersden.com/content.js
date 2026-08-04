@@ -227,7 +227,7 @@ class MeeshoShippingOptimizer {
   verifyMeeshoFrontImageApplied(url) {
     const needle = (url || "").split("/").pop()?.split("?")[0] || "";
     const section = this.findMeeshoFrontImageSection();
-    if (!section) return this.verifyCatalogImageApplied(url);
+    if (!section) return false;
 
     if (!section.querySelector("[data-testid='removeImage']")) return false;
 
@@ -419,6 +419,14 @@ class MeeshoShippingOptimizer {
 
     for (const inp of document.querySelectorAll("input, textarea")) {
       if (this.isExtensionUiNode(inp)) continue;
+      const inputType = (inp.type || "").toLowerCase();
+      if (
+        inputType === "file" ||
+        inputType === "checkbox" ||
+        inputType === "radio"
+      ) {
+        continue;
+      }
       const name = (inp.name || inp.id || "").toLowerCase();
       const val = String(inp.value || "");
       const looksLikeImageField =
@@ -429,10 +437,12 @@ class MeeshoShippingOptimizer {
         val.includes("images.meesho") ||
         val.includes("cdnmeesho");
       if (!looksLikeImageField) continue;
-      inp.value = url;
-      inp.dispatchEvent(new Event("input", { bubbles: true }));
-      inp.dispatchEvent(new Event("change", { bubbles: true }));
-      touched++;
+      try {
+        inp.value = url;
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+        inp.dispatchEvent(new Event("change", { bubbles: true }));
+        touched++;
+      } catch (e) {}
     }
 
     if (imageInput && file) {
