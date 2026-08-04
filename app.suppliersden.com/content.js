@@ -13,6 +13,7 @@ class MeeshoShippingOptimizer {
     this.modal = null;
     this.autoPopupShown = false;
     this._pendingFile = null;
+    this._catalogImageInput = null;
     this.init();
   }
 
@@ -71,11 +72,115 @@ class MeeshoShippingOptimizer {
     this.addFloatingOptimizerButton();
 
     // Wait for page to load and add button
-    this.waitForElement("#changeFrontImage", () => {
+    this.waitForElement("#changeFrontImage", (el) => {
+      this._catalogImageInput = el;
       console.log("Image input found, adding button");
       this.addOptimizerButton();
       this.detectShipping();
     });
+  }
+
+  isExtensionUiNode(node) {
+    if (!node) return false;
+    return !!(
+      node.closest?.("#opt-modal") ||
+      node.closest?.("#variant-edit-panel") ||
+      node.id === "image-input"
+    );
+  }
+
+  findCatalogImageInput() {
+    if (
+      this._catalogImageInput &&
+      document.contains(this._catalogImageInput)
+    ) {
+      return this._catalogImageInput;
+    }
+
+    const selectors = [
+      "#changeFrontImage",
+      "input[type='file'][id*='FrontImage' i]",
+      "input[type='file'][id*='front' i]",
+      "input[type='file'][name*='front' i]",
+      "input[type='file'][accept*='image']",
+    ];
+
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el?.type === "file" && !this.isExtensionUiNode(el)) {
+        this._catalogImageInput = el;
+        return el;
+      }
+    }
+
+    const fileInputs = document.querySelectorAll("input[type='file']");
+    for (const el of fileInputs) {
+      if (!this.isExtensionUiNode(el)) {
+        this._catalogImageInput = el;
+        return el;
+      }
+    }
+
+    return null;
+  }
+
+  async revealCatalogImageInput() {
+    const patterns = [
+      /change.*image/i,
+      /upload.*image/i,
+      /replace.*image/i,
+      /front.*image/i,
+      /product.*image/i,
+      /^change$/i,
+      /edit.*image/i,
+    ];
+
+    const nodes = document.querySelectorAll(
+      "button, [role='button'], label, a, span, div",
+    );
+    for (const el of nodes) {
+      if (this.isExtensionUiNode(el)) continue;
+      const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 80) continue;
+      if (!patterns.some((re) => re.test(text))) continue;
+      try {
+        el.click();
+        await new Promise((r) => setTimeout(r, 400));
+        const found = this.findCatalogImageInput();
+        if (found) return found;
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async waitForCatalogImageInput(maxMs = 6000) {
+    let input = this.findCatalogImageInput();
+    if (input) return input;
+
+    await this.revealCatalogImageInput();
+    input = this.findCatalogImageInput();
+    if (input) return input;
+
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      await new Promise((r) => setTimeout(r, 350));
+      input = this.findCatalogImageInput();
+      if (input) return input;
+    }
+    return null;
+  }
+
+  async assignFileToCatalogInput(imageInput, file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    imageInput.files = dt.files;
+    imageInput.dispatchEvent(new Event("change", { bubbles: true }));
+    imageInput.dispatchEvent(new Event("input", { bubbles: true }));
+    try {
+      imageInput.dispatchEvent(
+        new Event("change", { bubbles: true, cancelable: true }),
+      );
+    } catch (e) {}
   }
 
   // Wait for element to appear
@@ -188,7 +293,7 @@ class MeeshoShippingOptimizer {
       return;
     }
 
-    const imageInput = document.querySelector("#changeFrontImage");
+    const imageInput = this.findCatalogImageInput();
     if (!imageInput) {
       console.log("Image input not found");
       return;
@@ -1115,19 +1220,14 @@ Please share payment details and license key.`;
         type: "image/jpeg",
       });
 
-      const imageInput = document.querySelector("#changeFrontImage");
+      const imageInput = this.findCatalogImageInput();
       if (!imageInput) {
         return this.currentShippingCost || 100;
       }
 
       const oldShipping = this.detectShipping();
 
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      imageInput.files = dt.files;
-
-      imageInput.dispatchEvent(new Event("change", { bubbles: true }));
-      imageInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await this.assignFileToCatalogInput(imageInput, file);
 
       await new Promise((r) => setTimeout(r, 2000));
 
@@ -1289,28 +1389,38 @@ Please share payment details and license key.`;
 
   async applyImage(result) {
     try {
-      OptimizerUtils.showNotification("Applying image...", "info");
-
-      const imageInput = document.querySelector("#changeFrontImage");
-      if (!imageInput) {
-        OptimizerUtils.showNotification("Image input not found", "error");
+      if (!result?.imageUrl) {
+        OptimizerUtils.showNotification("No image to apply", "error");
         return;
       }
 
-      // Use the SAME image that was tested (from dataUrl)
-      // This ensures consistency between test and apply
+      OptimizerUtils.showNotification("Applying image...", "info");
+
+      // Close optimizer overlay so Meesho catalog form (file input) is reachable on mobile
+      this.closeModal();
+      await new Promise((r) => setTimeout(r, 300));
+
+      const imageInput = await this.waitForCatalogImageInput(8000);
+      if (!imageInput) {
+        OptimizerUtils.showNotification(
+          "Image input not found — scroll to Meesho front image, tap Change/Upload image, then Apply again",
+          "error",
+        );
+        return;
+      }
+
+      try {
+        imageInput.scrollIntoView({ block: "center", behavior: "smooth" });
+      } catch (e) {}
+
       const resp = await fetch(result.imageUrl);
+      if (!resp.ok) throw new Error("Could not load variant image");
       const blob = await resp.blob();
       const file = new File([blob], "optimized-" + Date.now() + ".jpg", {
-        type: "image/jpeg",
+        type: blob.type || "image/jpeg",
       });
 
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      imageInput.files = dt.files;
-      imageInput.dispatchEvent(new Event("change", { bubbles: true }));
-
-      this.closeModal();
+      await this.assignFileToCatalogInput(imageInput, file);
 
       // Wait for Meesho to process the image
       await new Promise((r) => setTimeout(r, 3000));
